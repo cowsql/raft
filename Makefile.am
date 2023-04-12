@@ -27,6 +27,7 @@ libraft_la_SOURCES = \
   src/log.c \
   src/membership.c \
   src/progress.c \
+  src/random.c \
   src/raft.c \
   src/recv.c \
   src/recv_append_entries.c \
@@ -69,6 +70,7 @@ test_unit_core_SOURCES = \
   src/flags.c \
   src/heap.c \
   src/log.c \
+  src/random.c \
   test/unit/main_core.c \
   test/unit/test_byte.c \
   test/unit/test_compress.c \
@@ -76,7 +78,8 @@ test_unit_core_SOURCES = \
   test/unit/test_err.c \
   test/unit/test_flags.c \
   test/unit/test_log.c \
-  test/unit/test_queue.c
+  test/unit/test_queue.c \
+  test/unit/test_random.c
 test_unit_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
 
