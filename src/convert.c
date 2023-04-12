@@ -196,7 +196,7 @@ int convertToLeader(struct raft *r)
     convertSetState(r, RAFT_LEADER);
 
     /* Reset timers */
-    r->election_timer_start = r->io->time(r->io);
+    r->election_timer_start = r->now;
 
     /* Reset apply requests queue */
     QUEUE_INIT(&r->leader_state.requests);

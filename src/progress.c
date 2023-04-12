@@ -105,8 +105,7 @@ bool progressIsUpToDate(struct raft *r, unsigned i)
 bool progressShouldReplicate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    raft_time now = r->io->time(r->io);
-    bool needs_heartbeat = now - p->last_send >= r->heartbeat_timeout;
+    bool needs_heartbeat = r->now - p->last_send >= r->heartbeat_timeout;
     raft_index last_index = logLastIndex(r->log);
     bool result = false;
 
@@ -121,7 +120,7 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
     switch (p->state) {
         case PROGRESS__SNAPSHOT:
             /* Snapshot timed out, move to PROBE */
-            if (now - p->snapshot_last_send >= r->install_snapshot_timeout) {
+            if (r->now - p->snapshot_last_send >= r->install_snapshot_timeout) {
                 tracef("snapshot timed out for index:%u", i);
                 result = true;
                 progressAbortSnapshot(r, i);
@@ -157,12 +156,12 @@ raft_index progressMatchIndex(struct raft *r, unsigned i)
 
 void progressUpdateLastSend(struct raft *r, unsigned i)
 {
-    r->leader_state.progress[i].last_send = r->io->time(r->io);
+    r->leader_state.progress[i].last_send = r->now;
 }
 
 void progressUpdateSnapshotLastSend(struct raft *r, unsigned i)
 {
-    r->leader_state.progress[i].snapshot_last_send = r->io->time(r->io);
+    r->leader_state.progress[i].snapshot_last_send = r->now;
 }
 
 bool progressResetRecentRecv(struct raft *r, const unsigned i)

@@ -38,13 +38,13 @@ void electionResetTimer(struct raft *r)
     assert(timeout >= r->election_timeout);
     assert(timeout <= r->election_timeout * 2);
     state->randomized_election_timeout = timeout;
-    r->election_timer_start = r->io->time(r->io);
+    r->election_timer_start = r->now;
 }
 
 bool electionTimerExpired(struct raft *r)
 {
     struct followerOrCandidateState *state = getFollowerOrCandidateState(r);
-    raft_time now = r->io->time(r->io);
+    raft_time now = r->now;
     return now - r->election_timer_start >= state->randomized_election_timeout;
 }
 
@@ -289,7 +289,7 @@ grant_vote:
         r->voted_for = args->candidate_id;
 
         /* Reset the election timer. */
-        r->election_timer_start = r->io->time(r->io);
+        r->election_timer_start = r->now;
     }
 
     tracef("vote granted to %llu", args->candidate_id);

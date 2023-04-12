@@ -85,7 +85,6 @@ bool membershipUpdateCatchUpRound(struct raft *r)
     unsigned server_index;
     raft_index match_index;
     raft_index last_index;
-    raft_time now = r->io->time(r->io);
     raft_time round_duration;
     bool is_up_to_date;
     bool is_fast_enough;
@@ -110,7 +109,7 @@ bool membershipUpdateCatchUpRound(struct raft *r)
     }
 
     last_index = logLastIndex(r->log);
-    round_duration = now - r->leader_state.round_start;
+    round_duration = r->now - r->leader_state.round_start;
 
     is_up_to_date = match_index == last_index;
     is_fast_enough = round_duration < r->election_timeout;
@@ -133,7 +132,7 @@ bool membershipUpdateCatchUpRound(struct raft *r)
      * new round. */
     r->leader_state.round_number++;
     r->leader_state.round_index = last_index;
-    r->leader_state.round_start = now;
+    r->leader_state.round_start = r->now;
 
     return false;
 }
@@ -205,7 +204,7 @@ void membershipLeadershipTransferInit(struct raft *r,
 {
     req->cb = cb;
     req->id = id;
-    req->start = r->io->time(r->io);
+    req->start = r->now;
     req->send.data = NULL;
     r->transfer = req;
 }
