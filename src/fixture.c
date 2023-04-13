@@ -11,6 +11,7 @@
 #include "entry.h"
 #include "log.h"
 #include "queue.h"
+#include "random.h"
 #include "snapshot.h"
 #include "tracing.h"
 
@@ -159,10 +160,25 @@ struct io
     struct peer peers[MAX_PEERS];
     unsigned n_peers;
 
-    unsigned randomized_election_timeout; /* Value returned by io->random() */
-    unsigned network_latency;             /* Milliseconds to deliver RPCs */
-    unsigned disk_latency;                /* Milliseconds to perform disk I/O */
-    unsigned work_duration;               /* Milliseconds to run async work */
+    /* The randomized_election_timeout field stores the value that the raft
+     * instance will obtain the next time it calls RandomWithinRange() to obtain
+     * a random number in the [election_timeout, election_timeout * 2] range. We
+     * do that by passing raft_seed() a value that makes the pseudor random
+     * number generator produce exactly randomized_election_timeout. That value
+     * is what we store in the seed field below. Since calculating the seed that
+     * matches the desired randomized_election_timeout is somehow expensive, we
+     * also use randomized_election_timeout_prev to store the previous value of
+     * randomized_election_timeout, in order to re-use the same seed if nothing
+     * has changed.
+     *
+     * See serverSeed for more details. */
+    unsigned randomized_election_timeout;
+    unsigned randomized_election_timeout_prev;
+    unsigned seed;
+
+    unsigned network_latency; /* Milliseconds to deliver RPCs */
+    unsigned disk_latency;    /* Milliseconds to perform disk I/O */
+    unsigned work_duration;   /* Milliseconds to run async work */
 
     struct
     {
@@ -714,11 +730,14 @@ static raft_time ioMethodTime(struct raft_io *raft_io)
 
 static int ioMethodRandom(struct raft_io *raft_io, int min, int max)
 {
-    struct io *io;
+    (void)raft_io;
     (void)min;
     (void)max;
-    io = raft_io->impl;
-    return (int)io->randomized_election_timeout;
+    /* This method is used by raft_init() to get the initial seed for the
+     * pseudo random number generator. However, it doesn't matter what we return
+     * here, since in serverSeed() we'll call raft_seed() again overwriting
+     * whatever value we return here. */
+    return 0;
 }
 
 /* Queue up a request which will be processed later, when io_stub_flush()
@@ -886,6 +905,7 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
     QUEUE_INIT(&io->requests);
     io->n_peers = 0;
     io->randomized_election_timeout = ELECTION_TIMEOUT + index * 100;
+    io->randomized_election_timeout_prev = 0;
     io->network_latency = NETWORK_LATENCY;
     io->disk_latency = DISK_LATENCY;
     io->work_duration = WORK_DURATION;
@@ -983,6 +1003,34 @@ static void serverClose(struct raft_fixture_server *s)
     raft_free(s);
 }
 
+/* Set the state of raft's internal pseudo random number generator so that the
+ * next time RandomWithinRange() is run it will return the value configured by
+ * the fixture, which is stored in the randomized_election_timeout field. */
+static void serverSeed(struct raft_fixture_server *s)
+{
+    struct io *io = s->io.impl;
+    unsigned timeout = s->raft.election_timeout;
+
+    if (io->randomized_election_timeout ==
+        io->randomized_election_timeout_prev) {
+        goto done;
+    }
+
+    io->seed = s->raft.random;
+    while (1) {
+        unsigned random = io->seed;
+        unsigned n = RandomWithinRange(&random, timeout, timeout * 2);
+        if (n == io->randomized_election_timeout) {
+            goto done;
+        }
+        io->seed = random;
+    }
+
+done:
+    raft_seed(&s->raft, io->seed);
+    io->randomized_election_timeout_prev = io->randomized_election_timeout;
+}
+
 /* Connect the server with the given index to all others */
 static void serverConnectToAll(struct raft_fixture *f, unsigned i)
 {
@@ -1070,10 +1118,19 @@ int raft_fixture_bootstrap(struct raft_fixture *f,
     return 0;
 }
 
+static void seedAll(struct raft_fixture *f)
+{
+    unsigned i;
+    for (i = 0; i < f->n; i++) {
+        serverSeed(f->servers[i]);
+    }
+}
+
 int raft_fixture_start(struct raft_fixture *f)
 {
     unsigned i;
     int rv;
+    seedAll(f);
     for (i = 0; i < f->n; i++) {
         struct raft_fixture_server *s = f->servers[i];
         rv = raft_start(&s->raft);
@@ -1425,6 +1482,8 @@ struct raft_fixture_event *raft_fixture_step(struct raft_fixture *f)
     raft_time completion_time;
     unsigned i = f->n;
     unsigned j = f->n;
+
+    seedAll(f);
 
     getLowestTickTime(f, &tick_time, &i);
     getLowestRequestCompletionTime(f, &completion_time, &j);
