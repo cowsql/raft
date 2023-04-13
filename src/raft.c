@@ -1,5 +1,6 @@
 #include "../include/raft.h"
 
+#include <limits.h>
 #include <string.h>
 
 #include "assert.h"
@@ -101,6 +102,7 @@ int raft_init(struct raft *r,
         goto err_after_address_alloc;
     }
     r->now = r->io->time(r->io);
+    raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
     return 0;
 
 err_after_address_alloc:
@@ -131,6 +133,11 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     }
     r->close_cb = cb;
     r->io->close(r->io, ioCloseCb);
+}
+
+void raft_seed(struct raft *r, unsigned random)
+{
+    r->random = random;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
