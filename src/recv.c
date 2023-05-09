@@ -20,38 +20,35 @@
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Dispatch a single RPC message to the appropriate handler. */
-static int recvMessage(struct raft *r, struct raft_message *message)
+static int recvMessage(struct raft *r,
+                       raft_id id,
+                       const char *address,
+                       struct raft_message *message)
 {
     int rv = 0;
 
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
-            rv = recvAppendEntries(r, message->server_id,
-                                   message->server_address,
-                                   &message->append_entries);
+            rv = recvAppendEntries(r, id, address, &message->append_entries);
             if (rv != 0) {
                 entryBatchesDestroy(message->append_entries.entries,
                                     message->append_entries.n_entries);
             }
             break;
         case RAFT_IO_APPEND_ENTRIES_RESULT:
-            rv = recvAppendEntriesResult(r, message->server_id,
-                                         message->server_address,
+            rv = recvAppendEntriesResult(r, id, address,
                                          &message->append_entries_result);
             break;
         case RAFT_IO_REQUEST_VOTE:
-            rv = recvRequestVote(r, message->server_id, message->server_address,
-                                 &message->request_vote);
+            rv = recvRequestVote(r, id, address, &message->request_vote);
             break;
         case RAFT_IO_REQUEST_VOTE_RESULT:
-            rv = recvRequestVoteResult(r, message->server_id,
-                                       message->server_address,
+            rv = recvRequestVoteResult(r, id, address,
                                        &message->request_vote_result);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = recvInstallSnapshot(r, message->server_id,
-                                     message->server_address,
-                                     &message->install_snapshot);
+            rv =
+                recvInstallSnapshot(r, id, address, &message->install_snapshot);
             /* Already installing a snapshot, wait for it and ignore this one */
             if (rv == RAFT_BUSY) {
                 raft_free(message->install_snapshot.data.base);
@@ -60,8 +57,7 @@ static int recvMessage(struct raft *r, struct raft_message *message)
             }
             break;
         case RAFT_IO_TIMEOUT_NOW:
-            rv = recvTimeoutNow(r, message->server_id, message->server_address,
-                                &message->timeout_now);
+            rv = recvTimeoutNow(r, id, address, &message->timeout_now);
             break;
         default:
             tracef("received unknown message type (%d)", message->type);
@@ -105,7 +101,7 @@ void recvCb(struct raft_io *io, struct raft_message *message)
         }
         return;
     }
-    rv = recvMessage(r, message);
+    rv = recvMessage(r, message->server_id, message->server_address, message);
     if (rv != 0) {
         goto err;
     }
