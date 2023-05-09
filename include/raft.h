@@ -79,6 +79,11 @@ typedef unsigned long long raft_index;
  */
 typedef unsigned long long raft_time;
 
+/* Helper for statically checking ABI compatibility when changing or adding
+ * struct fields. */
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
+    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
+
 /**
  * Hold the features a raft node is capable of.
  */
@@ -1156,5 +1161,6 @@ RAFT_API void raft_heap_set_default(void);
 RAFT_API const struct raft_heap *raft_heap_get(void);
 
 #undef RAFT__REQUEST
+#undef RAFT__ASSERT_COMPATIBILITY
 
 #endif /* RAFT_H */
