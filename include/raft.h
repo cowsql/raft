@@ -643,6 +643,22 @@ struct raft_transfer; /* Forward declaration */
 
 struct raft_log;
 
+/* Unused uint64_t slots that are reserved for v0.x extensions.*/
+#define RAFT__RESERVED         \
+    struct                     \
+    {                          \
+        uint64_t reserved[32]; \
+    }
+
+/* Extended struct raft fields added after the v0.x ABI freeze. */
+#define RAFT__EXTENSIONS                                           \
+    struct                                                         \
+    {                                                              \
+        raft_time now; /* Current time, updated via raft_step() */ \
+    }
+
+RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
+
 /**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
@@ -853,9 +869,15 @@ struct raft
     unsigned max_catch_up_rounds;
     unsigned max_catch_up_round_duration;
 
-    /* Future extensions */
-    uint64_t reserved[32];
+    /* Fields added after the v0.x ABI freeze, packed in the unused space. */
+    union {
+        RAFT__RESERVED;
+        RAFT__EXTENSIONS;
+    };
 };
+
+#undef RAFT__RESERVED
+#undef RAFT__EXTENSIONS
 
 RAFT_API int raft_init(struct raft *r,
                        struct raft_io *io,
