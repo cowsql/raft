@@ -76,3 +76,24 @@ TEST(raft_init, nullFsmAndIo, setUp, tearDown, 0, NULL)
     raft_close(&f->raft, NULL);
     return MUNIT_OK;
 }
+
+static char *oom_heap_fault_delay[] = {"0", "1", NULL};
+static char *oom_heap_fault_repeat[] = {"1", NULL};
+
+static MunitParameterEnum oom_params[] = {
+    {TEST_HEAP_FAULT_DELAY, oom_heap_fault_delay},
+    {TEST_HEAP_FAULT_REPEAT, oom_heap_fault_repeat},
+    {NULL, NULL},
+};
+
+/* Out of memory failures. */
+TEST(raft_init, oom, setUp, tearDown, 0, oom_params)
+{
+    struct fixture *f = data;
+    int rv;
+    HEAP_FAULT_ENABLE;
+    rv = raft_init(&f->raft, NULL, NULL, 1, "1");
+    munit_assert_int(rv, ==, RAFT_NOMEM);
+    munit_assert_string_equal(raft_errmsg(&f->raft), "out of memory");
+    return MUNIT_OK;
+}

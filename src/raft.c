@@ -63,6 +63,7 @@ int raft_init(struct raft *r,
     /* Make a copy of the address */
     r->address = RaftHeapMalloc(strlen(address) + 1);
     if (r->address == NULL) {
+        ErrMsgOom(r->errmsg);
         rv = RAFT_NOMEM;
         goto err;
     }
@@ -71,6 +72,7 @@ int raft_init(struct raft *r,
     r->voted_for = 0;
     r->log = logInit();
     if (r->log == NULL) {
+        ErrMsgOom(r->errmsg);
         rv = RAFT_NOMEM;
         goto err_after_address_alloc;
     }
