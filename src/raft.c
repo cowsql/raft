@@ -239,7 +239,7 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
             rv = applyCommandDone(r, task, status);
             break;
         default:
-            rv = 0;
+            rv = RAFT_INVALID;
             break;
     }
 
