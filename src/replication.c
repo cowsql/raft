@@ -1186,7 +1186,7 @@ int replicationPersistSnapshotDone(struct raft *r,
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
 
-    r->snapshot.put.data = NULL;
+    r->snapshot.persisting = false;
 
     snapshot.index = params->metadata.index;
     snapshot.term = params->metadata.term;
@@ -1277,7 +1277,7 @@ int replicationInstallSnapshot(struct raft *r,
     /* If we are taking a snapshot ourselves or installing a snapshot, ignore
      * the request, the leader will eventually retry. TODO: we should do
      * something smarter. */
-    if (r->snapshot.taking || r->snapshot.put.data != NULL) {
+    if (r->snapshot.taking || r->snapshot.persisting) {
         *async = true;
         tracef("already taking or installing snapshot");
         return RAFT_BUSY;
@@ -1305,8 +1305,8 @@ int replicationInstallSnapshot(struct raft *r,
 
     r->last_stored = 0;
 
-    assert(r->snapshot.put.data == NULL);
-    r->snapshot.put.data = r;
+    assert(!r->snapshot.persisting);
+    r->snapshot.persisting = true;
 
     metadata.index = args->last_index;
     metadata.term = args->last_term;
@@ -1323,7 +1323,7 @@ int replicationInstallSnapshot(struct raft *r,
     return 0;
 
 err:
-    r->snapshot.put.data = NULL;
+    r->snapshot.persisting = false;
     assert(rv != 0);
     return rv;
 }
@@ -1554,7 +1554,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
 inline bool replicationInstallSnapshotBusy(struct raft *r)
 {
-    return r->last_stored == 0 && r->snapshot.put.data != NULL;
+    return r->last_stored == 0 && r->snapshot.persisting;
 }
 
 #undef tracef

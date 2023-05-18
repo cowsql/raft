@@ -93,7 +93,7 @@ int raft_init(struct raft *r,
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
-    r->snapshot.put.data = NULL;
+    r->snapshot.persisting = false;
     r->close_cb = NULL;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;

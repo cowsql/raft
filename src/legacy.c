@@ -322,6 +322,7 @@ struct legacyTakeSnapshot
     struct raft *r;
     struct raft_snapshot_metadata metadata;
     struct raft_snapshot snapshot;
+    struct raft_io_snapshot_put put;
 };
 
 /*
@@ -353,7 +354,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     struct raft_snapshot *snapshot = &req->snapshot;
     struct raft_event event;
 
-    r->snapshot.put.data = NULL;
+    r->snapshot.persisting = false;
 
     takeSnapshotClose(r, snapshot);
     raft_free(req);
@@ -378,14 +379,14 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     struct raft *r = req->r;
     struct raft_snapshot *snapshot = &req->snapshot;
     int rv;
-    assert(r->snapshot.put.data == NULL);
-    r->snapshot.put.data = req;
-    rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &r->snapshot.put,
-                             snapshot, takeSnapshotCb);
+    assert(!r->snapshot.persisting);
+    req->put.data = req;
+    r->snapshot.persisting = true;
+    rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &req->put, snapshot,
+                             takeSnapshotCb);
     if (rv != 0) {
-        r->snapshot.put.data = NULL;
+        r->snapshot.persisting = false;
     }
-
     return rv;
 }
 
@@ -405,7 +406,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
 
     /* If a snapshot is already in progress or we're installing a snapshot, we
      * don't want to start another one. */
-    if (r->snapshot.taking || r->snapshot.put.data != NULL) {
+    if (r->snapshot.taking || r->snapshot.persisting) {
         return false;
     };
 

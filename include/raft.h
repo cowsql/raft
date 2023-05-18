@@ -837,16 +837,18 @@ struct raft_log;
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
 
-#define RAFT__SNAPSHOT_FIELDS_V0       \
-    struct                             \
-    {                                  \
-        struct raft_snapshot _pending; \
+#define RAFT__SNAPSHOT_FIELDS_V0          \
+    struct                                \
+    {                                     \
+        struct raft_snapshot _pending;    \
+        struct raft_io_snapshot_put _put; \
     }
 
-#define RAFT__SNAPSHOT_FIELDS_V1                                             \
-    struct                                                                   \
-    {                                                                        \
-        bool taking; /* True if a RAFT_TAKE_SNAPSHOT request is in flight */ \
+#define RAFT__SNAPSHOT_FIELDS_V1                                           \
+    struct                                                                 \
+    {                                                                      \
+        bool taking;     /* A RAFT_TAKE_SNAPSHOT request is in flight */   \
+        bool persisting; /* A RAFT_PERSIT_SNAPSHOT request is in flight */ \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
@@ -1040,8 +1042,7 @@ struct raft
             RAFT__SNAPSHOT_FIELDS_V0;
             RAFT__SNAPSHOT_FIELDS_V1;
         };
-        struct raft_io_snapshot_put put; /* Store snapshot request */
-        uint64_t reserved[8];            /* Future use */
+        uint64_t reserved[8]; /* Future use */
     } snapshot;
 
     /*
