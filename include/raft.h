@@ -366,6 +366,21 @@ struct raft_message
 };
 
 /**
+ * Hold metadata associated with a snapshot.
+ */
+struct raft_snapshot_metadata
+{
+    /* Index and term of last entry included in the snapshot. */
+    raft_index index;
+    raft_term term;
+
+    /* Last committed configuration included in the snapshot, along with the
+     * index it was committed at. */
+    struct raft_configuration configuration;
+    raft_index configuration_index;
+};
+
+/**
  * Hold the details of a snapshot.
  * The user-provided raft_buffer structs should provide the user with enough
  * flexibility to adapt/evolve snapshot formats.
