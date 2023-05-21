@@ -47,10 +47,7 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
     return 0;
 }
 
-/* Restore the entries that were loaded from persistent storage. The most recent
- * configuration entry will be restored as well, if any.
- *
- * Note that if the last configuration entry in the log has index greater than
+/* Note that if the last configuration entry in the log has index greater than
  * one we cannot know if it is committed or not. Therefore we also need to track
  * the second-to-last configuration entry. This second-to-last entry is
  * committed by default as raft doesn't allow multiple uncommitted configuration
@@ -59,12 +56,12 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
  * that the log was truncated after a snapshot and second-to-last configuration
  * is available in r->configuration_last_snapshot, which we popolated earlier
  * when the snapshot was restored. */
-static int restoreEntries(struct raft *r,
-                          raft_index snapshot_index,
-                          raft_term snapshot_term,
-                          raft_index start_index,
-                          struct raft_entry *entries,
-                          unsigned n)
+int RestoreEntries(struct raft *r,
+                   raft_index snapshot_index,
+                   raft_term snapshot_term,
+                   raft_index start_index,
+                   struct raft_entry *entries,
+                   unsigned n)
 {
     struct raft_entry *conf = NULL;
     raft_index conf_index = 0;
@@ -225,7 +222,7 @@ int raft_start(struct raft *r)
     /* Append the entries to the log, possibly restoring the last
      * configuration. */
     tracef("restore %zu entries starting at %llu", n_entries, start_index);
-    rv = restoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
+    rv = RestoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
                         (unsigned)n_entries);
     if (rv != 0) {
         entryBatchesDestroy(entries, n_entries);
