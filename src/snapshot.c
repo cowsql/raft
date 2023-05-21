@@ -27,39 +27,6 @@ void snapshotDestroy(struct raft_snapshot *s)
     raft_free(s);
 }
 
-int snapshotRestore(struct raft *r, struct raft_snapshot_metadata *metadata)
-{
-    int rv;
-
-    configurationClose(&r->configuration);
-    r->configuration = metadata->configuration;
-    r->configuration_committed_index = metadata->configuration_index;
-    r->configuration_uncommitted_index = 0;
-
-    /* Make a copy of the configuration contained in the snapshot, in case
-     * r->configuration gets overriden with an uncommitted configuration and we
-     * then need to rollback, but the log does not contain anymore the entry at
-     * r->configuration_committed_index because it was truncated. */
-    configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&r->configuration, &r->configuration_last_snapshot);
-    if (rv != 0) {
-        return rv;
-    }
-
-    /* Make also a copy of the index of the configuration contained in the
-     * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
-    r->configuration_last_snapshot_index = metadata->configuration_index;
-
-    configurationTrace(r, &r->configuration,
-                       "configuration restore from snapshot");
-
-    r->commit_index = metadata->index;
-    r->last_applied = metadata->index;
-    r->last_stored = metadata->index;
-
-    return 0;
-}
-
 int snapshotCopy(const struct raft_snapshot *src, struct raft_snapshot *dst)
 {
     int rv;

@@ -14,4 +14,13 @@ int RestoreEntries(struct raft *r,
                    struct raft_entry *entries,
                    unsigned n);
 
+/* Function to be called when restoring a snapshot.
+ *
+ * This will reset the current state of the raft object as if the last entry
+ * contained in the snapshot with the given metadata had just been persisted,
+ * committed and applied.
+ *
+ * The in-memory log must be empty when calling this function. */
+int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata);
+
 #endif /* RAFT_RESTORE_H_ */
