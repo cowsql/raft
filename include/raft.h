@@ -539,6 +539,21 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
 /**
+ * Type codes for async tasks issued by #raft and that must be completed by
+ * consumers.
+ */
+enum {
+    RAFT_SEND_MESSAGE = 1,
+    RAFT_PERSIST_ENTRIES,
+    RAFT_PERSIST_TERM_AND_VOTE,
+    RAFT_PERSIST_SNAPSHOT,
+    RAFT_LOAD_SNAPSHOT,
+    RAFT_APPLY_COMMAND,
+    RAFT_TAKE_SNAPSHOT,
+    RAFT_RESTORE_SNAPSHOT
+};
+
+/**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
  * methods.
