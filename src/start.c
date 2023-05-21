@@ -139,6 +139,7 @@ static int maybeSelfElect(struct raft *r)
 int raft_start(struct raft *r)
 {
     struct raft_snapshot *snapshot;
+    struct raft_snapshot_metadata metadata;
     raft_index snapshot_index = 0;
     raft_term snapshot_term = 0;
     raft_index start_index;
@@ -187,7 +188,11 @@ int raft_start(struct raft *r)
             return rv;
         }
 
-        rv = snapshotRestore(r, snapshot);
+        metadata.index = snapshot->index;
+        metadata.term = snapshot->term;
+        metadata.configuration = snapshot->configuration;
+        metadata.configuration_index = snapshot->configuration_index;
+        rv = snapshotRestore(r, &metadata);
         if (rv != 0) {
             entryBatchesDestroy(entries, n_entries);
             return rv;
