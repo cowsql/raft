@@ -675,11 +675,14 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                             \
-    struct                                                           \
-    {                                                                \
-        raft_time now;   /* Current time, updated via raft_step() */ \
-        unsigned random; /* Pseudo-random number generator state */  \
+#define RAFT__EXTENSIONS                                                     \
+    struct                                                                   \
+    {                                                                        \
+        raft_time now;           /* Current time, updated via raft_step() */ \
+        unsigned random;         /* Pseudo-random number generator state */  \
+        struct raft_task *tasks; /* Queue of pending raft_task operations */ \
+        unsigned n_tasks;        /* Length of the task queue */              \
+        unsigned n_tasks_cap;    /* Capacity of the task queue */            \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
