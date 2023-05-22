@@ -212,6 +212,11 @@ static bool v1 = false;
 
 #define CLUSTER_START(...) CLUSTER_START__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
+#define CLUSTER_TRACE(EXPECTED)                        \
+    if (!test_cluster_trace(&f->cluster_, EXPECTED)) { \
+        munit_error("trace does not match");           \
+    }
+
 /* Step the cluster. */
 #define CLUSTER_STEP raft_fixture_step(&f->cluster);
 
@@ -524,5 +529,10 @@ void test_cluster_tear_down(struct test_cluster *c);
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Compare the trace of all messages emitted by all servers with the given
+ * expected trace. If they don't match, print the last line which differs and
+ * return #false. */
+bool test_cluster_trace(struct test_cluster *c, const char *expected);
 
 #endif /* TEST_CLUSTER_H */

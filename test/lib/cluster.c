@@ -138,6 +138,34 @@ static void diskLoad(struct test_disk *d,
     }
 }
 
+/* Custom emit tracer function which includes the server ID. */
+static void serverTrace(struct raft_tracer *t, int type, const void *data)
+{
+    struct test_server *server;
+    struct test_cluster *cluster;
+    const struct raft_tracer_info *info = data;
+    char trace[1024];
+
+    if (type != RAFT_TRACER_DIAGNOSTIC) {
+        return;
+    }
+
+    server = t->impl;
+    cluster = server->cluster;
+    if (info->diagnostic.level > 3) {
+        return;
+    }
+    if (info->diagnostic.message[0] == '>') {
+        snprintf(trace, sizeof trace, "[%4lld] %llu %s", cluster->time,
+                 server->raft.id, info->diagnostic.message);
+    } else {
+        snprintf(trace, sizeof trace, "         %s", info->diagnostic.message);
+    }
+    strcat(cluster->trace, trace);
+    strcat(cluster->trace, "\n");
+    fprintf(stderr, "%s\n", trace);
+}
+
 /* Initialize a new server object. */
 static void serverInit(struct test_server *s,
                        raft_id id,
@@ -148,10 +176,16 @@ static void serverInit(struct test_server *s,
 
     diskInit(&s->disk);
 
+    s->tracer.impl = s;
+    s->tracer.version = 2;
+    s->tracer.trace = serverTrace;
+
     sprintf(address, "%llu", id);
 
     rv = raft_init(&s->raft, NULL, NULL, id, address);
     munit_assert_int(rv, ==, 0);
+
+    s->raft.tracer = &s->tracer;
 
     raft_set_election_timeout(&s->raft, DEFAULT_ELECTION_TIMEOUT);
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
@@ -241,6 +275,63 @@ void test_cluster_start(struct test_cluster *c, raft_id id)
 {
     struct test_server *server = clusterGetServer(c, id);
     serverStart(server);
+}
+
+bool test_cluster_trace(struct test_cluster *c, const char *expected)
+{
+    size_t n1;
+    size_t n2;
+    size_t i;
+    unsigned max_steps = 100;
+
+consume:
+    if (max_steps == 0) {
+        goto mismatch;
+    }
+    max_steps -= 1;
+
+    n1 = strlen(c->trace);
+    n2 = strlen(expected);
+
+    for (i = 0; i < n1 && i < n2; i++) {
+        if (c->trace[i] != expected[i]) {
+            break;
+        }
+    }
+
+    /* Check if we produced more output than the expected one. */
+    if (n1 > n2) {
+        goto mismatch;
+    }
+
+    /* If there's more expected output, check that so far we're good, then step
+     * and repeat. */
+    if (n1 < n2) {
+        if (i != n1) {
+            goto mismatch;
+        }
+        c->trace[0] = 0;
+        expected += i;
+        goto consume;
+    }
+
+    munit_assert_ulong(n1, ==, n2);
+    if (i != n1) {
+        goto mismatch;
+    }
+
+    c->trace[0] = 0;
+
+    return true;
+
+mismatch:
+    fprintf(stderr, "==> Expected:\n");
+    fprintf(stderr, "%s\n", expected);
+
+    fprintf(stderr, "==> Actual:\n");
+    fprintf(stderr, "%s\n", c->trace);
+
+    return false;
 }
 
 static void randomize(struct raft_fixture *f, unsigned i, int what)
