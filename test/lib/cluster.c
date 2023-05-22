@@ -4,9 +4,50 @@
 
 #include "cluster.h"
 
+/* Defaults */
+#define DEFAULT_ELECTION_TIMEOUT 100
+#define DEFAULT_HEARTBEAT_TIMEOUT 40
+#define DEFAULT_NETWORK_LATENCY 10
+#define DEFAULT_DISK_LATENCY 10
+
+/* Initialize a new server object. */
+static void serverInit(struct test_server *s,
+                       raft_id id,
+                       struct test_cluster *cluster)
+{
+    char address[64];
+    int rv;
+
+    sprintf(address, "%llu", id);
+
+    rv = raft_init(&s->raft, NULL, NULL, id, address);
+    munit_assert_int(rv, ==, 0);
+
+    raft_set_election_timeout(&s->raft, DEFAULT_ELECTION_TIMEOUT);
+    raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
+
+    s->cluster = cluster;
+    s->network_latency = DEFAULT_NETWORK_LATENCY;
+    s->disk_latency = DEFAULT_DISK_LATENCY;
+    s->running = false;
+}
+
+/* Release all resources used by a server object. */
+static void serverClose(struct test_server *s)
+{
+    raft_close(&s->raft, NULL);
+}
+
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
 {
+    unsigned i;
+
     (void)params;
+
+    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        serverInit(&c->servers[i], i + 1, c);
+    }
+
     c->time = 0;
     QUEUE_INIT(&c->operations);
     QUEUE_INIT(&c->disconnect);
@@ -14,7 +55,11 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
 
 void test_cluster_tear_down(struct test_cluster *c)
 {
-    (void)c;
+    unsigned i;
+
+    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        serverClose(&c->servers[i]);
+    }
 }
 
 static void randomize(struct raft_fixture *f, unsigned i, int what)
