@@ -14,14 +14,34 @@
 
 #define TEST_CLUSTER_N_SERVERS 8
 
-#define FIXTURE_CLUSTER                             \
-    FIXTURE_HEAP;                                   \
-    struct raft_fsm fsms[RAFT_FIXTURE_MAX_SERVERS]; \
-    struct raft_fixture cluster
+static bool v1 = false;
+
+#define FIXTURE_CLUSTER                                     \
+    FIXTURE_HEAP;                                           \
+    union {                                                 \
+        struct                                              \
+        { /* v0 */                                          \
+            struct raft_fsm fsms[RAFT_FIXTURE_MAX_SERVERS]; \
+            struct raft_fixture cluster;                    \
+        };                                                  \
+        struct                                              \
+        { /* v1 */                                          \
+            struct test_cluster cluster_;                   \
+        };                                                  \
+    }
+
+#define SETUP_CLUSTER(N)     \
+    if (v1) {                \
+        SETUP_CLUSTER_V1();  \
+    } else {                 \
+        SETUP_CLUSTER_V0(N); \
+    }
+
+#define SETUP_CLUSTER_V1() test_cluster_setup(params, &f->cluster_)
 
 /* N is the default number of servers, but can be tweaked with the cluster-n
  * parameter. */
-#define SETUP_CLUSTER(DEFAULT_N)                                               \
+#define SETUP_CLUSTER_V0(DEFAULT_N)                                            \
     SET_UP_HEAP;                                                               \
     do {                                                                       \
         unsigned _n = DEFAULT_N;                                               \
@@ -61,7 +81,16 @@
         }                                                                      \
     } while (0)
 
-#define TEAR_DOWN_CLUSTER                 \
+#define TEAR_DOWN_CLUSTER     \
+    if (v1) {                 \
+        TEAR_DOWN_CLUSTER_V1; \
+    } else {                  \
+        TEAR_DOWN_CLUSTER_V0; \
+    }
+
+#define TEAR_DOWN_CLUSTER_V1 test_cluster_tear_down(&f->cluster_)
+
+#define TEAR_DOWN_CLUSTER_V0              \
     do {                                  \
         unsigned i;                       \
         raft_fixture_close(&f->cluster);  \
@@ -472,5 +501,8 @@ struct test_cluster
     void *operations[2];                                /* In-flight I/O */
     void *disconnect[2];                                /* Network faults */
 };
+
+void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
+void test_cluster_tear_down(struct test_cluster *c);
 
 #endif /* TEST_CLUSTER_H */

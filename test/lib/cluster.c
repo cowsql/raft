@@ -1,4 +1,21 @@
+#define TEST_CLUSTER_V1
+
+#include "../../src/queue.h"
+
 #include "cluster.h"
+
+void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
+{
+    (void)params;
+    c->time = 0;
+    QUEUE_INIT(&c->operations);
+    QUEUE_INIT(&c->disconnect);
+}
+
+void test_cluster_tear_down(struct test_cluster *c)
+{
+    (void)c;
+}
 
 static void randomize(struct raft_fixture *f, unsigned i, int what)
 {
@@ -39,6 +56,7 @@ void cluster_randomize_init(struct raft_fixture *f)
 
 void cluster_randomize(struct raft_fixture *f, struct raft_fixture_event *event)
 {
+    munit_assert(!v1);
     unsigned index = raft_fixture_event_server_index(event);
     int type = raft_fixture_event_type(event);
     randomize(f, index, type);
