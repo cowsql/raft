@@ -12,6 +12,8 @@
 #include "munit.h"
 #include "snapshot.h"
 
+#define TEST_CLUSTER_N_SERVERS 8
+
 #define FIXTURE_CLUSTER                             \
     FIXTURE_HEAP;                                   \
     struct raft_fsm fsms[RAFT_FIXTURE_MAX_SERVERS]; \
@@ -425,5 +427,50 @@
 void cluster_randomize_init(struct raft_fixture *f);
 void cluster_randomize(struct raft_fixture *f,
                        struct raft_fixture_event *event);
+
+/* Test snapshot that is just persisted in-memory. */
+struct test_snapshot
+{
+    struct raft_snapshot_metadata metadata;
+    struct raft_buffer data;
+};
+
+/* Persisted state of a single node.
+ *
+ * The data contained in this struct is passed to raft_step() as RAFT_START
+ * event when starting a server, and is updated as the server makes progress. */
+struct test_disk
+{
+    raft_term term;
+    raft_id voted_for;
+    struct test_snapshot *snapshot;
+    raft_index start_index;
+    struct raft_entry *entries;
+    unsigned n_entries;
+};
+
+/* Wrap a @raft instance and maintain disk and network state. */
+struct test_cluster;
+struct test_server
+{
+    struct test_disk disk;        /* Persisted data */
+    struct raft_tracer tracer;    /* Custom tracer */
+    struct raft raft;             /* Raft instance */
+    struct test_cluster *cluster; /* Parent cluster */
+    raft_time timeout;            /* Next scheduled timeout */
+    unsigned network_latency;     /* Network latency */
+    unsigned disk_latency;        /* Disk latency */
+    bool running;                 /* Whether the server is running */
+};
+
+/* Cluster of test raft servers instances with fake disk and network I/O. */
+struct test_cluster
+{
+    struct test_server servers[TEST_CLUSTER_N_SERVERS]; /* Cluster servers */
+    raft_time time;                                     /* Global time */
+    char trace[8192];                                   /* Captured messages */
+    void *operations[2];                                /* In-flight I/O */
+    void *disconnect[2];                                /* Network faults */
+};
 
 #endif /* TEST_CLUSTER_H */
