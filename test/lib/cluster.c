@@ -10,6 +10,41 @@
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
+/* Initialize an empty disk with no persisted data. */
+static void diskInit(struct test_disk *d)
+{
+    d->term = 0;
+    d->voted_for = 0;
+    d->snapshot = NULL;
+    d->start_index = 1;
+    d->entries = NULL;
+    d->n_entries = 0;
+}
+
+/* Release all memory used by the disk snapshot, if present. */
+static void diskDestroySnapshotIfPresent(struct test_disk *d)
+{
+    if (d->snapshot == NULL) {
+        return;
+    }
+    raft_configuration_close(&d->snapshot->metadata.configuration);
+    free(d->snapshot->data.base);
+    free(d->snapshot);
+    d->snapshot = NULL;
+}
+
+/* Release all memory used by the disk. */
+static void diskClose(struct test_disk *d)
+{
+    unsigned i;
+
+    for (i = 0; i < d->n_entries; i++) {
+        free(d->entries[i].buf.base);
+    }
+    free(d->entries);
+    diskDestroySnapshotIfPresent(d);
+}
+
 /* Initialize a new server object. */
 static void serverInit(struct test_server *s,
                        raft_id id,
@@ -17,6 +52,8 @@ static void serverInit(struct test_server *s,
 {
     char address[64];
     int rv;
+
+    diskInit(&s->disk);
 
     sprintf(address, "%llu", id);
 
@@ -36,6 +73,7 @@ static void serverInit(struct test_server *s,
 static void serverClose(struct test_server *s)
 {
     raft_close(&s->raft, NULL);
+    diskClose(&s->disk);
 }
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
