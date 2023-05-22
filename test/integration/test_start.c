@@ -68,6 +68,16 @@ TEST_V1(raft_start, noState, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* Start a server that has a persisted its term. */
+TEST_V1(raft_start, persistedTerm, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_TRACE("[   0] 1 > term 1, vote 0, no snapshot, no entries\n");
+    return MUNIT_OK;
+}
+
 /* There are two servers. The first has a snapshot present and no other
  * entries. */
 TEST(raft_start, oneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)

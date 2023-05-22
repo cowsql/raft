@@ -446,9 +446,21 @@ static bool v1 = false;
 #define CLUSTER_SET_DISK_LATENCY(I, MSECS) \
     raft_fixture_set_disk_latency(&f->cluster, I, MSECS)
 
+#define CLUSTER_SET_TERM(...)             \
+    if (v1) {                             \
+        CLUSTER_SET_TERM_V1(__VA_ARGS__); \
+    } else {                              \
+        CLUSTER_SET_TERM_V0(__VA_ARGS__); \
+    }
+
 /* Set the term persisted on the I'th server. This must be called before
  * starting the cluster. */
-#define CLUSTER_SET_TERM(I, TERM) raft_fixture_set_term(&f->cluster, I, TERM)
+#define CLUSTER_SET_TERM_V0(I, TERM) raft_fixture_set_term(&f->cluster, I, TERM)
+
+/* Set the persisted term of the server with the given ID. Must me called before
+ * starting the server. */
+#define CLUSTER_SET_TERM_V1(ID, TERM) \
+    test_cluster_set_term(&f->cluster_, ID, TERM)
 
 /* Set the snapshot persisted on the I'th server. This must be called before
  * starting the cluster. */
@@ -539,6 +551,10 @@ struct test_cluster
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
 void test_cluster_tear_down(struct test_cluster *c);
+
+/* Set the persisted term of the given server to the given value. Must me called
+ * before starting the server. */
+void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term);
 
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */

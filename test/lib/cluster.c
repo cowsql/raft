@@ -45,6 +45,12 @@ static void diskClose(struct test_disk *d)
     diskDestroySnapshotIfPresent(d);
 }
 
+/* Set the persisted term. */
+static void diskSetTerm(struct test_disk *d, raft_term term)
+{
+    d->term = term;
+}
+
 /* Deep copy configuration object @src to @dst. */
 static void confCopy(const struct raft_configuration *src,
                      struct raft_configuration *dst)
@@ -269,6 +275,13 @@ void test_cluster_tear_down(struct test_cluster *c)
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
         serverClose(&c->servers[i]);
     }
+}
+
+void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetTerm(&server->disk, term);
 }
 
 void test_cluster_start(struct test_cluster *c, raft_id id)
