@@ -51,6 +51,19 @@ static void diskSetTerm(struct test_disk *d, raft_term term)
     d->term = term;
 }
 
+/* Set the persisted snapshot. */
+static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
+{
+    diskDestroySnapshotIfPresent(d);
+    d->snapshot = snapshot;
+
+    /* If there are no entries, set the start index to the snapshot's last
+     * index. */
+    if (d->n_entries == 0) {
+        d->start_index = snapshot->metadata.index + 1;
+    }
+}
+
 /* Deep copy configuration object @src to @dst. */
 static void confCopy(const struct raft_configuration *src,
                      struct raft_configuration *dst)
@@ -103,8 +116,7 @@ static void diskLoad(struct test_disk *d,
     *term = d->term;
     *voted_for = d->voted_for;
     if (d->snapshot != NULL) {
-        *metadata = raft_malloc(sizeof **metadata);
-        munit_assert_ptr_not_null(*metadata);
+        *metadata = munit_malloc(sizeof **metadata);
         diskLoadSnapshotMetadata(d, *metadata);
     } else {
         *metadata = NULL;
@@ -228,6 +240,10 @@ static void serverStart(struct test_server *s)
     rv = raft_step(r, &event, &update);
     munit_assert_int(rv, ==, 0);
 
+    if (event.start.metadata != NULL) {
+        free(event.start.metadata);
+    }
+
     /* Upon startup we don't expect any new state to be persisted or messages
      * being sent. */
     munit_assert_false(update.flags & RAFT_UPDATE_CURRENT_TERM);
@@ -282,6 +298,15 @@ void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
     struct test_server *server = clusterGetServer(c, id);
     munit_assert_false(server->running);
     diskSetTerm(&server->disk, term);
+}
+
+void test_cluster_set_snapshot(struct test_cluster *c,
+                               raft_id id,
+                               struct test_snapshot *snapshot)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetSnapshot(&server->disk, snapshot);
 }
 
 void test_cluster_start(struct test_cluster *c, raft_id id)

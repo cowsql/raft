@@ -462,16 +462,63 @@ static bool v1 = false;
 #define CLUSTER_SET_TERM_V1(ID, TERM) \
     test_cluster_set_term(&f->cluster_, ID, TERM)
 
+#define CLUSTER_SET_SNAPSHOT(...)             \
+    if (v1) {                                 \
+        CLUSTER_SET_SNAPSHOT_V1(__VA_ARGS__); \
+    } else {                                  \
+        CLUSTER_SET_SNAPSHOT_V0(__VA_ARGS__); \
+    }
+
+/* Helper to populate a struct raft_configuration object CONF, adding N servers
+ * to it, among which N_VOTERS are voters and N_STANDBYS are standbys. */
+#define CLUSTER__FILL_CONFIGURATION(CONF, N, N_VOTERS, N_STANDBYS)            \
+    do {                                                                      \
+        unsigned _i;                                                          \
+        int __rv;                                                             \
+        munit_assert_int(N, >=, 1);                                           \
+        munit_assert_int(N_VOTERS, <=, N);                                    \
+        raft_configuration_init(CONF);                                        \
+        for (_i = 0; _i < N; _i++) {                                          \
+            raft_id _id = _i + 1;                                             \
+            int _role = RAFT_SPARE;                                           \
+            char _address[64];                                                \
+            if (_i < N_VOTERS) {                                              \
+                _role = RAFT_VOTER;                                           \
+            } else if (N_STANDBYS > 0 && (int)(_i - N_VOTERS) < N_STANDBYS) { \
+                _role = RAFT_STANDBY;                                         \
+            }                                                                 \
+            sprintf(_address, "%llu", _id);                                   \
+            __rv = raft_configuration_add(CONF, _id, _address, _role);        \
+            munit_assert_int(__rv, ==, 0);                                    \
+        }                                                                     \
+    } while (0)
+
+/* Set the persisted snapshot of the server with the given ID. Must me called
+ * before starting the server. */
+#define CLUSTER_SET_SNAPSHOT_V1(ID, INDEX, TERM, CONF_N, CONF_N_VOTING,    \
+                                CONF_INDEX)                                \
+    do {                                                                   \
+        struct test_snapshot *_snapshot = munit_malloc(sizeof *_snapshot); \
+        _snapshot->metadata.index = INDEX;                                 \
+        _snapshot->metadata.term = TERM;                                   \
+        CLUSTER__FILL_CONFIGURATION(&_snapshot->metadata.configuration,    \
+                                    CONF_N, CONF_N_VOTING, 0);             \
+        _snapshot->metadata.configuration_index = CONF_INDEX;              \
+        _snapshot->data.len = 8;                                           \
+        _snapshot->data.base = munit_malloc(_snapshot->data.len);          \
+        test_cluster_set_snapshot(&f->cluster_, ID, _snapshot);            \
+    } while (0)
+
 /* Set the snapshot persisted on the I'th server. This must be called before
  * starting the cluster. */
-#define CLUSTER_SET_SNAPSHOT(I, LAST_INDEX, LAST_TERM, CONF_INDEX, X, Y)  \
-    {                                                                     \
-        struct raft_configuration configuration_;                         \
-        struct raft_snapshot *snapshot_;                                  \
-        CLUSTER_CONFIGURATION(&configuration_);                           \
-        CREATE_SNAPSHOT(snapshot_, LAST_INDEX, LAST_TERM, configuration_, \
-                        CONF_INDEX, X, Y);                                \
-        raft_fixture_set_snapshot(&f->cluster, I, snapshot_);             \
+#define CLUSTER_SET_SNAPSHOT_V0(I, LAST_INDEX, LAST_TERM, CONF_INDEX, X, Y) \
+    {                                                                       \
+        struct raft_configuration configuration_;                           \
+        struct raft_snapshot *snapshot_;                                    \
+        CLUSTER_CONFIGURATION(&configuration_);                             \
+        CREATE_SNAPSHOT(snapshot_, LAST_INDEX, LAST_TERM, configuration_,   \
+                        CONF_INDEX, X, Y);                                  \
+        raft_fixture_set_snapshot(&f->cluster, I, snapshot_);               \
     }
 
 /* Add a persisted entry to the I'th server. This must be called before
@@ -555,6 +602,12 @@ void test_cluster_tear_down(struct test_cluster *c);
 /* Set the persisted term of the given server to the given value. Must me called
  * before starting the server. */
 void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term);
+
+/* Set the last persisted snapshot of the given server. Must me called before
+ * starting the server. */
+void test_cluster_set_snapshot(struct test_cluster *c,
+                               raft_id id,
+                               struct test_snapshot *snapshot);
 
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
