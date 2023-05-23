@@ -9,6 +9,7 @@
 #include "../../include/raft/fixture.h"
 #include "fsm.h"
 #include "heap.h"
+#include "macros.h"
 #include "munit.h"
 #include "snapshot.h"
 
@@ -521,14 +522,38 @@ static bool v1 = false;
         raft_fixture_set_snapshot(&f->cluster, I, snapshot_);               \
     }
 
-/* Add a persisted entry to the I'th server. This must be called before
- * starting the cluster. */
-#define CLUSTER_ADD_ENTRY(I, ENTRY) \
-    raft_fixture_add_entry(&f->cluster, I, ENTRY)
+#define CLUSTER_ADD_ENTRY__CHOOSER(...)                                  \
+    GET_5TH_ARG(__VA_ARGS__, CLUSTER_ADD_ENTRY_V1, CLUSTER_ADD_ENTRY_V1, \
+                CLUSTER_ADD_ENTRY_V0, )
+
+#define CLUSTER_ADD_ENTRY(...) \
+    CLUSTER_ADD_ENTRY__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+
+#define CLUSTER_ADD_ENTRY_V1(ID, TYPE, ...) \
+    CLUSTER_ADD_ENTRY__##TYPE(ID, __VA_ARGS__)
+
+#define CLUSTER_ADD_ENTRY__RAFT_CHANGE(ID, CONF_N, CONF_N_VOTING)           \
+    do {                                                                    \
+        struct raft_configuration _configuration;                           \
+        struct raft_entry _entry;                                           \
+        int _rv;                                                            \
+                                                                            \
+        CLUSTER__FILL_CONFIGURATION(&_configuration, CONF_N, CONF_N_VOTING, \
+                                    0);                                     \
+        _entry.type = RAFT_CHANGE;                                          \
+        _entry.term = 1;                                                    \
+        _rv = raft_configuration_encode(&_configuration, &_entry.buf);      \
+        munit_assert_int(_rv, ==, 0);                                       \
+        raft_configuration_close(&_configuration);                          \
+                                                                            \
+        test_cluster_add_entry(&f->cluster_, ID, &_entry);                  \
+                                                                            \
+        raft_free(_entry.buf.base);                                         \
+    } while (0);
 
 /* Add an entry to the ones persisted on the I'th server. This must be called
  * before starting the cluster. */
-#define CLUSTER_ADD_ENTRY(I, ENTRY) \
+#define CLUSTER_ADD_ENTRY_V0(I, ENTRY) \
     raft_fixture_add_entry(&f->cluster, I, ENTRY)
 
 /* Make an I/O error occur on the I'th server after @DELAY operations. */
@@ -609,6 +634,9 @@ void test_cluster_set_snapshot(struct test_cluster *c,
                                raft_id id,
                                struct test_snapshot *snapshot);
 
+void test_cluster_add_entry(struct test_cluster *c,
+                            raft_id id,
+                            const struct raft_entry *entry);
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);

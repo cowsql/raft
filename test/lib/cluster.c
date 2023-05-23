@@ -64,6 +64,25 @@ static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
     }
 }
 
+static void entryCopy(const struct raft_entry *src, struct raft_entry *dst)
+{
+    dst->term = src->term;
+    dst->type = src->type;
+    dst->buf.len = src->buf.len;
+    dst->buf.base = munit_malloc(dst->buf.len);
+    memcpy(dst->buf.base, src->buf.base, dst->buf.len);
+    dst->batch = NULL;
+}
+
+/* Append a new entry to the log. */
+static void diskAddEntry(struct test_disk *d, const struct raft_entry *entry)
+{
+    d->n_entries++;
+    d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
+    munit_assert_ptr_not_null(d->entries);
+    entryCopy(entry, &d->entries[d->n_entries - 1]);
+}
+
 /* Deep copy configuration object @src to @dst. */
 static void confCopy(const struct raft_configuration *src,
                      struct raft_configuration *dst)
@@ -307,6 +326,15 @@ void test_cluster_set_snapshot(struct test_cluster *c,
     struct test_server *server = clusterGetServer(c, id);
     munit_assert_false(server->running);
     diskSetSnapshot(&server->disk, snapshot);
+}
+
+void test_cluster_add_entry(struct test_cluster *c,
+                            raft_id id,
+                            const struct raft_entry *entry)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskAddEntry(&server->disk, entry);
 }
 
 void test_cluster_start(struct test_cluster *c, raft_id id)
