@@ -37,6 +37,11 @@ void electionResetTimer(struct raft *r);
  * Must be called in follower or candidate state. */
 bool electionTimerExpired(struct raft *r);
 
+/* Return the time at which the election timer will expire next.
+ *
+ * Must be called in follower or candidate state. */
+raft_time electionTimerExpiration(struct raft *r);
+
 /* Start a new election round.
  *
  * From Figure 3.1:

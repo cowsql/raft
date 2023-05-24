@@ -50,6 +50,14 @@ bool electionTimerExpired(struct raft *r)
     return now - r->election_timer_start >= state->randomized_election_timeout;
 }
 
+raft_time electionTimerExpiration(struct raft *r)
+{
+    struct followerOrCandidateState *state;
+    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
+    state = getFollowerOrCandidateState(r);
+    return r->election_timer_start + state->randomized_election_timeout;
+}
+
 /* Send a RequestVote RPC to the given server. */
 static int electionSend(struct raft *r, const struct raft_server *server)
 {
