@@ -1437,6 +1437,12 @@ RAFT_API int raft_transfer(struct raft *r,
                            raft_transfer_cb cb);
 
 /**
+ * Generate a pseudo-random number between @min and @max, using @state as
+ * generator state.
+ */
+RAFT_API unsigned raft_random(unsigned *state, unsigned min, unsigned max);
+
+/**
  * User-definable dynamic memory allocation functions.
  *
  * The @data field will be passed as first argument to all functions.

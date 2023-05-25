@@ -18,6 +18,7 @@
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
+#include "random.h"
 #include "recv.h"
 #include "replication.h"
 #include "restore.h"
@@ -600,6 +601,11 @@ unsigned long long raft_digest(const char *text, unsigned long long n)
     memcpy(&digest, value + (sizeof value - sizeof digest), sizeof digest);
 
     return byteFlip64(digest);
+}
+
+unsigned raft_random(unsigned *state, unsigned min, unsigned max)
+{
+    return RandomWithinRange(state, min, max);
 }
 
 static int ioFsmVersionCheck(struct raft *r,
