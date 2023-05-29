@@ -59,6 +59,15 @@ static void tearDown(void *data)
 
 SUITE(raft_start)
 
+/* Start a server that has no persisted state whatsoever. */
+TEST_V1(raft_start, noState, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_START(1);
+    CLUSTER_TRACE("[   0] 1 > term 0, vote 0, no snapshot, no entries\n");
+    return MUNIT_OK;
+}
+
 /* There are two servers. The first has a snapshot present and no other
  * entries. */
 TEST(raft_start, oneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)

@@ -16,6 +16,20 @@
 
 static bool v1 = false;
 
+#define TEST_V1(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)         \
+    static void *setUp__##S##_##C(const MunitParameter params[], \
+                                  void *user_data)               \
+    {                                                            \
+        v1 = true;                                               \
+        return SETUP(params, user_data);                         \
+    }                                                            \
+    static void tearDown__##S##_##C(void *data)                  \
+    {                                                            \
+        TEAR_DOWN(data);                                         \
+        v1 = false;                                              \
+    }                                                            \
+    TEST(S, C, setUp__##S##_##C, tearDown__##S##_##C, OPTIONS, PARAMS)
+
 #define FIXTURE_CLUSTER                                     \
     FIXTURE_HEAP;                                           \
     union {                                                 \
