@@ -44,7 +44,7 @@ TEST(raft_recover, busy, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Start all servers. */
-    CLUSTER_START;
+    CLUSTER_START();
 
     raft = CLUSTER_RAFT(0);
     CLUSTER_CONFIGURATION(&configuration);

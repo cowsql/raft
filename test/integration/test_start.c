@@ -73,7 +73,7 @@ TEST(raft_start, oneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
                          7 /* y                                             */);
     CLUSTER_SET_TERM(0, 2);
     BOOTSTRAP(1);
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_MAKE_PROGRESS;
     return MUNIT_OK;
 }
@@ -107,7 +107,7 @@ TEST(raft_start, oneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
     CLUSTER_ADD_ENTRY(1, &entries[1]);
     CLUSTER_SET_TERM(0, 2);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_MAKE_PROGRESS;
 
     fsm = CLUSTER_FSM(0);
@@ -130,7 +130,7 @@ TEST(raft_start, noEntries, setUp, tearDown, 0, NULL)
     CLUSTER_GROW;
     BOOTSTRAP(1);
     BOOTSTRAP(2);
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_MAKE_PROGRESS;
     return MUNIT_OK;
 }
@@ -163,7 +163,7 @@ TEST(raft_start, twoEntries, setUp, tearDown, 0, NULL)
     BOOTSTRAP(1);
     BOOTSTRAP(2);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
     CLUSTER_MAKE_PROGRESS;
 
@@ -183,7 +183,7 @@ TEST(raft_start, singleVotingSelfElect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
     munit_assert_int(CLUSTER_STATE(0), ==, RAFT_LEADER);
     CLUSTER_MAKE_PROGRESS;
     return MUNIT_OK;
@@ -196,7 +196,7 @@ TEST(raft_start, singleVotingNotUs, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     CLUSTER_GROW;
     CLUSTER_BOOTSTRAP_N_VOTING(1);
-    CLUSTER_START;
+    CLUSTER_START();
     munit_assert_int(CLUSTER_STATE(1), ==, RAFT_FOLLOWER);
     CLUSTER_MAKE_PROGRESS;
     return MUNIT_OK;

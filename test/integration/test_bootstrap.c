@@ -45,7 +45,7 @@ TEST(raft_bootstrap, busy, setUp, tearDown, 0, NULL)
 
     /* Bootstrap and the first server. */
     CLUSTER_BOOTSTRAP_N_VOTING(1);
-    CLUSTER_START;
+    CLUSTER_START();
 
     raft = CLUSTER_RAFT(0);
     CLUSTER_CONFIGURATION(&configuration);

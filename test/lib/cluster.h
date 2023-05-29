@@ -189,7 +189,7 @@ static bool v1 = false;
     }
 
 /* Start all servers in the test cluster. */
-#define CLUSTER_START                         \
+#define CLUSTER_START()                       \
     {                                         \
         int rc;                               \
         rc = raft_fixture_start(&f->cluster); \

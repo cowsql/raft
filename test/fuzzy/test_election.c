@@ -27,7 +27,7 @@ static void *setup(const MunitParameter params[], MUNIT_UNUSED void *user_data)
     SETUP_CLUSTER(0);
     CLUSTER_BOOTSTRAP;
     CLUSTER_RANDOMIZE;
-    CLUSTER_START;
+    CLUSTER_START();
     return f;
 }
 

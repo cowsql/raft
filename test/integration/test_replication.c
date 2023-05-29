@@ -24,7 +24,7 @@ struct fixture
 /* Standard startup sequence, bootstrapping the cluster and electing server 0 */
 #define BOOTSTRAP_START_AND_ELECT \
     CLUSTER_BOOTSTRAP;            \
-    CLUSTER_START;                \
+    CLUSTER_START();              \
     CLUSTER_ELECT(0);             \
     ASSERT_TIME(1045)
 
@@ -98,7 +98,7 @@ TEST(replication, sendInitialHeartbeat, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     struct raft *raft;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes candidate and sends vote requests after the election
      * timeout. */
@@ -134,7 +134,7 @@ TEST(replication, receiveFlags, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     struct raft *raft;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes leader and sends the initial heartbeat. */
     CLUSTER_STEP_N(24);
@@ -168,7 +168,7 @@ TEST(replication, sendFollowupHeartbeat, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     struct raft *raft;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes leader and sends the initial heartbeat. */
     CLUSTER_STEP_N(24);
@@ -212,7 +212,7 @@ TEST(replication, sendSkipHeartbeat, setUp, tearDown, 0, NULL)
     struct raft *raft;
     struct raft_apply req;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     raft = CLUSTER_RAFT(0);
 
@@ -266,7 +266,7 @@ TEST(replication, sendProbe, setUp, tearDown, 0, NULL)
     struct raft_apply req1;
     struct raft_apply req2;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes leader and sends the initial heartbeat. */
     CLUSTER_STEP_N(25);
@@ -323,7 +323,7 @@ TEST(replication, sendPipeline, setUp, tearDown, 0, NULL)
     struct raft_apply req1;
     struct raft_apply req2;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     raft = CLUSTER_RAFT(0);
 
@@ -367,7 +367,7 @@ TEST(replication, sendDisconnect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes leader and sends the initial heartbeat, however they
      * fail because server 1 has disconnected. */
@@ -399,7 +399,7 @@ TEST(replication, sendDisconnectPipeline, setUp, tearDown, 0, NULL)
     struct raft_apply req1;
     struct raft_apply req2;
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes leader and sends a couple of heartbeats. */
     CLUSTER_STEP_UNTIL_ELAPSED(1215);
@@ -539,7 +539,7 @@ TEST(replication, recvMissingEntries, setUp, tearDown, 0, NULL)
     CLUSTER_ADD_ENTRY(0, &entry);
 
     /* Server 0 wins the election because it has a longer log. */
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_STEP_UNTIL_HAS_LEADER(5000);
     munit_assert_int(CLUSTER_LEADER, ==, 0);
 
@@ -570,7 +570,7 @@ TEST(replication, recvPrevLogTermMismatch, setUp, tearDown, 0, NULL)
     FsmEncodeSetX(2, &entry2.buf);
     CLUSTER_ADD_ENTRY(1, &entry2);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
 
     /* The follower eventually replicates the entry */
@@ -612,7 +612,7 @@ TEST(replication, recvRollbackConfigurationToInitial, setUp, tearDown, 0, NULL)
      * one contained in the entry that we just added. The server can't know yet
      * if it's committed or not, and regards it as pending configuration
      * change. */
-    CLUSTER_START;
+    CLUSTER_START();
     ASSERT_CONFIGURATION(1, &conf);
 
     /* The first server gets elected. */
@@ -678,7 +678,7 @@ TEST(replication, recvRollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
     /* At startup the second server uses the most recent configuration, i.e. the
      * one contained in the log entry at index 3. The server can't know yet if
      * it's committed or not, and regards it as pending configuration change. */
-    CLUSTER_START;
+    CLUSTER_START();
     ASSERT_CONFIGURATION(1, &conf);
 
     /* The first server gets elected. */
@@ -748,7 +748,7 @@ TEST(replication, recvRollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
     /* At startup the second server uses the most recent configuration, i.e. the
      * one contained in the log entry at index 2. The server can't know yet if
      * it's committed or not, and regards it as pending configuration change. */
-    CLUSTER_START;
+    CLUSTER_START();
     ASSERT_CONFIGURATION(1, &conf);
 
     CLUSTER_ELECT(0);
@@ -788,7 +788,7 @@ TEST(replication, recvPrevIndexConflict, setUp, tearDown, 0, NULL)
     FsmEncodeSetX(2, &entry2.buf);
     CLUSTER_ADD_ENTRY(1, &entry2);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
 
     /* Artificially bump the commit index on the second server */
@@ -855,7 +855,7 @@ TEST(replication, recvMatch_last_snapshot, setUp, tearDown, 0, NULL)
                          0 /* y                                             */);
     CLUSTER_SET_TERM(1, 2);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
 
     /* Apply an additional entry and check that it gets replicated on the
@@ -882,7 +882,7 @@ TEST(replication, recvCandidateSameTerm, setUp, tearDown, 0, NULL)
     raft_set_election_timeout(CLUSTER_RAFT(2), 800);
 
     /* Server 2 becomes candidate. */
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_STEP_UNTIL_STATE_IS(2, RAFT_CANDIDATE, 1000);
     munit_assert_int(CLUSTER_TERM(2), ==, 2);
 
@@ -928,7 +928,7 @@ TEST(replication, recvCandidateHigherTerm, setUp, tearDown, 0, NULL)
     raft_set_election_timeout(CLUSTER_RAFT(0), 800);
     CLUSTER_SATURATE_BOTHWAYS(0, 1);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 2 becomes candidate, and server 0 already is candidate. */
     CLUSTER_STEP_UNTIL_STATE_IS(2, RAFT_CANDIDATE, 1500);
@@ -1062,7 +1062,7 @@ TEST(replication, resultRetry, setUp, tearDown, 0, NULL)
     FsmEncodeSetX(5, &entry.buf);
     CLUSTER_ADD_ENTRY(0, &entry);
 
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
 
     /* The first server receives an AppendEntries result from the second server
@@ -1202,7 +1202,7 @@ TEST(replication, failPersistBarrier, setUp, tearDown, 0, NULL)
 
     /* Server 0 gets elected and creates a barrier entry at index 2 */
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_START_ELECT(0);
 
     /* Cluster recovers. */
