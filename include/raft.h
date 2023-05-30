@@ -580,9 +580,9 @@ enum {
  */
 struct raft_event
 {
+    raft_time time;
     unsigned char type;
     unsigned char reserved[7];
-    raft_time time;
     union {
         struct
         {

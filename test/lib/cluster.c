@@ -45,6 +45,99 @@ static void diskClose(struct test_disk *d)
     diskDestroySnapshotIfPresent(d);
 }
 
+/* Deep copy configuration object @src to @dst. */
+static void confCopy(const struct raft_configuration *src,
+                     struct raft_configuration *dst)
+{
+    unsigned i;
+    int rv;
+
+    raft_configuration_init(dst);
+    for (i = 0; i < src->n; i++) {
+        struct raft_server *server = &src->servers[i];
+        rv = raft_configuration_add(dst, server->id, server->address,
+                                    server->role);
+        munit_assert_int(rv, ==, 0);
+    }
+}
+
+/* Copy snapshot metadata @src to @dst. */
+static void snapshotCopy(const struct raft_snapshot_metadata *src,
+                         struct raft_snapshot_metadata *dst)
+{
+    dst->index = src->index;
+    dst->term = src->term;
+
+    confCopy(&src->configuration, &dst->configuration);
+    dst->configuration_index = src->configuration_index;
+}
+
+/* Load the metadata of latest snapshot. */
+static void diskLoadSnapshotMetadata(struct test_disk *d,
+                                     struct raft_snapshot_metadata *metadata)
+{
+    munit_assert_ptr_not_null(d->snapshot);
+    snapshotCopy(&d->snapshot->metadata, metadata);
+}
+
+/* Load all data persisted on the disk. */
+static void diskLoad(struct test_disk *d,
+                     raft_term *term,
+                     raft_id *voted_for,
+                     struct raft_snapshot_metadata **metadata,
+                     raft_index *start_index,
+                     struct raft_entry **entries,
+                     unsigned *n_entries)
+{
+    size_t size = 0;
+    void *batch;
+    uint8_t *cursor;
+    unsigned i;
+
+    *term = d->term;
+    *voted_for = d->voted_for;
+    if (d->snapshot != NULL) {
+        *metadata = raft_malloc(sizeof **metadata);
+        munit_assert_ptr_not_null(*metadata);
+        diskLoadSnapshotMetadata(d, *metadata);
+    } else {
+        *metadata = NULL;
+    }
+    *start_index = d->start_index;
+    *n_entries = d->n_entries;
+
+    if (*n_entries == 0) {
+        *entries = NULL;
+        return;
+    }
+
+    /* Calculate the total size of the entries content and allocate the
+     * batch. */
+    for (i = 0; i < d->n_entries; i++) {
+        size += d->entries[i].buf.len;
+    }
+
+    batch = raft_malloc(size);
+    munit_assert_ptr_not_null(batch);
+
+    /* Copy the entries. */
+    *entries = raft_malloc(d->n_entries * sizeof **entries);
+    munit_assert_ptr_not_null(*entries);
+
+    cursor = batch;
+
+    for (i = 0; i < d->n_entries; i++) {
+        (*entries)[i].term = d->entries[i].term;
+        (*entries)[i].type = d->entries[i].type;
+        (*entries)[i].buf.base = cursor;
+        (*entries)[i].buf.len = d->entries[i].buf.len;
+        (*entries)[i].batch = batch;
+        memcpy((*entries)[i].buf.base, d->entries[i].buf.base,
+               d->entries[i].buf.len);
+        cursor += d->entries[i].buf.len;
+    }
+}
+
 /* Initialize a new server object. */
 static void serverInit(struct test_server *s,
                        raft_id id,
@@ -76,6 +169,43 @@ static void serverClose(struct test_server *s)
     diskClose(&s->disk);
 }
 
+/* Start the server by passing to raft_step() a RAFT_START event with the
+ * current disk state. */
+static void serverStart(struct test_server *s)
+{
+    struct raft_event event;
+    struct raft_update update;
+    struct raft *r = &s->raft;
+    int rv;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_START;
+
+    diskLoad(&s->disk, &event.start.term, &event.start.voted_for,
+             &event.start.metadata, &event.start.start_index,
+             &event.start.entries, &event.start.n_entries);
+
+    rv = raft_step(r, &event, &update);
+    munit_assert_int(rv, ==, 0);
+
+    /* Upon startup we don't expect any new state to be persisted or messages
+     * being sent. */
+    munit_assert_false(update.flags & RAFT_UPDATE_CURRENT_TERM);
+    munit_assert_false(update.flags & RAFT_UPDATE_VOTED_FOR);
+    munit_assert_false(update.flags & RAFT_UPDATE_ENTRIES);
+    munit_assert_false(update.flags & RAFT_UPDATE_SNAPSHOT);
+    munit_assert_false(update.flags & RAFT_UPDATE_MESSAGES);
+
+    /* The state must have transitioned either to follower or leader (when
+     * self-electing). */
+    munit_assert_true(update.flags & RAFT_UPDATE_STATE);
+    munit_assert_true(raft_state(r) == RAFT_FOLLOWER ||
+                      raft_state(r) == RAFT_LEADER);
+
+    s->running = true;
+    s->timeout = raft_timeout(&s->raft);
+}
+
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
 {
     unsigned i;
@@ -91,6 +221,13 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     QUEUE_INIT(&c->disconnect);
 }
 
+/* Return the server with the given @id. */
+static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id)
+{
+    munit_assert_ulong(id, <=, TEST_CLUSTER_N_SERVERS);
+    return &c->servers[id - 1];
+}
+
 void test_cluster_tear_down(struct test_cluster *c)
 {
     unsigned i;
@@ -98,6 +235,12 @@ void test_cluster_tear_down(struct test_cluster *c)
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
         serverClose(&c->servers[i]);
     }
+}
+
+void test_cluster_start(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    serverStart(server);
 }
 
 static void randomize(struct raft_fixture *f, unsigned i, int what)

@@ -505,4 +505,8 @@ struct test_cluster
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
 void test_cluster_tear_down(struct test_cluster *c);
 
+/* Start the server with the given @id, using the current state persisted on its
+ * disk. */
+void test_cluster_start(struct test_cluster *c, raft_id id);
+
 #endif /* TEST_CLUSTER_H */
