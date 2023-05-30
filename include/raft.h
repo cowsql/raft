@@ -534,7 +534,7 @@ struct raft_tracer_info
     union {
         struct
         {
-            int level;
+            int level; /* 1 Error, 2 Warning, 3 Info, 4 Debug, 5 Trace */
             const char *message;
             const char *file;
             int line;

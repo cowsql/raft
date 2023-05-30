@@ -37,6 +37,8 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
+#define infof(...) Infof(r->tracer, "> " __VA_ARGS__)
+
 int raft_version_number(void)
 {
     return RAFT_VERSION_NUMBER;

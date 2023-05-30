@@ -25,6 +25,9 @@ extern struct raft_tracer StderrTracer;
         }                                      \
     } while (0)
 
+/* Emit a diagnostic message with the given tracer at level 3. */
+#define Infof(TRACER, ...) Logf(TRACER, 3, __VA_ARGS__)
+
 /* Emit diagnostic message with the given tracer at level 5. */
 #define Tracef(TRACER, ...) Logf(TRACER, 5, __VA_ARGS__)
 
