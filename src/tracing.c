@@ -4,19 +4,15 @@
 
 #include "tracing.h"
 
-static inline void noopTracerEmit(struct raft_tracer *t,
-                                  const char *file,
-                                  int line,
-                                  const char *message)
+static inline void noopTrace(struct raft_tracer *t, int type, const void *info)
 {
     (void)t;
-    (void)file;
-    (void)line;
-    (void)message;
+    (void)type;
+    (void)info;
 }
 struct raft_tracer NoopTracer = {.impl = NULL,
-                                 .enabled = false,
-                                 .emit = noopTracerEmit};
+                                 .version = 2,
+                                 .trace = noopTrace};
 
 static inline void stderrTracerEmit(struct raft_tracer *t,
                                     const char *file,
