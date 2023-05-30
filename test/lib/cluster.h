@@ -188,13 +188,29 @@ static bool v1 = false;
         raft_configuration_close(&configuration_);                         \
     }
 
+/* Start the server with the given ID, using the state persisted on its disk. */
+#define CLUSTER_START_V1(ID) test_cluster_start(&f->cluster_, ID)
+
 /* Start all servers in the test cluster. */
-#define CLUSTER_START()                       \
+#define CLUSTER_START_V0()                    \
     {                                         \
         int rc;                               \
         rc = raft_fixture_start(&f->cluster); \
         munit_assert_int(rc, ==, 0);          \
     }
+
+#define FUNC_CHOOSER(_f1, _f2, ...) _f2
+#define FUNC_RECOMPOSER(argsWithParentheses) FUNC_CHOOSER argsWithParentheses
+
+#define CLUSTER_START__ARG_COUNT(...) \
+    FUNC_RECOMPOSER((__VA_ARGS__, CLUSTER_START_V1, ))
+
+#define CLUSTER_START__NO_ARG() , CLUSTER_START_V0
+
+#define CLUSTER_START__CHOOSER(...) \
+    CLUSTER_START__ARG_COUNT(CLUSTER_START__NO_ARG __VA_ARGS__())
+
+#define CLUSTER_START(...) CLUSTER_START__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
 /* Step the cluster. */
 #define CLUSTER_STEP raft_fixture_step(&f->cluster);
