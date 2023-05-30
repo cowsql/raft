@@ -401,6 +401,27 @@ raft_index raft_commit_index(struct raft *r)
     return r->commit_index;
 }
 
+raft_time raft_timeout(struct raft *r)
+{
+    raft_time timeout;
+    switch (r->state) {
+        case RAFT_FOLLOWER:
+            /* fallthrough */
+        case RAFT_CANDIDATE:
+            timeout = electionTimerExpiration(r);
+            break;
+        case RAFT_LEADER:
+            /* TODO: keep track of the last heartbeat timestamp */
+            timeout = r->now + r->heartbeat_timeout;
+            break;
+        default:
+            timeout = 0;
+            break;
+    }
+
+    return timeout;
+}
+
 int raft_catch_up(struct raft *r, raft_id id, int *status)
 {
     unsigned i;
