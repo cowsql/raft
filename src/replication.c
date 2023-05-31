@@ -1234,7 +1234,6 @@ struct recvInstallSnapshot
 {
     struct raft *raft;
     struct raft_snapshot snapshot;
-    raft_term term; /* Used to check for state transitions. */
 };
 
 static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
@@ -1243,7 +1242,6 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
     struct raft *r = request->raft;
     struct raft_snapshot *snapshot = &request->snapshot;
     struct raft_append_entries_result result;
-    bool should_respond = true;
     int rv;
 
     /* We avoid converting to candidate state while installing a snapshot. */
@@ -1259,18 +1257,7 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
     /* If we are shutting down, let's discard the result. */
     if (r->state == RAFT_UNAVAILABLE) {
         tracef("shutting down -> discard result of snapshot installation");
-        should_respond = false;
         goto discard;
-    }
-    /* If the request is from a previous term, it means that someone else became
-     * a candidate while we were installing the snapshot. In that case, we want
-     * to install the snapshot anyway, but our "current leader" may no longer be
-     * the same as the server that sent the install request, so we shouldn't
-     * send a response to that server. */
-    if (request->term != r->current_term) {
-        tracef(
-            "new term since receiving snapshot -> install but don't respond");
-        should_respond = false;
     }
 
     if (status != 0) {
@@ -1305,7 +1292,7 @@ discard:
     raft_configuration_close(&snapshot->configuration);
 
 respond:
-    if (should_respond) {
+    if (r->state == RAFT_FOLLOWER) {
         result.last_log_index = r->last_stored;
         sendAppendEntriesResult(r, &result);
     }
@@ -1365,7 +1352,6 @@ int replicationInstallSnapshot(struct raft *r,
         goto err;
     }
     request->raft = r;
-    request->term = r->current_term;
 
     snapshot = &request->snapshot;
     snapshot->term = args->last_term;
