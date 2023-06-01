@@ -312,6 +312,12 @@ void test_cluster_tear_down(struct test_cluster *c)
     }
 }
 
+struct raft *test_cluster_raft(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    return &server->raft;
+}
+
 void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
 {
     struct test_server *server = clusterGetServer(c, id);

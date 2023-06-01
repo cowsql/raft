@@ -142,8 +142,13 @@ static bool v1 = false;
 /* True if the cluster has a leader. */
 #define CLUSTER_HAS_LEADER CLUSTER_LEADER < CLUSTER_N
 
+#define CLUSTER_RAFT(X) (v1 ? CLUSTER_RAFT_V1(X) : CLUSTER_RAFT_V0(X))
+
+/* Get the struct raft object with the given ID. */
+#define CLUSTER_RAFT_V1(ID) test_cluster_raft(&f->cluster_, ID)
+
 /* Get the struct raft object of the I'th server. */
-#define CLUSTER_RAFT(I) raft_fixture_get(&f->cluster, I)
+#define CLUSTER_RAFT_V0(I) raft_fixture_get(&f->cluster, I)
 
 /* Get the state of the I'th server. */
 #define CLUSTER_STATE(I) raft_state(raft_fixture_get(&f->cluster, I))
@@ -623,6 +628,9 @@ struct test_cluster
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
 void test_cluster_tear_down(struct test_cluster *c);
+
+/* Return the raft object with the given @id. */
+struct raft *test_cluster_raft(struct test_cluster *c, raft_id id);
 
 /* Set the persisted term of the given server to the given value. Must me called
  * before starting the server. */
