@@ -614,6 +614,22 @@ struct test_server
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */
     bool running;                 /* Whether the server is running */
+
+    /* The randomized_election_timeout field stores the value that the raft
+     * instance will obtain the next time it calls RandomWithinRange() to obtain
+     * a random number in the [election_timeout, election_timeout * 2] range. We
+     * do that by passing raft_seed() a value that makes the pseudor random
+     * number generator produce exactly randomized_election_timeout. That value
+     * is what we store in the seed field below. Since calculating the seed that
+     * matches the desired randomized_election_timeout is somehow expensive, we
+     * also use randomized_election_timeout_prev to store the previous value of
+     * randomized_election_timeout, in order to re-use the same seed if nothing
+     * has changed.
+     *
+     * See serverSeed for more details. */
+    unsigned randomized_election_timeout;
+    unsigned randomized_election_timeout_prev;
+    unsigned seed;
 };
 
 /* Cluster of test raft servers instances with fake disk and network I/O. */

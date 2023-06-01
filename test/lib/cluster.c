@@ -231,6 +231,9 @@ static void serverInit(struct test_server *s,
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
+
+    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT + (id - 1) * 10;
+    s->randomized_election_timeout_prev = 0;
 }
 
 /* Release all resources used by a server object. */
@@ -238,6 +241,32 @@ static void serverClose(struct test_server *s)
 {
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
+}
+
+/* Set the state of raft's internal pseudo random number generator so that the
+ * next time RandomWithinRange() is run it will return the value configured by
+ * the test server, which is stored in the randomized_election_timeout field. */
+static void serverSeed(struct test_server *s)
+{
+    unsigned timeout = s->raft.election_timeout;
+
+    if (s->randomized_election_timeout == s->randomized_election_timeout_prev) {
+        goto done;
+    }
+
+    s->seed = s->raft.random;
+    while (1) {
+        unsigned random = s->seed;
+        unsigned n = raft_random(&random, timeout, timeout * 2);
+        if (n == s->randomized_election_timeout) {
+            goto done;
+        }
+        s->seed = random;
+    }
+
+done:
+    raft_seed(&s->raft, s->seed);
+    s->randomized_election_timeout_prev = s->randomized_election_timeout;
 }
 
 /* Start the server by passing to raft_step() a RAFT_START event with the
@@ -255,6 +284,7 @@ static void serverStart(struct test_server *s)
     diskLoad(&s->disk, &event.start.term, &event.start.voted_for,
              &event.start.metadata, &event.start.start_index,
              &event.start.entries, &event.start.n_entries);
+    serverSeed(s);
 
     rv = raft_step(r, &event, &update);
     munit_assert_int(rv, ==, 0);
