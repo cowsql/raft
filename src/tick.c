@@ -12,6 +12,8 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+
 /* Apply time-dependent rules for followers (Figure 3.1). */
 static int tickFollower(struct raft *r)
 {
@@ -26,6 +28,7 @@ static int tickFollower(struct raft *r)
     /* If we have been removed from the configuration, or maybe we didn't
      * receive one yet, just stay follower. */
     if (server == NULL) {
+        infof("server not in current configuration -> stay follower");
         return 0;
     }
 
