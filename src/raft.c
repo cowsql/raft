@@ -608,6 +608,49 @@ unsigned raft_random(unsigned *state, unsigned min, unsigned max)
     return RandomWithinRange(state, min, max);
 }
 
+const char *raft_state_name(int state)
+{
+    const char *name;
+    switch (state) {
+        case RAFT_UNAVAILABLE:
+            name = "unavailable";
+            break;
+        case RAFT_FOLLOWER:
+            name = "follower";
+            break;
+        case RAFT_CANDIDATE:
+            name = "candidate";
+            break;
+        case RAFT_LEADER:
+            name = "leader";
+            break;
+        default:
+            name = NULL;
+            break;
+    }
+    return name;
+}
+
+const char *raft_role_name(int role)
+{
+    const char *name;
+    switch (role) {
+        case RAFT_STANDBY:
+            name = "stand-by";
+            break;
+        case RAFT_VOTER:
+            name = "voter";
+            break;
+        case RAFT_SPARE:
+            name = "spare";
+            break;
+        default:
+            name = NULL;
+            break;
+    }
+    return name;
+}
+
 static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
                              struct raft_fsm *fsm)

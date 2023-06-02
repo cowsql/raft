@@ -1443,6 +1443,16 @@ RAFT_API int raft_transfer(struct raft *r,
 RAFT_API unsigned raft_random(unsigned *state, unsigned min, unsigned max);
 
 /**
+ * Return the name of state with the given code.
+ */
+RAFT_API const char *raft_state_name(int state);
+
+/**
+ * Return the name of role with the given code.
+ */
+RAFT_API const char *raft_role_name(int state);
+
+/**
  * User-definable dynamic memory allocation functions.
  *
  * The @data field will be passed as first argument to all functions.
