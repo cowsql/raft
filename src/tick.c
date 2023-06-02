@@ -45,11 +45,14 @@ static int tickFollower(struct raft *r)
      *   If election timeout elapses without receiving AppendEntries RPC from
      *   current leader or granting vote to candidate, convert to candidate.
      */
-    if (electionTimerExpired(r) && server->role == RAFT_VOTER) {
+    if (electionTimerExpired(r)) {
+        if (server->role != RAFT_VOTER) {
+            goto out;
+        }
         if (replicationInstallSnapshotBusy(r)) {
             tracef("installing snapshot -> don't convert to candidate");
             electionResetTimer(r);
-            return 0;
+            goto out;
         }
         tracef("convert to candidate and start new election");
         rv = convertToCandidate(r, false /* disrupt leader */);
@@ -59,6 +62,7 @@ static int tickFollower(struct raft *r)
         }
     }
 
+out:
     return 0;
 }
 
