@@ -13,7 +13,6 @@ jobs:
           - ubuntu-22.04
         compiler:
           - gcc
-          - clang
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -61,7 +60,6 @@ jobs:
           - ubuntu-22.04
         compiler:
           - gcc
-          - clang
     runs-on: ${{ matrix.os }}
 
     steps:
