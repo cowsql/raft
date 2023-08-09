@@ -18,6 +18,14 @@ I/O. Patches are welcome to add support for more platforms.
 
 See [raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h) for full documentation.
 
+Fork of Canonical's raft library
+--------------------------------
+
+This library is a fork of [Canonical's](https://github.com/canonical/raft) Raft
+implementation, which was originally written by this library's author
+[himself](https://github.com/canonical/raft/commits?author=freeekanayaka) while
+working at Canonical.
+
 License
 -------
 
