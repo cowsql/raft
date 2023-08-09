@@ -1,4 +1,4 @@
-[![CI Tests](https://github.com/canonical/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/canonical/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/canonical/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest)
+[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest)
 
 [English](./README.md)|[简体中文](./README_CH.md)
 
@@ -16,7 +16,15 @@ requires Linux, since it uses the Linux
 [AIO](http://man7.org/linux/man-pages/man2/io_submit.2.html) API for disk
 I/O. Patches are welcome to add support for more platforms.
 
-See [raft.h](https://github.com/canonical/raft/blob/master/include/raft.h) for full documentation.
+See [raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h) for full documentation.
+
+Fork of Canonical's raft library
+--------------------------------
+
+This library is a fork of [Canonical's](https://github.com/canonical/raft) Raft
+implementation, which was originally written by this library's author
+[himself](https://github.com/canonical/raft/commits?author=freeekanayaka) while
+working at Canonical.
 
 License
 -------
@@ -24,7 +32,7 @@ License
 This raft C library is released under a slightly modified version of LGPLv3,
 that includes a copyright exception letting users to statically link the library
 code in their project and release the final work under their own terms. See the
-full [license](https://github.com/canonical/raft/blob/LICENSE) text.
+full [license](./LICENSE) text.
 
 Features
 --------
@@ -75,7 +83,7 @@ Example
 -------
 
 The best way to understand how to use the library is probably reading the code
-of the [example server](https://github.com/canonical/raft/blob/master/example/server.c)
+of the [example server](https://github.com/cowsql/raft/blob/master/example/server.c)
 included in the source code.
 
 You can also see the example server in action by running:
@@ -91,7 +99,7 @@ Quick guide
 -----------
 
 It is recommended that you read
-[raft.h](https://github.com/canonical/raft/blob/master/include/raft.h) for
+[raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h) for
 documentation details, but here's a quick high-level guide of what you'll need
 to do (error handling is omitted for brevity).
 
@@ -181,7 +189,7 @@ Detailed tracing will be enabled when the environment variable `LIBRAFT_TRACE` i
 Notable users
 -------------
 
-- [dqlite](https://github.com/canonical/dqlite)
+- [cowsql](https://github.com/cowsql/cowsql)
 
 Credits
 -------
