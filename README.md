@@ -1,4 +1,4 @@
-[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest)
+[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest) [![Coverity](https://scan.coverity.com/projects/28929/badge.svg)](https://scan.coverity.com/projects/cowsql-raft)
 
 [English](./README.md)|[简体中文](./README_CH.md)
 
