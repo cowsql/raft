@@ -1,4 +1,4 @@
-[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest) [![Coverity](https://scan.coverity.com/projects/28929/badge.svg)](https://scan.coverity.com/projects/cowsql-raft)
+[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/main/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest) [![Coverity](https://scan.coverity.com/projects/28929/badge.svg)](https://scan.coverity.com/projects/cowsql-raft)
 
 [English](./README.md)|[简体中文](./README_CH.md)
 
@@ -16,7 +16,7 @@ requires Linux, since it uses the Linux
 [AIO](http://man7.org/linux/man-pages/man2/io_submit.2.html) API for disk
 I/O. Patches are welcome to add support for more platforms.
 
-See [raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h) for full documentation.
+See [raft.h](./include/raft.h) for full documentation.
 
 Fork of Canonical's raft library
 --------------------------------
@@ -83,8 +83,7 @@ Example
 -------
 
 The best way to understand how to use the library is probably reading the code
-of the [example server](https://github.com/cowsql/raft/blob/master/example/server.c)
-included in the source code.
+of the [example server](./example/server.c) included in the source code.
 
 You can also see the example server in action by running:
 
@@ -98,10 +97,9 @@ stops and restarts a server from time to time.
 Quick guide
 -----------
 
-It is recommended that you read
-[raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h) for
-documentation details, but here's a quick high-level guide of what you'll need
-to do (error handling is omitted for brevity).
+It is recommended that you read [raft.h](./include/raft.h) for documentation
+details, but here's a quick high-level guide of what you'll need to do (error
+handling is omitted for brevity).
 
 Create an instance of the stock ```raft_io``` interface implementation (or
 implement your own one if the one that comes with the library really does not

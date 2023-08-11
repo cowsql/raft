@@ -1,6 +1,6 @@
 # c-raft
 
-[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/master/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest)
+[![CI Tests](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/build-and-test.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/main/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest)
 
 **注意**：中文文档有可能未及时更新，请以最新的英文[readme](./README.md)为准。
 
@@ -11,7 +11,7 @@ raft库采用模块化设计，核心部分实现了完全独立于平台的raft
 在使用默认选项构建库时，基于 [libuv](http://libuv.org)提供了 I/O 接口的库存实现，适合绝大多数应用场景。唯一的问题是它目前
 需要 Linux，因为它使用 Linux [AIO](http://man7.org/linux/man-pages/man2/io_submit.2.html) API 用于磁盘输入/输出。欢迎添加补丁以支持更多的平台。
 
-可以通过[raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h)来查看全部接口。
+可以通过[raft.h](https://github.com/cowsql/raft/blob/main/include/raft.h)来查看全部接口。
 
 ## license
 
@@ -66,7 +66,7 @@ make
 
 ## Example
 
-理解如何使用raft库的最好方式是阅读源码目录下的[example server](https://github.com/cowsql/raft/blob/master/example/server.c)。
+理解如何使用raft库的最好方式是阅读源码目录下的[example server](./example/server.c)。
 
 可以运行如下命令来了解example server的运行情况：
 
@@ -78,7 +78,7 @@ make
 
 ## Quick guide
 
-以下是一个如何使用raft库的快速指南（为了简洁起见，省略了错误处理），要想了解详细的信息建议阅读[raft.h](https://github.com/cowsql/raft/blob/master/include/raft.h)。
+以下是一个如何使用raft库的快速指南（为了简洁起见，省略了错误处理），要想了解详细的信息建议阅读[raft.h](./include/raft.h)。
 
 1. 创建一个`raft_io` 接口实现的实例（如果库附带的接口确实不适合，则实现您自己的实例）：
 
