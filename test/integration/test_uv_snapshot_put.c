@@ -181,6 +181,34 @@ TEST(snapshot_put, first, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* Put the first snapshot, disabling compression. */
+TEST(snapshot_put, firstWithoutCompression, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    int rv = raft_uv_set_snapshot_compression(&f->io, false);
+    munit_assert_int(rv, ==, 0);
+    SNAPSHOT_PUT(10, /* trailing */
+                 1   /* index */
+    );
+    ASSERT_SNAPSHOT(1, 1, 1);
+    return MUNIT_OK;
+}
+
+/* Put the first snapshot, enabling compression if available. */
+TEST(snapshot_put, firstWithCompression, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    int rv = raft_uv_set_snapshot_compression(&f->io, true);
+    if (rv != 0) {
+        return MUNIT_SKIP;
+    }
+    SNAPSHOT_PUT(10, /* trailing */
+                 1   /* index */
+    );
+    ASSERT_SNAPSHOT(1, 1, 1);
+    return MUNIT_OK;
+}
+
 /* If the number of closed entries is less than the given trailing amount, no
  * segment is deleted. */
 TEST(snapshot_put, entriesLessThanTrailing, setUp, tearDown, 0, NULL)
