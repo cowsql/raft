@@ -1,12 +1,70 @@
-# Check that the ./configure script behaves as expected in various scenarios
-name: Configure
+name: Tests
 
 on:
   - push
   - pull_request
 
 jobs:
-  check:
+  test:
+    name: Unit and integration tests
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup dependencies
+      run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq lcov linux-libc-dev liblz4-dev libuv1-dev btrfs-progs xfsprogs zfsutils-linux
+
+    - name: Amalgamation
+      run: |
+          git clone --depth 1 https://github.com/edlund/amalgamate.git
+          export PATH=$PATH:$PWD/amalgamate
+          amalgamate.py --config=amalgamation.json --source=$(pwd)
+          gcc raft.c -c -D_GNU_SOURCE -DHAVE_LINUX_AIO_ABI_H -Wall -Wextra -Wpedantic -fpic
+
+    - name: Configure
+      run: |
+          autoreconf -i
+          ./configure --enable-example --enable-debug --enable-code-coverage --enable-sanitize
+
+    - name: Build
+      run: |
+          make -j$(nproc --all)
+
+    - name: Test
+      run: |
+          export LIBRAFT_TRACE=1
+          ./test/lib/fs.sh setup
+          make -j$(nproc --all) check $(./test/lib/fs.sh detect) || (cat ./test-suite.log && false)
+          ./test/lib/fs.sh teardown
+
+    - name: Coverage
+      run: |
+          make code-coverage-capture
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        verbose: true
+
+  linting:
+    name: Linting
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: DoozyX/clang-format-lint-action@v0.14
+      with:
+        source: 'src test example'
+        exclude: 'test/lib/munit.*'
+        extensions: 'c,h'
+        clangFormatVersion: 14
+        style: file
+
+  configure:
+    name: Configuration flags
+
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
@@ -121,3 +179,4 @@ jobs:
       run: |
         # Succeed, since liblz4 is used by default if found.
         ./configure --disable-lz4
+
