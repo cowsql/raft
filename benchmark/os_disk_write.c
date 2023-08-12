@@ -51,8 +51,8 @@ static struct argp_option options[] = {
 struct arguments
 {
     char *dir;
-    int buf;
-    int n;
+    size_t buf;
+    unsigned n;
     int engine;
     int mode;
 };
@@ -89,10 +89,10 @@ static error_t argumentsParse(int key, char *arg, struct argp_state *state)
             arguments->dir = arg;
             break;
         case 'b':
-            arguments->buf = atoi(arg);
+            arguments->buf = (size_t)atoi(arg);
             break;
         case 'n':
-            arguments->n = atoi(arg);
+            arguments->n = (unsigned)atoi(arg);
             break;
         case 'e':
             arguments->engine = engineCode(arg);
@@ -121,7 +121,7 @@ static char *makeTempFileTemplate(const char *dir)
     return path;
 }
 
-static int createTempFile(const char *dir, int size, char **path, int *fd)
+static int createTempFile(const char *dir, size_t size, char **path, int *fd)
 {
     int dirfd;
     int rv;
@@ -133,7 +133,7 @@ static int createTempFile(const char *dir, int size, char **path, int *fd)
         return -1;
     }
 
-    rv = posix_fallocate(*fd, 0, size);
+    rv = posix_fallocate(*fd, 0, (off_t)size);
     if (rv != 0) {
         errno = rv;
         printf("posix_fallocate: %s\n", strerror(errno));
@@ -156,7 +156,7 @@ static int createTempFile(const char *dir, int size, char **path, int *fd)
 }
 
 /* Allocate a buffer of the given size. */
-static void allocBuffer(struct iovec *iov, int size)
+static void allocBuffer(struct iovec *iov, size_t size)
 {
     iov->iov_len = size;
     iov->iov_base = aligned_alloc(iov->iov_len, iov->iov_len);
@@ -175,13 +175,13 @@ static void setDirectIO(int fd)
 /* Detect all suitable block size we can use to write to the underlying device
  * using direct I/O. */
 static int detectSuitableBlockSizesForDirectIO(const char *dir,
-                                               int **block_size,
-                                               int *n_block_size)
+                                               size_t **block_size,
+                                               unsigned *n_block_size)
 {
     char *path;
     int fd;
-    int size;
-    int rv;
+    size_t size;
+    ssize_t rv;
 
     rv = createTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
     if (rv != 0) {
@@ -203,7 +203,7 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
             assert(errno == EINVAL);
             continue; /* Try with a bigger buffer size */
         }
-        assert(rv == size);
+        assert((size_t)rv == size);
         *n_block_size += 1;
         *block_size = realloc(*block_size, *n_block_size * sizeof **block_size);
         assert(*block_size != NULL);
@@ -225,10 +225,10 @@ static void timeNow(struct timespec *time)
 }
 
 /* Calculate how much time has elapsed since 'start', in microseconds. */
-static int timeSince(struct timespec *start)
+static time_t timeSince(struct timespec *start)
 {
     struct timespec now;
-    long nsecs;
+    time_t nsecs;
     timeNow(&now);
     if (start->tv_sec == now.tv_sec) {
         nsecs = now.tv_nsec - start->tv_nsec;
@@ -239,10 +239,10 @@ static int timeSince(struct timespec *start)
     return nsecs / 1000;
 }
 
-static int writeWithPwriteV2(int fd, struct iovec *iov, int i)
+static int writeWithPwriteV2(int fd, struct iovec *iov, unsigned i)
 {
-    int rv;
-    rv = pwritev2(fd, iov, 1, i * iov->iov_len, RWF_DSYNC | RWF_HIPRI);
+    ssize_t rv;
+    rv = pwritev2(fd, iov, 1, (off_t)(i * iov->iov_len), RWF_DSYNC | RWF_HIPRI);
     if (rv == -1) {
         perror("pwritev2");
         return -1;
@@ -265,7 +265,7 @@ static void initUring(int fd, struct iovec *iov)
     assert(rv == 0);
 }
 
-static int writeWithUring(int fd, struct iovec *iov, int i)
+static int writeWithUring(int fd, struct iovec *iov, unsigned i)
 {
     struct io_uring_sqe *sqe;
     struct io_uring_cqe *cqe;
@@ -276,7 +276,7 @@ static int writeWithUring(int fd, struct iovec *iov, int i)
     }
 
     sqe = io_uring_get_sqe(&uring);
-    io_uring_prep_write_fixed(sqe, 0, iov->iov_base, iov->iov_len,
+    io_uring_prep_write_fixed(sqe, 0, iov->iov_base, (unsigned)iov->iov_len,
                               i * iov->iov_len, 0);
     io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
     sqe->rw_flags = RWF_DSYNC;
@@ -297,17 +297,17 @@ static int writeWithUring(int fd, struct iovec *iov, int i)
 }
 
 /* Benchmark the performance of a single disk write. */
-int benchmarkWritePerformance(const char *dir,
-                              int buf,
-                              int n,
-                              int engine,
-                              int mode)
+static int benchmarkWritePerformance(const char *dir,
+                                     size_t buf,
+                                     unsigned n,
+                                     int engine,
+                                     int mode)
 {
     char *path;
     int fd;
     struct iovec iov;
     struct timespec start;
-    int i;
+    unsigned i;
     int rv;
 
     rv = createTempFile(dir, n * buf, &path, &fd);
@@ -340,7 +340,7 @@ int benchmarkWritePerformance(const char *dir,
         return -1;
     }
 
-    printf("%-8s:  %8s writes of %4d bytes take %4d microsecs on average\n",
+    printf("%-8s:  %8s writes of %4zu bytes take %4zu microsecs on average\n",
            engines[engine], modes[mode], buf, timeSince(&start) / n);
 
     if (engine == URING) {
@@ -354,11 +354,11 @@ int benchmarkWritePerformance(const char *dir,
     return 0;
 }
 
-static bool isSuitableBufSizeForDirectIO(int *block_size,
-                                         int n_block_size,
-                                         int buf)
+static bool isSuitableBufSizeForDirectIO(size_t *block_size,
+                                         unsigned n_block_size,
+                                         size_t buf)
 {
-    int i;
+    unsigned i;
     for (i = 0; i < n_block_size; i++) {
         if (block_size[i] == buf) {
             return true;
@@ -374,14 +374,14 @@ int main(int argc, char *argv[])
     struct stat st;
     int engine;
     int mode;
-    int buf;
-    int *block_size;
-    int n_block_size;
-    int i;
+    size_t buf;
+    size_t *block_size;
+    unsigned n_block_size;
+    unsigned i;
     int rv;
 
     arguments.dir = "/tmp";
-    arguments.buf = -1;
+    arguments.buf = 0;
     arguments.n = 1024;
     arguments.engine = -1;
     arguments.mode = -1;
@@ -400,13 +400,13 @@ int main(int argc, char *argv[])
         return rv;
     }
 
-    if (arguments.buf != -1) {
+    if (arguments.buf != 0) {
         if (arguments.mode == -1 || arguments.mode == DIRECT) {
             if (!isSuitableBufSizeForDirectIO(block_size, n_block_size,
                                               arguments.buf)) {
                 printf("suitable buffer sizes for direct I/O:");
                 for (i = 0; i < n_block_size; i++) {
-                    printf(" %4d", block_size[i]);
+                    printf(" %4zu", block_size[i]);
                 }
                 printf("\n");
                 return -1;
@@ -423,7 +423,7 @@ int main(int argc, char *argv[])
                 continue;
             }
             for (buf = MIN_BUF_SIZE; buf <= MAX_BUF_SIZE; buf *= 2) {
-                if (arguments.buf != buf && arguments.buf != -1) {
+                if (arguments.buf != buf && arguments.buf != 0) {
                     continue;
                 }
                 if (mode == DIRECT) {
