@@ -248,10 +248,18 @@ endif # EXAMPLE_ENABLED
 if BENCHMARK_ENABLED
 
 bin_PROGRAMS += \
- benchmark/os-disk-write
+ benchmark/run
 
-benchmark_os_disk_write_SOURCES = benchmark/os_disk_write.c
-benchmark_os_disk_write_LDFLAGS = -luring
+benchmark_run_SOURCES = \
+  benchmark/disk.c \
+  benchmark/disk_fs.c \
+  benchmark/disk_options.c \
+  benchmark/disk_parse.c \
+  benchmark/disk_pwritev2.c \
+  benchmark/disk_uring.c \
+  benchmark/run.c \
+  benchmark/timer.c
+benchmark_run_LDFLAGS = -luring
 
 endif # BENCHMARK_ENABLED
 
