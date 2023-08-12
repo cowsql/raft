@@ -15,14 +15,21 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -qq lcov linux-libc-dev liblz4-dev libuv1-dev btrfs-progs xfsprogs zfsutils-linux
 
-    - name: Build
+    - name: Amalgamation
       run: |
           git clone --depth 1 https://github.com/edlund/amalgamate.git
           export PATH=$PATH:$PWD/amalgamate
-          autoreconf -i
-          ./configure --enable-example --enable-debug --enable-code-coverage --enable-sanitize
           amalgamate.py --config=amalgamation.json --source=$(pwd)
           gcc raft.c -c -D_GNU_SOURCE -DHAVE_LINUX_AIO_ABI_H -Wall -Wextra -Wpedantic -fpic
+
+    - name: Configure
+      run: |
+          autoreconf -i
+          ./configure --enable-example --enable-debug --enable-code-coverage --enable-sanitize
+
+    - name: Build
+      run: |
+          make -j$(nproc --all)
 
     - name: Test
       run: |
