@@ -1,4 +1,4 @@
-name: Checks
+name: Tests
 
 on:
   - push
@@ -6,6 +6,7 @@ on:
 
 jobs:
   test:
+    name: Unit and integration tests
     runs-on: ubuntu-22.04
 
     steps:
@@ -47,7 +48,8 @@ jobs:
       with:
         verbose: true
 
-  lint:
+  linting:
+    name: Linting
     runs-on: ubuntu-22.04
 
     steps:
@@ -61,6 +63,8 @@ jobs:
         style: file
 
   configure:
+    name: Configuration flags
+
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
