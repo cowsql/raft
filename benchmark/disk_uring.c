@@ -33,16 +33,25 @@ static int writeWithUring(struct iovec *iov, unsigned i)
     io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
     sqe->rw_flags = RWF_DSYNC;
 
+    sqe = io_uring_get_sqe(&uring);
+    io_uring_prep_fsync(sqe, 0, IORING_FSYNC_DATASYNC);
+    io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
+
     rv = io_uring_submit(&uring);
-    assert(rv == 1);
+    assert(rv == 2);
 
     io_uring_wait_cqe(&uring, &cqe);
     if (cqe->res < 0) {
         printf("sqe failed: %s\n", strerror(-cqe->res));
         return -1;
     }
-    assert(cqe->res == (int)iov->iov_len);
+    io_uring_cqe_seen(&uring, cqe);
 
+    io_uring_wait_cqe(&uring, &cqe);
+    if (cqe->res < 0) {
+        printf("sqe failed: %s\n", strerror(-cqe->res));
+        return -1;
+    }
     io_uring_cqe_seen(&uring, cqe);
 
     return 0;
