@@ -26,10 +26,11 @@ static char *makeTempFileTemplate(const char *dir)
 int DiskFsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
     int dirfd;
+    int flags = O_WRONLY | O_CREAT | O_EXCL;
     int rv;
 
     *path = makeTempFileTemplate(dir);
-    *fd = mkstemp(*path);
+    *fd = mkostemp(*path, flags);
     if (*fd == -1) {
         printf("mstemp '%s': %s\n", *path, strerror(errno));
         return -1;
