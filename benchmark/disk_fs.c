@@ -12,7 +12,7 @@
 #define MIN_BLOCK_SIZE 512
 
 /* Maximum physical block size for direct I/O that we expect to detect. */
-#define MAX_BLOCK_SIZE 4096
+#define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
 
 static char *makeTempFileTemplate(const char *dir)
 {
