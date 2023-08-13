@@ -9,6 +9,7 @@
 
 #include "disk.h"
 #include "disk_fs.h"
+#include "disk_kaio.h"
 #include "disk_options.h"
 #include "disk_parse.h"
 #include "disk_pwritev2.h"
@@ -111,6 +112,9 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
             break;
         case DISK_ENGINE_URING:
             rv = DiskWriteUsingUring(fd, &iov, n, latencies);
+            break;
+        case DISK_ENGINE_KAIO:
+            rv = DiskWriteUsingKaio(fd, &iov, n, latencies);
             break;
         default:
             assert(0);

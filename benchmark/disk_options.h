@@ -6,7 +6,7 @@
 #include <stddef.h>
 
 /* Disk I/O engines. */
-enum { DISK_ENGINE_PWRITEV2 = 0, DISK_ENGINE_URING };
+enum { DISK_ENGINE_PWRITEV2 = 0, DISK_ENGINE_URING, DISK_ENGINE_KAIO };
 
 /* Disk I/O modes */
 enum { DISK_MODE_BUFFERED = 0, DISK_MODE_DIRECT };

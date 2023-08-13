@@ -2,8 +2,10 @@
 
 #include "disk_options.h"
 
-static const char *engines[] =
-    {[DISK_ENGINE_PWRITEV2] = "pwritev2", [DISK_ENGINE_URING] = "uring", NULL};
+static const char *engines[] = {[DISK_ENGINE_PWRITEV2] = "pwritev2",
+                                [DISK_ENGINE_URING] = "uring",
+                                [DISK_ENGINE_KAIO] = "kaio",
+                                NULL};
 
 static const char *modes[] =
     {[DISK_MODE_BUFFERED] = "buffered", [DISK_MODE_DIRECT] = "direct", NULL};

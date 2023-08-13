@@ -257,6 +257,7 @@ benchmark_run_SOURCES = \
   benchmark/disk_parse.c \
   benchmark/disk_pwritev2.c \
   benchmark/disk_uring.c \
+  benchmark/disk_kaio.c \
   benchmark/report.c \
   benchmark/run.c \
   benchmark/timer.c
