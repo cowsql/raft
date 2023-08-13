@@ -45,6 +45,7 @@ static int writeWithKaio(int fd, struct iovec *iov, unsigned i)
     int rv;
 
     memset(&iocb1, 0, sizeof iocb1);
+    memset(&iocb2, 0, sizeof iocb2);
 
     iocb1.aio_fildes = (uint32_t)fd;
     iocb1.aio_lio_opcode = IOCB_CMD_PWRITEV;
