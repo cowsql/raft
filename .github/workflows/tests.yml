@@ -26,7 +26,11 @@ jobs:
     - name: Configure
       run: |
           autoreconf -i
-          ./configure --enable-example --enable-debug --enable-code-coverage --enable-sanitize
+          ./configure --enable-example \
+                      --enable-debug \
+                      --enable-code-coverage \
+                      --enable-sanitize \
+                      --enable-benchmark
 
     - name: Build
       run: |

@@ -11,7 +11,7 @@ on:
 
 jobs:
   bencher:
-    name: Track benchmarks with Bencher
+    name: Disk performance
     runs-on: ubuntu-22.04
     env:
       BENCHER_PROJECT: raft
