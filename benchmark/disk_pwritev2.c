@@ -9,7 +9,7 @@
 static int writeWithPwriteV2(int fd, struct iovec *iov, unsigned i)
 {
     ssize_t rv;
-    rv = pwritev2(fd, iov, 1, (off_t)(i * iov->iov_len), RWF_DSYNC | RWF_HIPRI);
+    rv = pwritev2(fd, iov, 1, (off_t)(i * iov->iov_len), RWF_DSYNC);
     if (rv == -1) {
         printf("pwritev2 '%d': %s\n", i, strerror(errno));
         return -1;
