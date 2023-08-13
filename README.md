@@ -189,6 +189,11 @@ Notable users
 
 - [cowsql](https://github.com/cowsql/cowsql)
 
+Benchmarks
+----------
+
+Development benchmarks are pushed to [Bencher](https://bencher.dev/console/projects/raft/perf).
+
 Credits
 -------
 
