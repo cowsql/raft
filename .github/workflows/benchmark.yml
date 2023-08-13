@@ -1,7 +1,11 @@
 name: Benchmark
 
 on:
-  workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Push name"
+        default: "Bencher push"
   schedule:
     - cron: '12 3 * * *'
 
