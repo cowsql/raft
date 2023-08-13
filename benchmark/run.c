@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "disk.h"
+#include "report.h"
 
 enum { BENCHMARK_DISK = 0 };
 
@@ -26,6 +27,7 @@ int benchmarkCode(const char *name)
 
 int main(int argc, char *argv[])
 {
+    struct report report;
     int cmd;
     int rv;
 
@@ -42,15 +44,20 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    ReportInit(&report);
+
     switch (cmd) {
         case BENCHMARK_DISK:
-            rv = DiskRun(argc - 1, &argv[1]);
+            rv = DiskRun(argc - 1, &argv[1], &report);
             break;
         default:
             assert(0);
             rv = -1;
             break;
     }
+
+    ReportPrint(&report);
+    ReportClose(&report);
 
     return rv;
 }

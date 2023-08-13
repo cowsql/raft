@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -17,44 +18,94 @@
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
 {
+    unsigned i;
+
     iov->iov_len = size;
     iov->iov_base = aligned_alloc(iov->iov_len, iov->iov_len);
     assert(iov->iov_base != NULL);
+
+    /* Populate the buffer with some fixed data. */
+    for (i = 0; i < size; i++) {
+        *(((uint8_t *)iov->iov_base) + i) = i % 128;
+    }
 }
 
-/* Benchmark the performance of a single disk write. */
-static int benchmarkWritePerformance(const char *dir,
-                                     size_t buf,
-                                     unsigned size,
-                                     int engine,
-                                     int mode)
+static void reportLatency(struct benchmark *benchmark,
+                          time_t *latencies,
+                          unsigned n)
 {
+    struct metric *m;
+    double total = 0;
+    unsigned i;
+
+    m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
+
+    for (i = 0; i < n; i++) {
+        double value = (double)latencies[i];
+
+        if (i == 0) {
+            m->lower_bound = value;
+            m->upper_bound = value;
+        }
+
+        if (value < m->lower_bound) {
+            m->lower_bound = value;
+        }
+
+        if (value > m->upper_bound) {
+            m->upper_bound = value;
+        }
+
+        total += value;
+    }
+
+    m->value = total / n; /* Average latency */
+}
+
+static void reportThroughput(struct benchmark *benchmark,
+                             time_t duration,
+                             unsigned size)
+{
+    struct metric *m;
+    double megabytes = (double)size / (1024 * 1024); /* N megabytes written */
+    double seconds = (double)duration / (1024 * 1024 * 1024);
+    m = BenchmarkGrow(benchmark, METRIC_KIND_THROUGHPUT);
+    m->value = megabytes / seconds; /* Megabytes per second */
+}
+
+/* Benchmark sequential write performance. */
+static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
+{
+    struct timer timer;
+    struct iovec iov;
     char *path;
     int fd;
-    struct iovec iov;
     time_t *latencies;
+    time_t duration;
+    unsigned n = opts->size / (unsigned)opts->buf;
     int rv;
-    unsigned n = size / (unsigned)buf;
 
-    assert(size % buf == 0);
+    assert(opts->size % opts->buf == 0);
 
-    rv = DiskFsCreateTempFile(dir, n * buf, &path, &fd);
+    rv = DiskFsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
     if (rv != 0) {
         return -1;
     }
 
-    if (mode == DISK_MODE_DIRECT) {
+    if (opts->mode == DISK_MODE_DIRECT) {
         rv = DiskFsSetDirectIO(fd);
         if (rv != 0) {
             return -1;
         }
     }
 
-    allocBuffer(&iov, buf);
+    allocBuffer(&iov, opts->buf);
     latencies = malloc(n * sizeof *latencies);
     assert(latencies != NULL);
 
-    switch (engine) {
+    TimerStart(&timer);
+
+    switch (opts->engine) {
         case DISK_ENGINE_PWRITEV2:
             rv = DiskWriteUsingPwritev2(fd, &iov, n, latencies);
             break;
@@ -65,16 +116,16 @@ static int benchmarkWritePerformance(const char *dir,
             assert(0);
     }
 
+    duration = TimerStop(&timer);
+
     free(iov.iov_base);
 
     if (rv != 0) {
         return -1;
     }
 
-    printf("%-8s:  %8s writes of %4zu bytes take %4zu microsecs on average\n",
-           DiskEngineName(engine), DiskModeName(mode), buf,
-           latencies[0] / 1000);
-
+    reportLatency(benchmark, latencies, n);
+    reportThroughput(benchmark, duration, opts->size);
     free(latencies);
 
     rv = DiskFsRemoveTempFile(path, fd);
@@ -85,9 +136,11 @@ static int benchmarkWritePerformance(const char *dir,
     return 0;
 }
 
-int DiskRun(int argc, char *argv[])
+int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskOptions opts;
+    char *name;
+    struct benchmark *benchmark;
     struct stat st;
     int rv;
 
@@ -109,8 +162,13 @@ int DiskRun(int argc, char *argv[])
         }
     }
 
-    rv = benchmarkWritePerformance(opts.dir, opts.buf, opts.size, opts.engine,
-                                   opts.mode);
+    asprintf(&name, "raft::disk::%s::%s::%zu", DiskEngineName(opts.engine),
+             DiskModeName(opts.mode), opts.buf);
+    assert(name != NULL);
+
+    benchmark = ReportGrow(report, name);
+
+    rv = writeFile(&opts, benchmark);
     if (rv != 0) {
         goto err;
     }
