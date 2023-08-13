@@ -272,6 +272,18 @@ int DiskWriteUsingUring(int fd,
         latencies[i] = TimerStop(&timer);
     }
 
+    rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);
+    if (rv != 0) {
+        fprintf(stderr, "Unable to unregister file!\n");
+        return -1;
+    }
+    rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_BUFFERS, NULL, 0);
+    if (rv != 0) {
+        fprintf(stderr, "Unable to unregister buffer: %d %d\n", rv, errno);
+        perror("io_uring_register");
+        return -1;
+    }
+
     close(_ring_fd);
 
     return 0;
