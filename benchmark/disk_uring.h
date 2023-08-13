@@ -1,0 +1,14 @@
+/* Sequential writes using io_uring. */
+
+#ifndef DISK_URING_H_
+#define DISK_URING_H_
+
+#include <stddef.h>
+#include <sys/uio.h>
+
+int DiskWriteUsingUring(int fd,
+                        struct iovec *iov,
+                        unsigned n,
+                        time_t *latencies);
+
+#endif /* DISK_URING_H_ */

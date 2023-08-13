@@ -34,7 +34,7 @@ coverage.info
 TAGS
 example/server
 example/cluster
-benchmark/os-disk-write
+benchmark/run
 tmp
 conftest*
 doc/build
