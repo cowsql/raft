@@ -261,7 +261,7 @@ benchmark_run_SOURCES = \
   benchmark/report.c \
   benchmark/run.c \
   benchmark/timer.c
-benchmark_run_LDFLAGS = -luring
+benchmark_run_LDFLAGS = -no-install
 
 endif # BENCHMARK_ENABLED
 
