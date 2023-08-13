@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <errno.h>
-#include <liburing.h>
 #include <linux/aio_abi.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/syscall.h>
