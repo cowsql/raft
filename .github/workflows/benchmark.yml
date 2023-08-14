@@ -35,4 +35,4 @@ jobs:
     - name: Benchmark with Bencher
       run: |
           bencher run --project raft \
-            "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536,262144 -m direct,buffered"
+            "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536 -m direct,buffered"
