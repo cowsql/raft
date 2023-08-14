@@ -8,7 +8,7 @@ static const char *engines[] = {[DISK_ENGINE_PWRITE] = "pwrite",
                                 NULL};
 
 static const char *modes[] =
-    {[DISK_MODE_BUFFERED] = "buffered", [DISK_MODE_DIRECT] = "direct", NULL};
+    {[DISK_MODE_BUFFER] = "buffer", [DISK_MODE_DIRECT] = "direct", NULL};
 
 int DiskEngineCode(const char *name)
 {

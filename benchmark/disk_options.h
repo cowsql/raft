@@ -9,7 +9,7 @@
 enum { DISK_ENGINE_PWRITE = 0, DISK_ENGINE_URING, DISK_ENGINE_KAIO };
 
 /* Disk I/O modes */
-enum { DISK_MODE_BUFFERED = 0, DISK_MODE_DIRECT };
+enum { DISK_MODE_BUFFER = 0, DISK_MODE_DIRECT };
 
 /* Options for the disk benchmark */
 struct diskOptions
