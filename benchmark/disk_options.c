@@ -2,13 +2,13 @@
 
 #include "disk_options.h"
 
-static const char *engines[] = {[DISK_ENGINE_PWRITEV2] = "pwritev2",
+static const char *engines[] = {[DISK_ENGINE_PWRITE] = "pwrite",
                                 [DISK_ENGINE_URING] = "uring",
                                 [DISK_ENGINE_KAIO] = "kaio",
                                 NULL};
 
 static const char *modes[] =
-    {[DISK_MODE_BUFFERED] = "buffered", [DISK_MODE_DIRECT] = "direct", NULL};
+    {[DISK_MODE_BUFFER] = "buffer", [DISK_MODE_DIRECT] = "direct", NULL};
 
 int DiskEngineCode(const char *name)
 {

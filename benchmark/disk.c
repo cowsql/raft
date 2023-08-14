@@ -12,7 +12,7 @@
 #include "disk_kaio.h"
 #include "disk_options.h"
 #include "disk_parse.h"
-#include "disk_pwritev2.h"
+#include "disk_pwrite.h"
 #include "disk_uring.h"
 #include "timer.h"
 
@@ -107,8 +107,8 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
     TimerStart(&timer);
 
     switch (opts->engine) {
-        case DISK_ENGINE_PWRITEV2:
-            rv = DiskWriteUsingPwritev2(fd, &iov, n, latencies);
+        case DISK_ENGINE_PWRITE:
+            rv = DiskWriteUsingPwrite(fd, &iov, n, latencies);
             break;
         case DISK_ENGINE_URING:
             rv = DiskWriteUsingUring(fd, &iov, n, latencies);
@@ -170,7 +170,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
             }
         }
 
-        rv = asprintf(&name, "disk::%s::%s::%zu", DiskEngineName(opts->engine),
+        rv = asprintf(&name, "disk:%s:%s:%zu", DiskEngineName(opts->engine),
                       DiskModeName(opts->mode), opts->buf);
         assert(rv > 0);
         assert(name != NULL);

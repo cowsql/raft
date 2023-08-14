@@ -15,8 +15,8 @@ static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
-    {"engine", 'e', "ENGINE", 0, "I/O engine to use: pwrite2 or uring", 0},
-    {"mode", 'm', "MODE", 0, "I/O mode: buffered or direct", 0},
+    {"engine", 'e', "ENGINE", 0, "I/O engine to use: pwrite, kaio or uring", 0},
+    {"mode", 'm', "MODE", 0, "I/O mode: buffer or direct", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
