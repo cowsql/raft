@@ -37,9 +37,4 @@ jobs:
     - name: Run benchmark and send results to Bencher
       run: |
           bencher run \
-            --if-branch "$GITHUB_REF_NAME" \
-            --else-if-branch "$GITHUB_BASE_REF" \
-            --else-if-branch main \
-            --err \
-            --github-actions ${{ secrets.GITHUB_TOKEN }} \
             "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536 -m direct,buffered"
