@@ -255,7 +255,7 @@ benchmark_run_SOURCES = \
   benchmark/disk_fs.c \
   benchmark/disk_options.c \
   benchmark/disk_parse.c \
-  benchmark/disk_pwritev2.c \
+  benchmark/disk_pwrite.c \
   benchmark/disk_uring.c \
   benchmark/disk_kaio.c \
   benchmark/report.c \

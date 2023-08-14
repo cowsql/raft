@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "disk_pwritev2.h"
+#include "disk_pwrite.h"
 #include "timer.h"
 
-static int writeWithPwriteV2(int fd, struct iovec *iov, unsigned i)
+static int writeWithPwrite(int fd, struct iovec *iov, unsigned i)
 {
     ssize_t rv;
     rv = pwritev2(fd, iov, 1, (off_t)(i * iov->iov_len), RWF_DSYNC);
@@ -18,10 +18,10 @@ static int writeWithPwriteV2(int fd, struct iovec *iov, unsigned i)
     return 0;
 }
 
-int DiskWriteUsingPwritev2(int fd,
-                           struct iovec *iov,
-                           unsigned n,
-                           time_t *latencies)
+int DiskWriteUsingPwrite(int fd,
+                         struct iovec *iov,
+                         unsigned n,
+                         time_t *latencies)
 {
     struct timer timer;
     unsigned i;
@@ -29,7 +29,7 @@ int DiskWriteUsingPwritev2(int fd,
 
     for (i = 0; i < n; i++) {
         TimerStart(&timer);
-        rv = writeWithPwriteV2(fd, iov, i);
+        rv = writeWithPwrite(fd, iov, i);
         if (rv != 0) {
             return -1;
         }

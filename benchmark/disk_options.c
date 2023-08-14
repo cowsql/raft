@@ -2,7 +2,7 @@
 
 #include "disk_options.h"
 
-static const char *engines[] = {[DISK_ENGINE_PWRITEV2] = "pwritev2",
+static const char *engines[] = {[DISK_ENGINE_PWRITE] = "pwrite",
                                 [DISK_ENGINE_URING] = "uring",
                                 [DISK_ENGINE_KAIO] = "kaio",
                                 NULL};

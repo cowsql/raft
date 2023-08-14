@@ -35,4 +35,4 @@ jobs:
     - name: Run benchmark and send results to Bencher
       run: |
           bencher run --project raft --testbed github-ubuntu-22-04 \
-            "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536 -m direct,buffered"
+            "./benchmark/run disk -e uring,kaio,pwrite -b 4096,65536 -m direct,buffered"
