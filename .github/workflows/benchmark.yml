@@ -16,7 +16,7 @@ jobs:
     env:
       BENCHER_PROJECT: raft
       BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-      BENCHER_TESTBED: github-ubuntu-22.04
+      BENCHER_TESTBED: github-ubuntu-22-04
     steps:
     - uses: actions/checkout@v3
     - name: Setup dependencies
