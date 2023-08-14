@@ -34,10 +34,5 @@ jobs:
     - uses: bencherdev/bencher@v0.3.6
     - name: Benchmark with Bencher
       run: |
-          for engine in pwritev2 uring kaio; do
-            for buf in 4096 65536; do
-              for mode in buffered direct; do
-                ./benchmark/run disk -e $engine -b $buf -m $mode
-              done
-            done
-          done | bencher run --project raft
+          bencher run --project raft \
+            "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536,262144 -m direct,buffered"
