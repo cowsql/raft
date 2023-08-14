@@ -81,9 +81,11 @@ int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
     unsigned i;
     int rv;
 
+    memset(&ctx, 0, sizeof ctx);
+
     rv = io_setup(1, &ctx);
     if (rv != 0) {
-        fprintf(stderr, "io_setup: %s\n", strerror(rv));
+        perror("io_setup");
         return -1;
     }
 
@@ -98,7 +100,7 @@ int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
 
     rv = io_destroy(ctx);
     if (rv != 0) {
-        fprintf(stderr, "io_destroy: %s\n", strerror(rv));
+        perror("io_destroy");
         return -1;
     }
 
