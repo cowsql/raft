@@ -45,6 +45,7 @@ static int writeWithKaio(int fd, struct iovec *iov, unsigned i)
     int rv;
 
     memset(&iocb1, 0, sizeof iocb1);
+    memset(&iocb2, 0, sizeof iocb2);
 
     iocb1.aio_fildes = (uint32_t)fd;
     iocb1.aio_lio_opcode = IOCB_CMD_PWRITEV;
@@ -61,12 +62,15 @@ static int writeWithKaio(int fd, struct iovec *iov, unsigned i)
 
     rv = io_submit(ctx, 2, iocbs);
     if (rv != 2) {
-        printf("io_submit: %s\n", strerror(rv));
+        fprintf(stderr, "io_submit: %s\n", strerror(rv));
         return -1;
     }
 
     rv = io_getevents(ctx, 2, 2, events, NULL);
-    assert(rv == 2);
+    if (rv != 2) {
+        fprintf(stderr, "io_getevents: %s\n", strerror(rv));
+        return -1;
+    }
 
     return 0;
 }
@@ -78,7 +82,10 @@ int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
     int rv;
 
     rv = io_setup(1, &ctx);
-    assert(rv == 0);
+    if (rv != 0) {
+        fprintf(stderr, "io_setup: %s\n", strerror(rv));
+        return -1;
+    }
 
     for (i = 0; i < n; i++) {
         TimerStart(&timer);
@@ -90,7 +97,10 @@ int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
     }
 
     rv = io_destroy(ctx);
-    assert(rv == 0);
+    if (rv != 0) {
+        fprintf(stderr, "io_destroy: %s\n", strerror(rv));
+        return -1;
+    }
 
     return 0;
 }
