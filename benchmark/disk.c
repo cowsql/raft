@@ -170,9 +170,8 @@ int DiskRun(int argc, char *argv[], struct report *report)
             }
         }
 
-        rv = asprintf(&name, "raft::disk::%s::%s::%zu",
-                      DiskEngineName(opts->engine), DiskModeName(opts->mode),
-                      opts->buf);
+        rv = asprintf(&name, "disk::%s::%s::%zu", DiskEngineName(opts->engine),
+                      DiskModeName(opts->mode), opts->buf);
         assert(rv > 0);
         assert(name != NULL);
 
