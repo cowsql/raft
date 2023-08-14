@@ -142,41 +142,49 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
 int DiskRun(int argc, char *argv[], struct report *report)
 {
-    struct diskOptions opts;
+    struct diskMatrix matrix;
     char *name;
     struct benchmark *benchmark;
     struct stat st;
+    unsigned i;
     int rv;
 
-    DiskParse(argc, argv, &opts);
+    DiskParse(argc, argv, &matrix);
 
-    rv = stat(opts.dir, &st);
-    if (rv != 0) {
-        printf("stat '%s': %s\n", opts.dir, strerror(errno));
-        goto err;
-    }
+    for (i = 0; i < matrix.n_opts; i++) {
+        struct diskOptions *opts = &matrix.opts[i];
 
-    assert(opts.buf != 0);
-    assert(opts.mode >= 0);
+        rv = stat(opts->dir, &st);
+        if (rv != 0) {
+            printf("stat '%s': %s\n", opts->dir, strerror(errno));
+            goto err;
+        }
 
-    if (opts.mode == DISK_MODE_DIRECT) {
-        rv = DiskFsCheckDirectIO(opts.dir, opts.buf);
+        assert(opts->buf != 0);
+        assert(opts->mode >= 0);
+
+        if (opts->mode == DISK_MODE_DIRECT) {
+            rv = DiskFsCheckDirectIO(opts->dir, opts->buf);
+            if (rv != 0) {
+                goto err;
+            }
+        }
+
+        rv = asprintf(&name, "raft::disk::%s::%s::%zu",
+                      DiskEngineName(opts->engine), DiskModeName(opts->mode),
+                      opts->buf);
+        assert(rv > 0);
+        assert(name != NULL);
+
+        benchmark = ReportGrow(report, name);
+
+        rv = writeFile(opts, benchmark);
         if (rv != 0) {
             goto err;
         }
     }
 
-    rv = asprintf(&name, "raft::disk::%s::%s::%zu", DiskEngineName(opts.engine),
-                  DiskModeName(opts.mode), opts.buf);
-    assert(rv > 0);
-    assert(name != NULL);
-
-    benchmark = ReportGrow(report, name);
-
-    rv = writeFile(&opts, benchmark);
-    if (rv != 0) {
-        goto err;
-    }
+    free(matrix.opts);
 
     return 0;
 

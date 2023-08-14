@@ -5,7 +5,14 @@
 
 #include "disk_options.h"
 
+/* Array of all options combination to run. */
+struct diskMatrix
+{
+    struct diskOptions *opts;
+    unsigned n_opts;
+};
+
 /* Parse the given command line arguments. */
-void DiskParse(int argc, char *argv[], struct diskOptions *opts);
+void DiskParse(int argc, char *argv[], struct diskMatrix *matrix);
 
 #endif /* DISK_ARGS_H_ */
