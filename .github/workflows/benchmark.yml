@@ -14,9 +14,7 @@ jobs:
     name: Disk performance
     runs-on: ubuntu-22.04
     env:
-      BENCHER_PROJECT: raft
       BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-      BENCHER_TESTBED: github-ubuntu-22-04
     steps:
     - uses: actions/checkout@v3
     - name: Setup dependencies
@@ -36,5 +34,5 @@ jobs:
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark and send results to Bencher
       run: |
-          bencher run \
+          bencher run --project raft \
             "./benchmark/run disk -e uring,kaio,pwritev2 -b 4096,65536 -m direct,buffered"
