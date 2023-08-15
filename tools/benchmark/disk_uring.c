@@ -1,3 +1,7 @@
+#include <stdio.h>
+
+#include "disk_uring.h"
+
 #if defined(HAVE_LINUX_IO_URING_H)
 
 #include <assert.h>
@@ -6,7 +10,6 @@
 #include <linux/fs.h>
 #include <linux/io_uring.h>
 #include <stdatomic.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -16,7 +19,6 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "disk_uring.h"
 #include "timer.h"
 
 #define QUEUE_DEPTH 2
