@@ -50,5 +50,8 @@ jobs:
         clientsecret: ${{secrets.BMI_CLIENT_SECRET_TOKEN}}
         hostname: "bmc"
         image: "ubuntu/jammy"
-        location: "PHX"
+        location: "ASH"
         type: "s1.c1.medium"
+
+    - name: Grab server
+      run: echo id=${{steps.createserver.outputs.id}} addr=${{steps.createserver.outputs.ipaddresses}}
