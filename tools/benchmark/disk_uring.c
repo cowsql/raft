@@ -1,3 +1,5 @@
+#if defined(HAVE_LINUX_IO_URING_H)
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -288,3 +290,20 @@ int DiskWriteUsingUring(int fd,
 
     return 0;
 }
+
+#else /* HAVE_LINUX_IO_URING_H */
+
+int DiskWriteUsingUring(int fd,
+                        struct iovec *iov,
+                        unsigned n,
+                        time_t *latencies)
+{
+    (void)fd;
+    (void)iov;
+    (void)n;
+    (void)latencies;
+    fprintf(stderr, "io_uring not available\n");
+    return -1;
+}
+
+#endif /* HAVE_LINUX_IO_URING_H */
