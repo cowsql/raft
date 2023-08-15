@@ -52,6 +52,3 @@ jobs:
         image: "ubuntu/jammy"
         location: "PHX"
         type: "s1.c1.medium"
-
-    - name: Grab server
-      run: echo id=${{steps.createserver.outputs.id}} addr=${{steps.createserver.outputs.ipaddresses}}
