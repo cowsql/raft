@@ -34,7 +34,7 @@ coverage.info
 TAGS
 example/server
 example/cluster
-benchmark/run
+tools/raft-benchmark
 tmp
 conftest*
 doc/build
