@@ -48,8 +48,10 @@ jobs:
       with:
         clientid: ${{secrets.BMC_CLIENT_ID_TOKEN}}
         clientsecret: ${{secrets.BMI_CLIENT_SECRET_TOKEN}}
+        installDefaultSshKeys: true
         hostname: "bmc"
         image: "ubuntu/jammy"
         location: "PHX"
         type: "s1.c1.medium"
-    - run: echo id=${{steps.createserver.outputs.id}} addr=${{steps.createserver.outputs.ipaddresses}}
+    - name: Grab server
+      run: echo id=${{steps.createserver.outputs.id}} addr=${{steps.createserver.outputs.ipaddresses}}
