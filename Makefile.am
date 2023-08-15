@@ -248,20 +248,20 @@ endif # EXAMPLE_ENABLED
 if BENCHMARK_ENABLED
 
 bin_PROGRAMS += \
- benchmark/run
+  tools/raft-benchmark
 
-benchmark_run_SOURCES = \
-  benchmark/disk.c \
-  benchmark/disk_fs.c \
-  benchmark/disk_options.c \
-  benchmark/disk_parse.c \
-  benchmark/disk_pwrite.c \
-  benchmark/disk_uring.c \
-  benchmark/disk_kaio.c \
-  benchmark/report.c \
-  benchmark/run.c \
-  benchmark/timer.c
-benchmark_run_LDFLAGS = -no-install
+tools_raft_benchmark_SOURCES = \
+  tools/benchmark/disk.c \
+  tools/benchmark/disk_fs.c \
+  tools/benchmark/disk_options.c \
+  tools/benchmark/disk_parse.c \
+  tools/benchmark/disk_pwrite.c \
+  tools/benchmark/disk_uring.c \
+  tools/benchmark/disk_kaio.c \
+  tools/benchmark/main.c \
+  tools/benchmark/report.c \
+  tools/benchmark/timer.c
+tools_raft_benchmark_LDFLAGS =
 
 endif # BENCHMARK_ENABLED
 

@@ -29,10 +29,10 @@ jobs:
 
     - name: Build
       run: |
-          make benchmark/run -j$(nproc --all)
+          make tools/raft-benchmark -j$(nproc --all)
 
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark and send results to Bencher
       run: |
           bencher run --project raft --testbed github-ubuntu-22-04 \
-            "./benchmark/run disk -e uring,kaio,pwrite -b 4096,65536 -m direct,buffer"
+            "./tools/raft-benchmark disk -e uring,kaio,pwrite -b 4096,65536 -m direct,buffer"
