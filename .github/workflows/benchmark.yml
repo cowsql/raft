@@ -43,7 +43,7 @@ jobs:
       BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
     steps:
     - name: Deploy BMC server
-      uses: phoenixnap-github-actions/create-server-bmc
+      uses: phoenixnap-github-actions/create-server-bmc@v1
       id: createserver
       with:
         clientid: ${{secrets.BMC_CLIENT_ID_TOKEN}}
