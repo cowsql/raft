@@ -10,7 +10,7 @@ on:
     - cron: '12 3 * * *'
 
 jobs:
-  bencher:
+  github:
     name: Disk performance
     runs-on: ubuntu-22.04
     env:
@@ -36,3 +36,15 @@ jobs:
       run: |
           bencher run --project raft --testbed github-ubuntu-22-04 \
             "./tools/raft-benchmark disk -e uring,kaio,pwrite -b 4096,65536 -m direct,buffer"
+  bmc:
+  - name: Deploy BMC server
+    uses: phoenixnap-github-actions/create-server-bmc
+    id: createserver
+    with:
+      clientid: ${{secrets.BMC_CLIENT_ID_TOKEN}}
+      clientsecret: ${{secrets.BMC_CLIENT_SECRET_TOKEN}}
+      hostname: "bmc"
+      image: "ubuntu/jammy"
+      location: "PHX"
+      type: "s1.c1.medium"
+      description: "This server is created using GitHub Actions."
