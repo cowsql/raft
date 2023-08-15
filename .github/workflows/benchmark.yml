@@ -47,7 +47,7 @@ jobs:
       id: createserver
       with:
         clientid: ${{secrets.BMC_CLIENT_ID_TOKEN}}
-        clientsecret: ${{secrets.BMC_CLIENT_SECRET_TOKEN}}
+        clientsecret: ${{secrets.BMI_CLIENT_SECRET_TOKEN}}
         hostname: "bmc"
         image: "ubuntu/jammy"
         location: "PHX"
