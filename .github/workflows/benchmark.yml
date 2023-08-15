@@ -6,52 +6,154 @@ on:
       name:
         description: "Push name"
         default: "Bencher push"
-#  schedule:
-#    - cron: '12 3 * * *'
+  schedule:
+    - cron: '12 4 * * *'
 
 jobs:
-  bencher:
-    name: Disk performance
+  github:
+    name: On GitHub
     runs-on: ubuntu-22.04
-    env:
-      BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
     steps:
     - uses: actions/checkout@v3
     - name: Setup dependencies
       run: |
+          sudo add-apt-repository ppa:cowsql/main -y
           sudo apt-get update -qq
-          sudo apt-get install -qq linux-libc-dev libuv1-dev
-
-    - name: Configure
-      run: |
-          autoreconf -i
-          ./configure --enable-benchmark --enable-debug --without-lz4
-
-    - name: Build
-      run: |
-          make tools/raft-benchmark -j$(nproc --all)
-
+          sudo apt-get install -qq -y libraft-tools
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark and send results to Bencher
+      env:
+        BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        BENCHER_TESTBED: github-ubuntu-22-04
+        ENGINES: pwrite,kaio,uring
+        MODES: direct,buffer
+        BUFSIZES: 4096,65536
       run: |
-          bencher run --project raft --testbed github-ubuntu-22-04 \
-            "./tools/raft-benchmark disk -e uring,kaio,pwrite -b 4096,65536 -m direct,buffer"
-  bmc:
-    name: Run benchmarks on BMC
+          bencher run --project raft --testbed $BENCHER_TESTBED \
+            "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
+
+  bmc-deploy:
+    name: On BMC - deploy
     runs-on: ubuntu-22.04
-    env:
-      BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+    outputs:
+      id: ${{ steps.create.outputs.id }}
+      address: ${{ steps.wait.outputs.address}}
     steps:
-    - name: Deploy BMC server
+    - name: Create
       uses: phoenixnap-github-actions/create-server-bmc@v1
-      id: createserver
+      id: create
       with:
-        clientid: ${{secrets.BMC_CLIENT_ID_TOKEN}}
-        clientsecret: ${{secrets.BMI_CLIENT_SECRET_TOKEN}}
+        clientid: ${{secrets.BMC_CLIENT_ID}}
+        clientsecret: ${{secrets.BMC_CLIENT_SECRET}}
         hostname: "bmc"
         image: "ubuntu/jammy"
         location: "ASH"
         type: "s1.c1.medium"
+    - name: Wait
+      id: wait
+      env:
+        ID: ${{ steps.create.outputs.id }}
+        AUTH_URL: https://auth.phoenixnap.com/auth/realms/BMC/protocol/openid-connect/token
+        API_URL: https://api.phoenixnap.com/bmc/v1/servers
+        CLIENT_ID: ${{secrets.BMC_CLIENT_ID}}
+        CLIENT_SECRET: ${{secrets.BMC_CLIENT_SECRET}}
+      run: |
+        for i in $(seq 30); do
+            DATA="client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials"
+            ACCESS_TOKEN=$(curl -s -X POST -d "${DATA}" ${AUTH_URL} | jq -r .access_token)
+            HEADER="Authorization: Bearer ${ACCESS_TOKEN}"
+            STATUS=$(curl -s -H "${HEADER}" ${API_URL}/${ID}/ | jq -r .status)
+            echo status: $STATUS
+            if [ "$STATUS" = "powered-on" ]; then
+               break
+            fi
+            sleep 60
+        done
+        ADDR=$(curl -s -H "${HEADER}" ${API_URL}/${ID}/ | jq -r .publicIpAddresses[0])
+        echo "address=$ADDR" >> $GITHUB_OUTPUT
 
-    - name: Grab server
-      run: echo id=${{steps.createserver.outputs.id}} addr=${{steps.createserver.outputs.ipaddresses}}
+  bmc-run:
+    name: On BMC - run
+    strategy:
+      max-parallel: 1
+      matrix:
+        filesystem:
+          - ext4
+          - btrfs
+          - xfs
+          - zfs
+    runs-on: ubuntu-22.04
+    needs: bmc-deploy
+    env:
+      FILESYSTEM: ${{ matrix.filesystem }}
+      SSH: "ssh -o StrictHostKeyChecking=no -i ~/.ssh/bmc ubuntu@${{ needs.bmc-deploy.outputs.address}}"
+    steps:
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh/
+        echo "${{secrets.BMC_SSH_KEY}}" > ~/.ssh/bmc
+        chmod 600 ~/.ssh/bmc
+    - name: Setup device
+      run: |
+        device=/dev/nvme1n1
+        partition=${device}p1
+        $SSH sudo add-apt-repository ppa:cowsql/main -y
+        $SSH sudo apt-get update -qq
+        $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux nvme-cli
+        $SSH sudo nvme list
+        $SSH sudo parted "${device}" --script mklabel gpt
+        $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
+        $SSH sudo partprobe
+        case $FILESYSTEM in
+          ext4)
+            $SSH sudo mkfs.ext4 -F "${partition}"
+            $SSH sudo mount "${partition}" /mnt
+            ;;
+          btrfs)
+            $SSH sudo mkfs.btrfs -f "${partition}"
+            $SSH sudo mount "${partition}" /mnt
+            ;;
+          xfs)
+            $SSH sudo mkfs.xfs -f "${partition}"
+            $SSH sudo mount "${partition}" /mnt
+            ;;
+          zfs)
+            $SSH sudo zpool create -f cowsql "${partition}"
+            $SSH sudo zfs create -o mountpoint=/mnt cowsql/zfs
+            ;;
+          *)
+            echo "error: unknown filesystem $filesystem"
+            exit 1
+            ;;
+        esac
+        $SSH sudo chown ubuntu /mnt
+    - uses: bencherdev/bencher@v0.3.6
+    - name: Run benchmark
+      env:
+        BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        BENCHER_TESTBED: bmc-s1-c1-medium-${{ matrix.filesystem }}
+        ENGINES: pwrite,kaio,uring
+        MODES: direct,buffer
+        BUFSIZES: 4096,65536,262144,1048576
+      run: |
+          bencher run --project raft --testbed ${BENCHER_TESTBED} \
+            "$SSH raft-benchmark disk -d /mnt -e $ENGINES -m $MODES -b $BUFSIZES"
+    - name: Cleanup
+      run: |
+        $SSH sudo umount /mnt
+        if [ "$FILESYSTEM" = "zfs" ]; then
+            $SSH sudo zpool destroy -f cowsql
+        fi
+
+  bmc-delete:
+    name: On BMC - delete
+    runs-on: ubuntu-22.04
+    if: ${{ always() }}
+    needs: [bmc-deploy, bmc-run]
+    steps:
+    - name: Delete
+      uses: phoenixnap-github-actions/delete-server-bmc@v1
+      with:
+        clientid: ${{secrets.BMC_CLIENT_ID}}
+        clientsecret: ${{secrets.BMC_CLIENT_SECRET}}
+        serverid: ${{ needs.bmc-deploy.outputs.id}}
