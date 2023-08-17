@@ -97,13 +97,12 @@ jobs:
       run: |
         device=/dev/nvme1n1
         partition=${device}p1
-        $SSH sudo add-apt-repository ppa:cowsql/main -y
-        $SSH sudo apt-get update -qq
-        $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux nvme-cli
-        $SSH sudo nvme list
         $SSH sudo parted "${device}" --script mklabel gpt
         $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
         $SSH sudo partprobe
+        $SSH sudo add-apt-repository ppa:cowsql/main -y
+        $SSH sudo apt-get update -qq
+        $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux
         case $FILESYSTEM in
           ext4)
             $SSH sudo mkfs.ext4 -F "${partition}"
