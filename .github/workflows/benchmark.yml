@@ -96,6 +96,9 @@ jobs:
     - name: Setup device
       run: |
         device=/dev/nvme1n1
+        if $SSH sudo lsblk /dev/nvme1n1 -n -o MOUNTPOINTS | grep -q -e ^/$; then
+            device=/dev/nvme0n1
+        if
         partition=${device}p1
         $SSH sudo lsblk
         $SSH sudo parted "${device}" --script mklabel gpt
