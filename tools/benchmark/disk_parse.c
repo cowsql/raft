@@ -6,6 +6,8 @@
 #include "disk.h"
 #include "disk_parse.h"
 
+#define MEGABYTE (1024 * 1024)
+
 static char doc[] =
     "Benchmark sequential write performance\n\n"
     "Each option can be passed multiple comma-separated arguments.\n";
@@ -117,32 +119,18 @@ static void optionsInit(struct diskOptions *opts)
 {
     opts->dir = ".";
     opts->buf = 4096;
-    opts->size = 8 * 1024 * 1024;
+    opts->size = 8 * MEGABYTE;
     opts->engine = DISK_ENGINE_URING;
     opts->mode = DISK_MODE_DIRECT;
 }
 
-void DiskParse(int argc, char *argv[], struct diskMatrix *matrix)
+static void optionsCheck(struct diskOptions *opts)
 {
-    struct diskOptions *opts;
-
-    matrix->opts = malloc(sizeof *matrix->opts);
-    assert(matrix->opts != NULL);
-    matrix->n_opts = 1;
-
-    opts = matrix->opts;
-    optionsInit(opts);
-
-    argv[0] = "benchmark/run disk";
-    argp_parse(&argp, argc, argv, 0, 0, matrix);
-
-    return;
-
-    if (opts->buf == 0) {
+    if (opts->buf == 0 || opts->buf > MEGABYTE) {
         printf("Invalid buffer size %zu\n", opts->buf);
         exit(1);
     }
-    if (opts->size == 0 || opts->size % opts->buf != 0) {
+    if (opts->size == 0 || opts->size % MEGABYTE != 0) {
         printf("Invalid file size %u\n", opts->size);
         exit(1);
     }
@@ -153,5 +141,23 @@ void DiskParse(int argc, char *argv[], struct diskMatrix *matrix)
     if (opts->mode == -1) {
         printf("Invalid mode\n");
         exit(1);
+    }
+}
+
+void DiskParse(int argc, char *argv[], struct diskMatrix *matrix)
+{
+    unsigned i;
+
+    matrix->opts = malloc(sizeof *matrix->opts);
+    assert(matrix->opts != NULL);
+    matrix->n_opts = 1;
+
+    optionsInit(&matrix->opts[0]);
+
+    argv[0] = "benchmark/run disk";
+    argp_parse(&argp, argc, argv, 0, 0, matrix);
+
+    for (i = 0; i < matrix->n_opts; i++) {
+        optionsCheck(&matrix->opts[i]);
     }
 }
