@@ -16,6 +16,12 @@
 #include "disk_uring.h"
 #include "timer.h"
 
+/* Use the 0.50 percentile for reports. See:
+ *
+ * https://www.elastic.co/blog/averages-can-dangerous-use-percentile
+ */
+#define PERCENTILE 0.50
+
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
 {
@@ -31,36 +37,29 @@ static void allocBuffer(struct iovec *iov, size_t size)
     }
 }
 
+static int compareLatencies(const void *a, const void *b)
+{
+    const time_t *ta = (const time_t *)a;
+    const time_t *tb = (const time_t *)b;
+
+    return (*ta > *tb) - (*ta < *tb);
+}
+
 static void reportLatency(struct benchmark *benchmark,
                           time_t *latencies,
                           unsigned n)
 {
     struct metric *m;
-    double total = 0;
     unsigned i;
 
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
 
-    for (i = 0; i < n; i++) {
-        double value = (double)latencies[i];
+    qsort(latencies, n, sizeof *latencies, compareLatencies);
+    i = (unsigned)((double)(n)*PERCENTILE);
 
-        if (i == 0) {
-            m->lower_bound = value;
-            m->upper_bound = value;
-        }
-
-        if (value < m->lower_bound) {
-            m->lower_bound = value;
-        }
-
-        if (value > m->upper_bound) {
-            m->upper_bound = value;
-        }
-
-        total += value;
-    }
-
-    m->value = total / n; /* Average latency */
+    m->value = (double)latencies[i];
+    m->lower_bound = (double)latencies[0];
+    m->upper_bound = (double)latencies[n - 1];
 }
 
 static void reportThroughput(struct benchmark *benchmark,
