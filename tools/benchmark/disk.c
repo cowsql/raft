@@ -16,12 +16,6 @@
 #include "disk_uring.h"
 #include "timer.h"
 
-/* Use the 0.50 percentile for reports. See:
- *
- * https://www.elastic.co/blog/averages-can-dangerous-use-percentile
- */
-#define PERCENTILE 0.50
-
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
 {
@@ -37,29 +31,13 @@ static void allocBuffer(struct iovec *iov, size_t size)
     }
 }
 
-static int compareLatencies(const void *a, const void *b)
-{
-    const time_t *ta = (const time_t *)a;
-    const time_t *tb = (const time_t *)b;
-
-    return (*ta > *tb) - (*ta < *tb);
-}
-
 static void reportLatency(struct benchmark *benchmark,
                           time_t *latencies,
                           unsigned n)
 {
     struct metric *m;
-    unsigned i;
-
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
-
-    qsort(latencies, n, sizeof *latencies, compareLatencies);
-    i = (unsigned)((double)(n)*PERCENTILE);
-
-    m->value = (double)latencies[i];
-    m->lower_bound = (double)latencies[0];
-    m->upper_bound = (double)latencies[n - 1];
+    MetricFillLatency(m, latencies, n);
 }
 
 static void reportThroughput(struct benchmark *benchmark,
@@ -67,10 +45,9 @@ static void reportThroughput(struct benchmark *benchmark,
                              unsigned size)
 {
     struct metric *m;
-    double megabytes = (double)size / (1024 * 1024); /* N megabytes written */
-    double seconds = (double)duration / (1024 * 1024 * 1024);
+    unsigned megabytes = size / (1024 * 1024); /* N megabytes written */
     m = BenchmarkGrow(benchmark, METRIC_KIND_THROUGHPUT);
-    m->value = megabytes / seconds; /* Megabytes per second */
+    MetricFillThroughput(m, megabytes, duration);
 }
 
 /* Benchmark sequential write performance. */

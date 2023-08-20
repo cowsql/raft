@@ -3,6 +3,8 @@
 #ifndef REPORT_H_
 #define REPORT_H_
 
+#include <time.h>
+
 enum { METRIC_KIND_LATENCY = 0, METRIC_KIND_THROUGHPUT };
 
 struct metric
@@ -25,6 +27,14 @@ struct report
     struct benchmark **benchmarks;
     unsigned n_benchmarks;
 };
+
+/* Fill a metric object with a latency measurement, calculating the 50th
+ * percentile over the given samples. */
+void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples);
+
+/* Fill a metric object with a throughput measurement, given the number of total
+ * operations and their total duration. */
+void MetricFillThroughput(struct metric *m, unsigned n_ops, time_t duration);
 
 /* Add a new metric to a benchmark. */
 struct metric *BenchmarkGrow(struct benchmark *b, int kind);
