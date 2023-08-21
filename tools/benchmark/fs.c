@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/uio.h>
@@ -89,6 +90,29 @@ int FsCreateTempDir(const char *dir, char **path)
     if (*path == NULL) {
         return -1;
     }
+    return 0;
+}
+
+/* Wrapper around remove(), compatible with ntfw. */
+static int dirRemoveFn(const char *path,
+                       const struct stat *sbuf,
+                       int type,
+                       struct FTW *ftwb)
+{
+    (void)sbuf;
+    (void)type;
+    (void)ftwb;
+    return remove(path);
+}
+
+int FsRemoveTempDir(char *path)
+{
+    int rv;
+    rv = nftw(path, dirRemoveFn, 10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
+    if (rv != 0) {
+        return -1;
+    }
+    free(path);
     return 0;
 }
 

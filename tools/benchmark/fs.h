@@ -14,6 +14,9 @@ int FsRemoveTempFile(char *path, int fd);
 /* Create a temporary directory under the given dir. */
 int FsCreateTempDir(const char *dir, char **path);
 
+/* Recursively remove a temporary dir. */
+int FsRemoveTempDir(char *path);
+
 /* Check if direct I/O is available when writing to files in the given dir using
  * the given buffer size. */
 int FsCheckDirectIO(const char *dir, size_t buf);
