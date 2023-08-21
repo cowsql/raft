@@ -14,7 +14,7 @@
 /* Maximum physical block size for direct I/O that we expect to detect. */
 #define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
 
-static char *makeTempFileTemplate(const char *dir)
+static char *makeTempTemplate(const char *dir)
 {
     char *path;
     path = malloc(strlen(dir) + strlen("/bench-XXXXXX") + 1);
@@ -29,7 +29,7 @@ int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
     int flags = O_WRONLY | O_CREAT | O_EXCL;
     int rv;
 
-    *path = makeTempFileTemplate(dir);
+    *path = makeTempTemplate(dir);
     *fd = mkostemp(*path, flags);
     if (*fd == -1) {
         printf("mstemp '%s': %s\n", *path, strerror(errno));
@@ -77,6 +77,19 @@ int FsRemoveTempFile(char *path, int fd)
 out:
     free(path);
     return rv;
+}
+
+int FsCreateTempDir(const char *dir, char **path)
+{
+    *path = makeTempTemplate(dir);
+    if (*path == NULL) {
+        return -1;
+    }
+    *path = mkdtemp(*path);
+    if (*path == NULL) {
+        return -1;
+    }
+    return 0;
 }
 
 /* Detect all suitable block size we can use to write to the underlying device
