@@ -8,12 +8,12 @@
 #include <sys/types.h>
 
 #include "disk.h"
-#include "disk_fs.h"
 #include "disk_kaio.h"
 #include "disk_options.h"
 #include "disk_parse.h"
 #include "disk_pwrite.h"
 #include "disk_uring.h"
+#include "fs.h"
 #include "timer.h"
 
 /* Allocate a buffer of the given size. */
@@ -64,13 +64,13 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
     assert(opts->size % opts->buf == 0);
 
-    rv = DiskFsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
+    rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
     if (rv != 0) {
         return -1;
     }
 
     if (opts->mode == DISK_MODE_DIRECT) {
-        rv = DiskFsSetDirectIO(fd);
+        rv = FsSetDirectIO(fd);
         if (rv != 0) {
             return -1;
         }
@@ -108,7 +108,7 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
     reportThroughput(benchmark, duration, opts->size);
     free(latencies);
 
-    rv = DiskFsRemoveTempFile(path, fd);
+    rv = FsRemoveTempFile(path, fd);
     if (rv != 0) {
         return -1;
     }
@@ -140,7 +140,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
         assert(opts->mode >= 0);
 
         if (opts->mode == DISK_MODE_DIRECT) {
-            rv = DiskFsCheckDirectIO(opts->dir, opts->buf);
+            rv = FsCheckDirectIO(opts->dir, opts->buf);
             if (rv != 0) {
                 goto err;
             }
