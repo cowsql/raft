@@ -31,6 +31,8 @@ jobs:
       run: |
           bencher run --project raft --testbed $BENCHER_TESTBED \
             "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
+          bencher run --project raft --testbed $BENCHER_TESTBED \
+            "raft-benchmark submit"
 
   bmc-deploy:
     name: On BMC - deploy
@@ -140,6 +142,8 @@ jobs:
       run: |
           bencher run --project raft --testbed ${BENCHER_TESTBED} \
             "$SSH raft-benchmark disk -d /mnt -e $ENGINES -m $MODES -b $BUFSIZES"
+          bencher run --project raft --testbed ${BENCHER_TESTBED} \
+            "$SSH raft-benchmark submit -d /mnt"
     - name: Cleanup
       run: |
         $SSH sudo umount /mnt
