@@ -1,12 +1,13 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "disk_fs.h"
+#include "fs.h"
 
 /* Minimum physical block size for direct I/O that we expect to detect. */
 #define MIN_BLOCK_SIZE 512
@@ -14,7 +15,7 @@
 /* Maximum physical block size for direct I/O that we expect to detect. */
 #define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
 
-static char *makeTempFileTemplate(const char *dir)
+static char *makeTempTemplate(const char *dir)
 {
     char *path;
     path = malloc(strlen(dir) + strlen("/bench-XXXXXX") + 1);
@@ -23,13 +24,13 @@ static char *makeTempFileTemplate(const char *dir)
     return path;
 }
 
-int DiskFsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
+int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
     int dirfd;
     int flags = O_WRONLY | O_CREAT | O_EXCL;
     int rv;
 
-    *path = makeTempFileTemplate(dir);
+    *path = makeTempTemplate(dir);
     *fd = mkostemp(*path, flags);
     if (*fd == -1) {
         printf("mstemp '%s': %s\n", *path, strerror(errno));
@@ -59,7 +60,7 @@ int DiskFsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
     return 0;
 }
 
-int DiskFsRemoveTempFile(char *path, int fd)
+int FsRemoveTempFile(char *path, int fd)
 {
     int rv;
 
@@ -79,6 +80,42 @@ out:
     return rv;
 }
 
+int FsCreateTempDir(const char *dir, char **path)
+{
+    *path = makeTempTemplate(dir);
+    if (*path == NULL) {
+        return -1;
+    }
+    *path = mkdtemp(*path);
+    if (*path == NULL) {
+        return -1;
+    }
+    return 0;
+}
+
+/* Wrapper around remove(), compatible with ntfw. */
+static int dirRemoveFn(const char *path,
+                       const struct stat *sbuf,
+                       int type,
+                       struct FTW *ftwb)
+{
+    (void)sbuf;
+    (void)type;
+    (void)ftwb;
+    return remove(path);
+}
+
+int FsRemoveTempDir(char *path)
+{
+    int rv;
+    rv = nftw(path, dirRemoveFn, 10, FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
+    if (rv != 0) {
+        return -1;
+    }
+    free(path);
+    return 0;
+}
+
 /* Detect all suitable block size we can use to write to the underlying device
  * using direct I/O. */
 static int detectSuitableBlockSizesForDirectIO(const char *dir,
@@ -90,13 +127,13 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
     size_t size;
     ssize_t rv;
 
-    rv = DiskFsCreateTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
+    rv = FsCreateTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
     if (rv != 0) {
         unlink(path);
         return -1;
     }
 
-    rv = DiskFsSetDirectIO(fd);
+    rv = FsSetDirectIO(fd);
     if (rv != 0) {
         return -1;
     }
@@ -122,7 +159,7 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
         (*block_size)[*n_block_size - 1] = size;
     }
 
-    rv = DiskFsRemoveTempFile(path, fd);
+    rv = FsRemoveTempFile(path, fd);
     if (rv != 0) {
         return -1;
     }
@@ -130,7 +167,7 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
     return 0;
 }
 
-int DiskFsCheckDirectIO(const char *dir, size_t buf)
+int FsCheckDirectIO(const char *dir, size_t buf)
 {
     size_t *block_size;
     unsigned n_block_size;
@@ -159,7 +196,7 @@ err:
     return -1;
 }
 
-int DiskFsSetDirectIO(int fd)
+int FsSetDirectIO(int fd)
 {
     int flags; /* Current fcntl flags */
     int rv;

@@ -4,6 +4,12 @@
 
 #include "report.h"
 
+/* Use the 0.50 percentile for reports. See:
+ *
+ * https://www.elastic.co/blog/averages-can-dangerous-use-percentile
+ */
+#define PERCENTILE 0.50
+
 static void metricInit(struct metric *m, int kind)
 {
     m->kind = kind;
@@ -33,6 +39,31 @@ static void metricPrint(struct metric *m)
     printf("      \"lower_bound\": %f,\n", m->lower_bound);
     printf("      \"upper_bound\": %f\n", m->upper_bound);
     printf("    }");
+}
+
+static int compareLatencies(const void *a, const void *b)
+{
+    const time_t *ta = (const time_t *)a;
+    const time_t *tb = (const time_t *)b;
+
+    return (*ta > *tb) - (*ta < *tb);
+}
+
+void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples)
+{
+    unsigned i;
+    qsort(samples, n_samples, sizeof *samples, compareLatencies);
+    i = (unsigned)((double)(n_samples)*PERCENTILE);
+
+    m->value = (double)samples[i];
+    m->lower_bound = (double)samples[0];
+    m->upper_bound = (double)samples[n_samples - 1];
+}
+
+void MetricFillThroughput(struct metric *m, unsigned n_ops, time_t duration)
+{
+    double seconds = (double)duration / (1024 * 1024 * 1024);
+    m->value = (double)n_ops / seconds;
 }
 
 static void benchmarkInit(struct benchmark *b, char *name)

@@ -252,16 +252,19 @@ bin_PROGRAMS += \
 
 tools_raft_benchmark_SOURCES = \
   tools/benchmark/disk.c \
-  tools/benchmark/disk_fs.c \
   tools/benchmark/disk_options.c \
   tools/benchmark/disk_parse.c \
   tools/benchmark/disk_pwrite.c \
   tools/benchmark/disk_uring.c \
   tools/benchmark/disk_kaio.c \
+  tools/benchmark/fs.c \
   tools/benchmark/main.c \
   tools/benchmark/report.c \
+  tools/benchmark/submit_parse.c \
+  tools/benchmark/submit.c \
   tools/benchmark/timer.c
 tools_raft_benchmark_LDFLAGS =
+tools_raft_benchmark_LDADD = libraft.la $(UV_LIBS)
 
 endif # BENCHMARK_ENABLED
 

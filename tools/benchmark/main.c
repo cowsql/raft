@@ -4,14 +4,20 @@
 
 #include "disk.h"
 #include "report.h"
+#include "submit.h"
 
-enum { BENCHMARK_DISK = 0 };
+enum {
+    BENCHMARK_DISK = 0,
+    BENCHMARK_SUBMIT,
+};
 
 static const char *doc =
     "benchmarks:\n"
-    " - disk: Sequential disk writes\n";
+    " - disk: Sequential disk writes\n"
+    " - submit: Sequential submission of entries\n";
 
-static const char *benchmarks[] = {[BENCHMARK_DISK] = "disk", NULL};
+static const char *benchmarks[] =
+    {[BENCHMARK_DISK] = "disk", [BENCHMARK_SUBMIT] = "submit", NULL};
 
 int benchmarkCode(const char *name)
 {
@@ -49,6 +55,9 @@ int main(int argc, char *argv[])
     switch (cmd) {
         case BENCHMARK_DISK:
             rv = DiskRun(argc - 1, &argv[1], &report);
+            break;
+        case BENCHMARK_SUBMIT:
+            rv = SubmitRun(argc - 1, &argv[1], &report);
             break;
         default:
             assert(0);

@@ -27,10 +27,12 @@ jobs:
         BENCHER_TESTBED: github-ubuntu-22-04
         ENGINES: pwrite,kaio,uring
         MODES: direct,buffer
-        BUFSIZES: 4096,65536
+        BUFSIZES: 4096,8192,65536
       run: |
           bencher run --project raft --testbed $BENCHER_TESTBED \
             "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
+          bencher run --project raft --testbed $BENCHER_TESTBED \
+            "raft-benchmark submit"
 
   bmc-deploy:
     name: On BMC - deploy
@@ -136,10 +138,12 @@ jobs:
         BENCHER_TESTBED: bmc-s1-c1-medium-${{ matrix.filesystem }}
         ENGINES: pwrite,kaio,uring
         MODES: direct,buffer
-        BUFSIZES: 4096,65536,262144,1048576
+        BUFSIZES: 4096,8192,65536,262144
       run: |
           bencher run --project raft --testbed ${BENCHER_TESTBED} \
             "$SSH raft-benchmark disk -d /mnt -e $ENGINES -m $MODES -b $BUFSIZES"
+          bencher run --project raft --testbed ${BENCHER_TESTBED} \
+            "$SSH raft-benchmark submit -d /mnt"
     - name: Cleanup
       run: |
         $SSH sudo umount /mnt
