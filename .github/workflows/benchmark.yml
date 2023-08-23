@@ -157,7 +157,7 @@ jobs:
     - name: Cleanup
       run: |
           if [ $FILESYSTEM != raw ]; then
-            $SSH sudo umount $target
+            $SSH sudo umount ${{ steps.setup.outputs.target}}
             if [ "$FILESYSTEM" = "zfs" ]; then
               $SSH sudo zpool destroy -f cowsql
             fi
