@@ -115,6 +115,7 @@ jobs:
         fi
         partition=${device}p1
         target=/mnt
+        $SSH sudo apt-get install nvme-cli
         $SSH sudo nvme format --force --lbaf=1 "${device}"
         $SSH sudo parted "${device}" --script mklabel gpt
         $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
