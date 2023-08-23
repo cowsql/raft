@@ -51,10 +51,13 @@ static void reportThroughput(struct benchmark *benchmark,
 }
 
 /* Benchmark sequential write performance. */
-static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
+static int writeFile(struct diskOptions *opts,
+                     bool raw,
+                     struct benchmark *benchmark)
 {
     struct timer timer;
     struct iovec iov;
+    struct stat st;
     char *path;
     int fd;
     time_t *latencies;
@@ -64,7 +67,17 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
     assert(opts->size % opts->buf == 0);
 
-    rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
+    rv = stat(opts->dir, &st);
+    if (rv != 0) {
+        printf("stat '%s': %s\n", opts->dir, strerror(errno));
+        return -1;
+    }
+
+    if (raw) {
+        rv = FsOpenBlockDevice(opts->dir, &fd);
+    } else {
+        rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
+    }
     if (rv != 0) {
         return -1;
     }
@@ -108,9 +121,11 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
     reportThroughput(benchmark, duration, opts->size);
     free(latencies);
 
-    rv = FsRemoveTempFile(path, fd);
-    if (rv != 0) {
-        return -1;
+    if (!raw) {
+        rv = FsRemoveTempFile(path, fd);
+        if (rv != 0) {
+            return -1;
+        }
     }
 
     return 0;
@@ -119,9 +134,6 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskMatrix matrix;
-    char *name;
-    struct benchmark *benchmark;
-    struct stat st;
     unsigned i;
     int rv;
 
@@ -129,6 +141,10 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     for (i = 0; i < matrix.n_opts; i++) {
         struct diskOptions *opts = &matrix.opts[i];
+        struct benchmark *benchmark;
+        struct stat st;
+        bool raw = false; /* Raw I/O directly on a block device */
+        char *name;
 
         rv = stat(opts->dir, &st);
         if (rv != 0) {
@@ -136,10 +152,14 @@ int DiskRun(int argc, char *argv[], struct report *report)
             goto err;
         }
 
+        if ((st.st_mode & S_IFMT) == S_IFBLK) {
+            raw = true;
+        }
+
         assert(opts->buf != 0);
         assert(opts->mode >= 0);
 
-        if (opts->mode == DISK_MODE_DIRECT) {
+        if (!raw && opts->mode == DISK_MODE_DIRECT) {
             rv = FsCheckDirectIO(opts->dir, opts->buf);
             if (rv != 0) {
                 goto err;
@@ -153,7 +173,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
         benchmark = ReportGrow(report, name);
 
-        rv = writeFile(opts, benchmark);
+        rv = writeFile(opts, raw, benchmark);
         if (rv != 0) {
             goto err;
         }

@@ -84,6 +84,7 @@ jobs:
           - btrfs
           - xfs
           - zfs
+          - raw
     runs-on: ubuntu-22.04
     needs: bmc-deploy
     env:
@@ -102,6 +103,7 @@ jobs:
             device=/dev/nvme0n1
         fi
         partition=${device}p1
+        target=/mnt
         $SSH sudo parted "${device}" --script mklabel gpt
         $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
         $SSH sudo partprobe
@@ -111,26 +113,28 @@ jobs:
         case $FILESYSTEM in
           ext4)
             $SSH sudo mkfs.ext4 -F "${partition}"
-            $SSH sudo mount "${partition}" /mnt
+            $SSH sudo mount "${partition}" "${target}"
             ;;
           btrfs)
             $SSH sudo mkfs.btrfs -f "${partition}"
-            $SSH sudo mount "${partition}" /mnt
+            $SSH sudo mount "${partition}" "${target}"
             ;;
           xfs)
             $SSH sudo mkfs.xfs -f "${partition}"
-            $SSH sudo mount "${partition}" /mnt
+            $SSH sudo mount "${partition}" "${target}"
             ;;
           zfs)
             $SSH sudo zpool create -f cowsql "${partition}"
-            $SSH sudo zfs create -o mountpoint=/mnt cowsql/zfs
+            $SSH sudo zfs create -o mountpoint="${target}" cowsql/zfs
+            ;;
+          raw)
             ;;
           *)
             echo "error: unknown filesystem $filesystem"
             exit 1
             ;;
         esac
-        $SSH sudo chown ubuntu /mnt
+        $SSH sudo chown ubuntu $target
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark
       env:
@@ -141,15 +145,19 @@ jobs:
         BUFSIZES: 4096,8192,65536,262144
       run: |
           bencher run --project raft --testbed ${BENCHER_TESTBED} \
-            "$SSH raft-benchmark disk -d /mnt -e $ENGINES -m $MODES -b $BUFSIZES"
-          bencher run --project raft --testbed ${BENCHER_TESTBED} \
-            "$SSH raft-benchmark submit -d /mnt"
+            "$SSH raft-benchmark disk -d $target -e $ENGINES -m $MODES -b $BUFSIZES"
+          if [ "$FILESYSTEM" != "raw" ]; then
+            bencher run --project raft --testbed ${BENCHER_TESTBED} \
+              "$SSH raft-benchmark submit -d $target"
+          fi
     - name: Cleanup
       run: |
-        $SSH sudo umount /mnt
-        if [ "$FILESYSTEM" = "zfs" ]; then
-            $SSH sudo zpool destroy -f cowsql
-        fi
+          if [ $FILESYSTEM != raw ]; then
+            $SSH sudo umount $target
+            if [ "$FILESYSTEM" = "zfs" ]; then
+              $SSH sudo zpool destroy -f cowsql
+            fi
+          fi
 
   bmc-delete:
     name: On BMC - delete
