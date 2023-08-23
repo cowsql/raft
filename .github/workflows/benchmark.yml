@@ -12,27 +12,33 @@ on:
 jobs:
   github:
     name: On GitHub
+    strategy:
+      matrix:
+        ppa:
+          - main
+          - stable
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
     - name: Setup dependencies
       run: |
-          sudo add-apt-repository ppa:cowsql/main -y
-          sudo apt-get update -qq
-          sudo apt-get install -qq -y libraft-tools
+        sudo add-apt-repository ppa:cowsql/${{ matrix.ppa }} -y
+        sudo apt-get update -qq
+        sudo apt-get install -qq -y libraft-tools
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark and send results to Bencher
       env:
         BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        BENCHER_BRANCH: ${{ matrix.ppa }}
         BENCHER_TESTBED: github-ubuntu-22-04
         ENGINES: pwrite,kaio,uring
         MODES: direct,buffer
         BUFSIZES: 4096,8192,65536
       run: |
-          bencher run --project raft --testbed $BENCHER_TESTBED \
-            "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
-          bencher run --project raft --testbed $BENCHER_TESTBED \
-            "raft-benchmark submit"
+        bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
+          "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
+        bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
+          "raft-benchmark submit"
 
   bmc-deploy:
     name: On BMC - deploy
@@ -85,10 +91,14 @@ jobs:
           - xfs
           - zfs
           - raw
+        ppa:
+          - main
+          - stable
     runs-on: ubuntu-22.04
     needs: bmc-deploy
     env:
       FILESYSTEM: ${{ matrix.filesystem }}
+      PPA: ${{ matrix.ppa }}
       SSH: "ssh -o StrictHostKeyChecking=no -i ~/.ssh/bmc ubuntu@${{ needs.bmc-deploy.outputs.address}}"
     steps:
     - name: Setup SSH key
@@ -108,7 +118,7 @@ jobs:
         $SSH sudo parted "${device}" --script mklabel gpt
         $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
         $SSH sudo partprobe
-        $SSH sudo add-apt-repository ppa:cowsql/main -y
+        $SSH sudo add-apt-repository -y ppa:cowsql/$PPA
         $SSH sudo apt-get update -qq
         $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux
         case $FILESYSTEM in
@@ -142,26 +152,29 @@ jobs:
     - name: Run benchmark
       env:
         BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        BENCHER_BRANCH: ${{ matrix.ppa }}
         BENCHER_TESTBED: bmc-s1-c1-medium-${{ matrix.filesystem }}
         ENGINES: pwrite,kaio,uring
         MODES: direct,buffer
         BUFSIZES: 4096,8192,65536,262144
         TARGET: ${{ steps.setup.outputs.target}}
       run: |
-          bencher run --project raft --testbed ${BENCHER_TESTBED} \
-            "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -m $MODES -b $BUFSIZES"
-          if [ "$FILESYSTEM" != "raw" ]; then
-            bencher run --project raft --testbed ${BENCHER_TESTBED} \
-              "$SSH raft-benchmark submit -d $TARGET"
-          fi
+        bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
+          "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -m $MODES -b $BUFSIZES"
+        if [ "$FILESYSTEM" != "raw" ]; then
+          bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
+            "$SSH raft-benchmark submit -d $TARGET"
+        fi
     - name: Cleanup
       run: |
-          if [ $FILESYSTEM != raw ]; then
-            $SSH sudo umount ${{ steps.setup.outputs.target}}
-            if [ "$FILESYSTEM" = "zfs" ]; then
-              $SSH sudo zpool destroy -f cowsql
-            fi
+        if [ $FILESYSTEM != raw ]; then
+          $SSH sudo umount ${{ steps.setup.outputs.target}}
+          if [ "$FILESYSTEM" = "zfs" ]; then
+            $SSH sudo zpool destroy -f cowsql
           fi
+        fi
+        $SSH sudo apt-get purge -y libraft-tools libraft2
+        $SSH sudo add-apt-repository -r -y ppa:cowsql/$PPA
 
   bmc-delete:
     name: On BMC - delete
