@@ -116,6 +116,16 @@ int FsRemoveTempDir(char *path)
     return 0;
 }
 
+int FsOpenBlockDevice(const char *dir, int *fd)
+{
+    *fd = open(dir, O_RDWR);
+    if (*fd == -1) {
+        printf("open '%s': %s\n", dir, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
 /* Detect all suitable block size we can use to write to the underlying device
  * using direct I/O. */
 static int detectSuitableBlockSizesForDirectIO(const char *dir,
