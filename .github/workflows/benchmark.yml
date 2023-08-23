@@ -97,6 +97,7 @@ jobs:
         echo "${{secrets.BMC_SSH_KEY}}" > ~/.ssh/bmc
         chmod 600 ~/.ssh/bmc
     - name: Setup device
+      id: setup
       run: |
         device=/dev/nvme1n1
         if $SSH sudo lsblk /dev/nvme1n1 -n -o MOUNTPOINTS | grep -q -e ^/$; then
@@ -128,6 +129,7 @@ jobs:
             $SSH sudo zfs create -o mountpoint="${target}" cowsql/zfs
             ;;
           raw)
+            target=$device
             ;;
           *)
             echo "error: unknown filesystem $filesystem"
@@ -135,6 +137,7 @@ jobs:
             ;;
         esac
         $SSH sudo chown ubuntu $target
+        echo "target=$target" >> $GITHUB_OUTPUT
     - uses: bencherdev/bencher@v0.3.6
     - name: Run benchmark
       env:
@@ -143,12 +146,13 @@ jobs:
         ENGINES: pwrite,kaio,uring
         MODES: direct,buffer
         BUFSIZES: 4096,8192,65536,262144
+        TARGET: ${{ steps.setup.outputs.target}}
       run: |
           bencher run --project raft --testbed ${BENCHER_TESTBED} \
-            "$SSH raft-benchmark disk -d $target -e $ENGINES -m $MODES -b $BUFSIZES"
+            "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -m $MODES -b $BUFSIZES"
           if [ "$FILESYSTEM" != "raw" ]; then
             bencher run --project raft --testbed ${BENCHER_TESTBED} \
-              "$SSH raft-benchmark submit -d $target"
+              "$SSH raft-benchmark submit -d $TARGET"
           fi
     - name: Cleanup
       run: |
