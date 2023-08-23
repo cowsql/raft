@@ -115,6 +115,7 @@ jobs:
         fi
         partition=${device}p1
         target=/mnt
+        $SSH sudo nvme format --force --lbaf=1 "${device}"
         $SSH sudo parted "${device}" --script mklabel gpt
         $SSH sudo parted -a optimal "${device}" --script mkpart primary ext4 2048 15GB
         $SSH sudo partprobe
@@ -123,15 +124,15 @@ jobs:
         $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux
         case $FILESYSTEM in
           ext4)
-            $SSH sudo mkfs.ext4 -F "${partition}"
+            $SSH sudo mkfs.ext4 -b 4096 -F "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
           btrfs)
-            $SSH sudo mkfs.btrfs -f "${partition}"
+            $SSH sudo mkfs.btrfs -s 4096 -f "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
           xfs)
-            $SSH sudo mkfs.xfs -f "${partition}"
+            $SSH sudo mkfs.xfs -b 4096 -f "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
           zfs)
