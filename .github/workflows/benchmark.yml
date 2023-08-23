@@ -133,7 +133,7 @@ jobs:
             $SSH sudo mount "${partition}" "${target}"
             ;;
           xfs)
-            $SSH sudo mkfs.xfs -b 4096 -f "${partition}"
+            $SSH sudo mkfs.xfs -b size=4096 -s size=4096 -f "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
           zfs)
