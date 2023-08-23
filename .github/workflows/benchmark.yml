@@ -85,15 +85,15 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
+        ppa:
+          - main
+          - stable
         filesystem:
           - ext4
           - btrfs
           - xfs
           - zfs
           - raw
-        ppa:
-          - main
-          - stable
     runs-on: ubuntu-22.04
     needs: bmc-deploy
     env:
