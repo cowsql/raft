@@ -119,9 +119,6 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskMatrix matrix;
-    char *name;
-    struct benchmark *benchmark;
-    struct stat st;
     unsigned i;
     int rv;
 
@@ -129,6 +126,9 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     for (i = 0; i < matrix.n_opts; i++) {
         struct diskOptions *opts = &matrix.opts[i];
+        struct benchmark *benchmark;
+        struct stat st;
+        char *name;
 
         rv = stat(opts->dir, &st);
         if (rv != 0) {
