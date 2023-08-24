@@ -31,6 +31,7 @@ struct server
     struct raft raft;
     struct raft_buffer buf;
     struct raft_apply req;
+    size_t size;
     char *path;
     unsigned i;
     unsigned n;
@@ -52,7 +53,8 @@ int serverInit(struct server *s,
     s->i = 0;
     s->n = opts->n;
     s->latencies = malloc(opts->n * sizeof *s->latencies);
-    s->buf.len = opts->size;
+    s->size = opts->size;
+    s->timer.data = s;
 
     rv = FsCreateTempDir(opts->dir, &s->path);
     if (rv != 0) {
@@ -145,6 +147,34 @@ static void serverTimerCb(uv_timer_t *timer)
     raft_close(&s->raft, raftCloseCb);
 }
 
+static void serverWaitOpenSegments(uv_timer_t *timer)
+{
+    struct server *s = timer->data;
+    bool exists;
+    int rv;
+
+    rv = FsFileExists(s->path, "open-1", &exists);
+    assert(rv == 0);
+    assert(exists);
+
+    rv = FsFileExists(s->path, "open-2", &exists);
+    assert(rv == 0);
+    if (!exists) {
+        return;
+    }
+
+    rv = FsFileExists(s->path, "open-3", &exists);
+    assert(rv == 0);
+    if (!exists) {
+        return;
+    }
+
+    uv_timer_stop(&s->timer);
+
+    rv = submitEntry(s);
+    assert(rv == 0);
+}
+
 static void submitEntryCb(struct raft_apply *req, int status, void *result)
 {
     struct server *s = req->data;
@@ -160,8 +190,14 @@ static void submitEntryCb(struct raft_apply *req, int status, void *result)
     s->latencies[s->i] = (time_t)uv_hrtime() - s->start;
 
     s->i++;
+
+    /* After the first write, wait for all open segments to be created. */
+    if (s->i == 1) {
+        uv_timer_start(&s->timer, serverWaitOpenSegments, 10, 10);
+        return;
+    }
+
     if (s->i == s->n) {
-        s->timer.data = s;
         /* Run raft_close in the next loop iteration, to avoid calling it from a
          * this commit callback, which triggers a bug in raft. */
         uv_timer_start(&s->timer, serverTimerCb, 125, 0);
@@ -181,6 +217,10 @@ static int submitEntry(struct server *s)
     s->start = (time_t)uv_hrtime();
     const struct raft_buffer *bufs = &s->buf;
 
+    s->buf.len = s->size - 8 /* CRC */ - 8 /* N entries */ - 16 /* header */;
+    if (s->i == 0) {
+        s->buf.len -= 8; /* segment format */
+    }
     s->buf.base = raft_malloc(s->buf.len);
     assert(s->buf.base != NULL);
 

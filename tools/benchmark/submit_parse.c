@@ -55,7 +55,7 @@ static void optionsInit(struct submitOptions *opts)
 
 static void optionsCheck(struct submitOptions *opts)
 {
-    if (opts->size == 0 || (opts->size % 2048) != 0) {
+    if (opts->size == 0 || (opts->size % 4096) != 0) {
         printf("Invalid buffer entry size %zu\n", opts->size);
         exit(1);
     }

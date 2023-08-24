@@ -177,6 +177,32 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
     return 0;
 }
 
+int FsFileExists(const char *dir, const char *name, bool *exists)
+{
+    char *path;
+    struct stat st;
+    int rv;
+
+    path = malloc(strlen(dir) + strlen(name) + 1 + 1);
+    assert(path != NULL);
+    sprintf(path, "%s/%s", dir, name);
+
+    rv = stat(path, &st);
+
+    free(path);
+
+    if (rv != 0) {
+        if (errno != ENOENT) {
+            return -1;
+        }
+        *exists = false;
+    } else {
+        *exists = true;
+    }
+
+    return 0;
+}
+
 int FsCheckDirectIO(const char *dir, size_t buf)
 {
     size_t *block_size;
