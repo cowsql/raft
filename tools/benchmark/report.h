@@ -47,10 +47,6 @@ void HistogramClose(struct histogram *h);
 /* Update the counter of the bucket associated with the given value. */
 void HistogramCount(struct histogram *h, unsigned long value);
 
-/* Fill a metric object with a latency measurement, calculating the 50th
- * percentile over the given samples. */
-void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples);
-
 /* Fill a metric object with a histogram-based measurement, calculating the 50th
  * percentile over the buckets. */
 void MetricFillHistogram(struct metric *m, struct histogram *h);

@@ -77,25 +77,6 @@ static void metricPrint(struct metric *m)
     printf("    }");
 }
 
-static int compareLatencies(const void *a, const void *b)
-{
-    const time_t *ta = (const time_t *)a;
-    const time_t *tb = (const time_t *)b;
-
-    return (*ta > *tb) - (*ta < *tb);
-}
-
-void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples)
-{
-    unsigned i;
-    qsort(samples, n_samples, sizeof *samples, compareLatencies);
-    i = (unsigned)((double)(n_samples)*PERCENTILE);
-
-    m->value = (double)samples[i];
-    m->lower_bound = (double)samples[0];
-    m->upper_bound = (double)samples[n_samples - 1];
-}
-
 void MetricFillHistogram(struct metric *m, struct histogram *h)
 {
     unsigned counter = 0;
