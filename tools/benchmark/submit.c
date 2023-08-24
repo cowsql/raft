@@ -31,6 +31,7 @@ struct server
     struct raft raft;
     struct raft_buffer buf;
     struct raft_apply req;
+    size_t size;
     char *path;
     unsigned i;
     unsigned n;
@@ -52,7 +53,7 @@ int serverInit(struct server *s,
     s->i = 0;
     s->n = opts->n;
     s->latencies = malloc(opts->n * sizeof *s->latencies);
-    s->buf.len = opts->size;
+    s->size = opts->size;
 
     rv = FsCreateTempDir(opts->dir, &s->path);
     if (rv != 0) {
@@ -181,6 +182,10 @@ static int submitEntry(struct server *s)
     s->start = (time_t)uv_hrtime();
     const struct raft_buffer *bufs = &s->buf;
 
+    s->buf.len = s->size - 8 /* CRC */ - 8 /* N entries */ - 16 /* header */;
+    if (s->i == 0) {
+        s->buf.len -= 8; /* segment format */
+    }
     s->buf.base = raft_malloc(s->buf.len);
     assert(s->buf.base != NULL);
 
