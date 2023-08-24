@@ -10,6 +10,9 @@
 #include "submit.h"
 #include "submit_parse.h"
 
+#define RESOLUTION 1000   /* buckets are 1 micro second apart */
+#define BUCKETS 20 * 1000 /* buckets up to 20,000 microseconds */
+
 static int fsmApply(struct raft_fsm *fsm,
                     const struct raft_buffer *buf,
                     void **result)
@@ -35,8 +38,8 @@ struct server
     char *path;
     unsigned i;
     unsigned n;
-    time_t start;
-    time_t *latencies;
+    unsigned long start;
+    struct histogram histogram;
 };
 
 int serverInit(struct server *s,
@@ -52,9 +55,10 @@ int serverInit(struct server *s,
 
     s->i = 0;
     s->n = opts->n;
-    s->latencies = malloc(opts->n * sizeof *s->latencies);
     s->size = opts->size;
     s->timer.data = s;
+
+    HistogramInit(&s->histogram, BUCKETS, RESOLUTION, RESOLUTION);
 
     rv = FsCreateTempDir(opts->dir, &s->path);
     if (rv != 0) {
@@ -127,7 +131,7 @@ static int serverClose(struct server *s)
         return -1;
     }
 
-    free(s->latencies);
+    HistogramClose(&s->histogram);
 
     return 0;
 }
@@ -187,7 +191,7 @@ static void submitEntryCb(struct raft_apply *req, int status, void *result)
         exit(1);
     }
 
-    s->latencies[s->i] = (time_t)uv_hrtime() - s->start;
+    HistogramCount(&s->histogram, (unsigned long)uv_hrtime() - s->start);
 
     s->i++;
 
@@ -214,7 +218,7 @@ static void submitEntryCb(struct raft_apply *req, int status, void *result)
 static int submitEntry(struct server *s)
 {
     int rv;
-    s->start = (time_t)uv_hrtime();
+    s->start = (unsigned long)uv_hrtime();
     const struct raft_buffer *bufs = &s->buf;
 
     s->buf.len = s->size - 8 /* CRC */ - 8 /* N entries */ - 16 /* header */;
@@ -274,7 +278,7 @@ int SubmitRun(int argc, char *argv[], struct report *report)
     strcpy(name, "submit");
     benchmark = ReportGrow(report, name);
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
-    MetricFillLatency(m, server.latencies, server.n);
+    MetricFillHistogram(m, &server.histogram);
 
     rv = serverClose(&server);
     if (rv != 0) {
