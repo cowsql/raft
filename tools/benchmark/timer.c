@@ -16,7 +16,7 @@ void TimerStart(struct timer *timer)
     timerNow(&timer->start);
 }
 
-time_t TimerStop(struct timer *timer)
+unsigned long TimerStop(struct timer *timer)
 {
     struct timespec now;
     time_t nsecs;
@@ -28,5 +28,5 @@ time_t TimerStop(struct timer *timer)
                 timer->start.tv_nsec + now.tv_nsec;
     }
 
-    return nsecs;
+    return (unsigned long)nsecs;
 }

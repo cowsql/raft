@@ -6,9 +6,11 @@
 #include <stddef.h>
 #include <sys/uio.h>
 
+#include "report.h"
+
 int DiskWriteUsingPwrite(int fd,
                          struct iovec *iov,
                          unsigned n,
-                         time_t *latencies);
+                         struct histogram *histogram);
 
 #endif /* DISK_PWRITE_H_ */

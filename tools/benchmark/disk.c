@@ -16,6 +16,9 @@
 #include "fs.h"
 #include "timer.h"
 
+#define RESOLUTION 1000   /* buckets are 1 micro second apart */
+#define BUCKETS 20 * 1000 /* buckets up to 20,000 microseconds */
+
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
 {
@@ -32,16 +35,15 @@ static void allocBuffer(struct iovec *iov, size_t size)
 }
 
 static void reportLatency(struct benchmark *benchmark,
-                          time_t *latencies,
-                          unsigned n)
+                          struct histogram *histogram)
 {
     struct metric *m;
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
-    MetricFillLatency(m, latencies, n);
+    MetricFillHistogram(m, histogram);
 }
 
 static void reportThroughput(struct benchmark *benchmark,
-                             time_t duration,
+                             unsigned long duration,
                              unsigned size)
 {
     struct metric *m;
@@ -56,12 +58,12 @@ static int writeFile(struct diskOptions *opts,
                      struct benchmark *benchmark)
 {
     struct timer timer;
+    struct histogram histogram;
     struct iovec iov;
     struct stat st;
     char *path;
     int fd;
-    time_t *latencies;
-    time_t duration;
+    unsigned long duration;
     unsigned n = opts->size / (unsigned)opts->buf;
     int rv;
 
@@ -90,20 +92,20 @@ static int writeFile(struct diskOptions *opts,
     }
 
     allocBuffer(&iov, opts->buf);
-    latencies = malloc(n * sizeof *latencies);
-    assert(latencies != NULL);
+
+    HistogramInit(&histogram, BUCKETS, RESOLUTION, RESOLUTION);
 
     TimerStart(&timer);
 
     switch (opts->engine) {
         case DISK_ENGINE_PWRITE:
-            rv = DiskWriteUsingPwrite(fd, &iov, n, latencies);
+            rv = DiskWriteUsingPwrite(fd, &iov, n, &histogram);
             break;
         case DISK_ENGINE_URING:
-            rv = DiskWriteUsingUring(fd, &iov, n, latencies);
+            rv = DiskWriteUsingUring(fd, &iov, n, &histogram);
             break;
         case DISK_ENGINE_KAIO:
-            rv = DiskWriteUsingKaio(fd, &iov, n, latencies);
+            rv = DiskWriteUsingKaio(fd, &iov, n, &histogram);
             break;
         default:
             assert(0);
@@ -117,9 +119,10 @@ static int writeFile(struct diskOptions *opts,
         return -1;
     }
 
-    reportLatency(benchmark, latencies, n);
+    reportLatency(benchmark, &histogram);
     reportThroughput(benchmark, duration, opts->size);
-    free(latencies);
+
+    HistogramClose(&histogram);
 
     if (!raw) {
         rv = FsRemoveTempFile(path, fd);

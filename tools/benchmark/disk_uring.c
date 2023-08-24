@@ -256,7 +256,7 @@ static int writeWithUring(struct iovec *iov, unsigned i)
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
-                        time_t *latencies)
+                        struct histogram *histogram)
 {
     struct timer timer;
     unsigned i;
@@ -273,7 +273,7 @@ int DiskWriteUsingUring(int fd,
         if (rv != 0) {
             return -1;
         }
-        latencies[i] = TimerStop(&timer);
+        HistogramCount(histogram, TimerStop(&timer));
     }
 
     rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);

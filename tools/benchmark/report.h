@@ -7,6 +7,14 @@
 
 enum { METRIC_KIND_LATENCY = 0, METRIC_KIND_THROUGHPUT };
 
+struct histogram
+{
+    unsigned *buckets;        /* buckets */
+    unsigned n;               /* number of buckets */
+    unsigned long long first; /* value of the first bucket */
+    unsigned gap;             /* gap between subsequent buckets */
+};
+
 struct metric
 {
     int kind;
@@ -28,13 +36,26 @@ struct report
     unsigned n_benchmarks;
 };
 
-/* Fill a metric object with a latency measurement, calculating the 50th
- * percentile over the given samples. */
-void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples);
+/* Initialize a histogram object. */
+void HistogramInit(struct histogram *h,
+                   unsigned n,
+                   unsigned long first,
+                   unsigned gap);
+
+void HistogramClose(struct histogram *h);
+
+/* Update the counter of the bucket associated with the given value. */
+void HistogramCount(struct histogram *h, unsigned long value);
+
+/* Fill a metric object with a histogram-based measurement, calculating the 50th
+ * percentile over the buckets. */
+void MetricFillHistogram(struct metric *m, struct histogram *h);
 
 /* Fill a metric object with a throughput measurement, given the number of total
  * operations and their total duration. */
-void MetricFillThroughput(struct metric *m, unsigned n_ops, time_t duration);
+void MetricFillThroughput(struct metric *m,
+                          unsigned n_ops,
+                          unsigned long duration);
 
 /* Add a new metric to a benchmark. */
 struct metric *BenchmarkGrow(struct benchmark *b, int kind);
