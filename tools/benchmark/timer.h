@@ -15,6 +15,6 @@ void TimerStart(struct timer *timer);
 
 /* Calculate how much time has elapsed since the timer started, in
  * nanosecods. */
-time_t TimerStop(struct timer *timer);
+unsigned long TimerStop(struct timer *timer);
 
 #endif /* TIMER_H_ */

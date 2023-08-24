@@ -21,7 +21,7 @@ static int writeWithPwrite(int fd, struct iovec *iov, unsigned i)
 int DiskWriteUsingPwrite(int fd,
                          struct iovec *iov,
                          unsigned n,
-                         time_t *latencies)
+                         struct histogram *histogram)
 {
     struct timer timer;
     unsigned i;
@@ -33,7 +33,7 @@ int DiskWriteUsingPwrite(int fd,
         if (rv != 0) {
             return -1;
         }
-        latencies[i] = TimerStop(&timer);
+        HistogramCount(histogram, TimerStop(&timer));
     }
 
     return 0;

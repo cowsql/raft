@@ -7,7 +7,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "disk_uring.h"
+#include "disk_kaio.h"
 #include "timer.h"
 
 int io_setup(unsigned nr_events, aio_context_t *ctx_idp)
@@ -75,7 +75,10 @@ static int writeWithKaio(int fd, struct iovec *iov, unsigned i)
     return 0;
 }
 
-int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
+int DiskWriteUsingKaio(int fd,
+                       struct iovec *iov,
+                       unsigned n,
+                       struct histogram *histogram)
 {
     struct timer timer;
     unsigned i;
@@ -95,7 +98,7 @@ int DiskWriteUsingKaio(int fd, struct iovec *iov, unsigned n, time_t *latencies)
         if (rv != 0) {
             return -1;
         }
-        latencies[i] = TimerStop(&timer);
+        HistogramCount(histogram, TimerStop(&timer));
     }
 
     rv = io_destroy(ctx);
