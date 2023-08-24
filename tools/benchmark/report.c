@@ -4,6 +4,42 @@
 
 #include "report.h"
 
+void HistogramInit(struct histogram *h,
+                   unsigned n,
+                   unsigned long first,
+                   unsigned gap)
+{
+    unsigned i;
+    assert(n >= 2);
+    h->n = n;
+    h->buckets = malloc(h->n * sizeof *h->buckets);
+    for (i = 0; i < n; i++) {
+        h->buckets[i] = 0;
+    }
+    assert(h->buckets != NULL);
+    h->first = first;
+    h->gap = gap;
+}
+
+void HistogramClose(struct histogram *h)
+{
+    free(h->buckets);
+}
+
+void HistogramCount(struct histogram *h, unsigned long value)
+{
+    unsigned i;
+    if (value <= h->first) {
+        i = 0;
+    } else {
+        i = (unsigned)(value - h->first) / h->gap;
+        if (i >= h->n) {
+            i = h->n - 1;
+        }
+    }
+    h->buckets[i]++;
+}
+
 /* Use the 0.50 percentile for reports. See:
  *
  * https://www.elastic.co/blog/averages-can-dangerous-use-percentile
@@ -60,7 +96,40 @@ void MetricFillLatency(struct metric *m, time_t *samples, unsigned n_samples)
     m->upper_bound = (double)samples[n_samples - 1];
 }
 
-void MetricFillThroughput(struct metric *m, unsigned n_ops, time_t duration)
+void MetricFillHistogram(struct metric *m, struct histogram *h)
+{
+    unsigned counter = 0;
+    unsigned median;
+    unsigned lower = 0;
+    unsigned upper = 0;
+    unsigned i;
+
+    for (i = 0; i < h->n; i++) {
+        counter += h->buckets[i];
+        if (lower == 0 && h->buckets[i] > 0) {
+            lower = i;
+        }
+        if (upper == 0 && h->buckets[h->n - 1 - i] > 0) {
+            upper = h->n - 1 - i;
+        }
+    }
+    median = counter / 2;
+    counter = 0;
+    for (i = 0; i <= h->n; i++) {
+        counter += h->buckets[i];
+        if (counter >= median) {
+            break;
+        }
+    }
+
+    m->value = (double)(h->first + (unsigned long)(i * h->gap));
+    m->lower_bound = (double)(h->first + (unsigned long)(lower * h->gap));
+    m->upper_bound = (double)(h->first + (unsigned long)(upper * h->gap));
+}
+
+void MetricFillThroughput(struct metric *m,
+                          unsigned n_ops,
+                          unsigned long duration)
 {
     double seconds = (double)duration / (1024 * 1024 * 1024);
     m->value = (double)n_ops / seconds;
