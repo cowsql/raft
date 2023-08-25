@@ -1,0 +1,58 @@
+Name:           raft
+Epoch:          1
+Version:        @PACKAGE_VERSION@
+Release:        1
+Summary:        C implementation of the Raft Consensus protocol
+
+# from README.md
+License:        Slightly modified version of LGPLv3 with allowance for users to link statically
+URL:            https://raft.readthedocs.io/
+
+Source0:        https://github.com/cowsql/%{name}/archive/refs/tags/v%{version}.tar.gz
+
+Requires:       libuv lz4
+BuildRequires:  autoconf automake libtool gcc libuv-devel lz4-devel
+
+%description
+Raft is a fully asynchronous C implementation of the Raft consensus protocol.
+
+%package devel
+Summary:        Development libraries for raft
+Requires:       %{name}%{?_isa} = %{epoch}:%{version}-%{release}
+Provides:       %{name}-static
+
+%description devel
+Development libraries for raft
+
+%package_help
+
+
+%prep
+%autosetup -p1 -n %{name}-%{version}
+
+%build
+autoreconf -i
+%configure
+%make_build
+
+%install
+%make_install
+%delete_la
+
+%check
+%ldconfig_scriptlets
+
+%files
+%license LICENSE
+%{_libdir}/lib%{name}.so*
+
+%files devel
+%{_libdir}/lib%{name}.a
+%{_libdir}/pkgconfig/%{name}.pc
+%{_includedir}/raft.h
+%{_includedir}/raft/uv.h
+%{_includedir}/raft/fixture.h
+
+%files help
+%doc README.md AUTHORS
+

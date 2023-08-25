@@ -14,6 +14,7 @@ config.log
 config.status
 libtool
 raft.pc
+raft.spec
 stamp-h1
 *.lo
 *.la
