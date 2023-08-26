@@ -130,7 +130,7 @@ static void optionsCheck(struct diskOptions *opts)
         printf("Invalid buffer size %zu\n", opts->buf);
         exit(1);
     }
-    if (opts->size == 0 || opts->size % MEGABYTE != 0) {
+    if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
         exit(1);
     }
