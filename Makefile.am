@@ -262,6 +262,7 @@ tools_raft_benchmark_SOURCES = \
   tools/benchmark/report.c \
   tools/benchmark/submit_parse.c \
   tools/benchmark/submit.c \
+  tools/benchmark/tracing.c \
   tools/benchmark/timer.c
 tools_raft_benchmark_LDFLAGS =
 tools_raft_benchmark_LDADD = libraft.la $(UV_LIBS)
