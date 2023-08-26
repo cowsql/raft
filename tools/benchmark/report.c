@@ -94,7 +94,14 @@ void MetricFillHistogram(struct metric *m, struct histogram *h)
             upper = h->n - 1 - i;
         }
     }
-    median = counter / 2;
+
+    assert(counter >= 1);
+    if (counter == 1) {
+        median = 1;
+    } else {
+        median = counter / 2;
+    }
+
     counter = 0;
     for (i = 0; i <= h->n; i++) {
         counter += h->buckets[i];

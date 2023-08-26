@@ -1,5 +1,6 @@
 #include <argp.h>
 #include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,6 +20,7 @@ static struct argp_option options[] = {
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
     {"engine", 'e', "ENGINE", 0, "I/O engine to use: pwrite, kaio or uring", 0},
     {"mode", 'm', "MODE", 0, "I/O mode: buffer or direct", 0},
+    {"tracing", 't', "TRACING", 0, "Enable tracing using debugfs", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
@@ -60,6 +62,7 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
     unsigned i;
     unsigned j;
     unsigned k;
+    bool expanded = false;
 
     /* All our flags require and argument. So if there's no argument, this is
      * not a supported flag. */
@@ -73,11 +76,6 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             n_tokens++;
     }
 
-    /* Multiply the matrix by the number of tokens. */
-    if (n_tokens > 1) {
-        expandMatrix(matrix, n_tokens);
-    }
-
     k = 0;
     for (i = 0; i < n_tokens; i++) {
         if (i == 0) {
@@ -86,6 +84,18 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             token = strtok(NULL, ",");
         }
         assert(token != NULL);
+
+        switch (key) {
+            case 't':
+                TracingAdd(&matrix->tracing, token);
+                continue;
+        }
+
+        /* Multiply the matrix by the number of tokens. */
+        if (!expanded && n_tokens > 1) {
+            expandMatrix(matrix, n_tokens);
+            expanded = true;
+        }
 
         for (j = 0; j < n_opts; j++) {
             opts = &matrix->opts[k];
@@ -130,7 +140,7 @@ static void optionsCheck(struct diskOptions *opts)
         printf("Invalid buffer size %zu\n", opts->buf);
         exit(1);
     }
-    if (opts->size == 0 || opts->size % MEGABYTE != 0) {
+    if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
         exit(1);
     }
@@ -153,6 +163,7 @@ void DiskParse(int argc, char *argv[], struct diskMatrix *matrix)
     matrix->n_opts = 1;
 
     optionsInit(&matrix->opts[0]);
+    TracingInit(&matrix->tracing);
 
     argv[0] = "benchmark/run disk";
     argp_parse(&argp, argc, argv, 0, 0, matrix);
