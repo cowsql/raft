@@ -90,9 +90,7 @@ jobs:
           - stable
         filesystem:
           - ext4
-          - btrfs
           - xfs
-          - zfs
           - raw
     runs-on: ubuntu-22.04
     needs: bmc-deploy
@@ -122,23 +120,15 @@ jobs:
         $SSH sudo partprobe
         $SSH sudo add-apt-repository -y ppa:cowsql/$PPA
         $SSH sudo apt-get update -qq
-        $SSH sudo apt-get install -qq -y libraft-tools btrfs-progs xfsprogs zfsutils-linux
+        $SSH sudo apt-get install -qq -y libraft-tools xfsprogs
         case $FILESYSTEM in
           ext4)
             $SSH sudo mkfs.ext4 -b 4096 -F "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
-          btrfs)
-            $SSH sudo mkfs.btrfs -s 4096 -f "${partition}"
-            $SSH sudo mount "${partition}" "${target}"
-            ;;
           xfs)
             $SSH sudo mkfs.xfs -b size=4096 -s size=4096 -f "${partition}"
             $SSH sudo mount "${partition}" "${target}"
-            ;;
-          zfs)
-            $SSH sudo zpool create -f cowsql "${partition}"
-            $SSH sudo zfs create -o mountpoint="${target}" cowsql/zfs
             ;;
           raw)
             target=$device
@@ -157,12 +147,11 @@ jobs:
         BENCHER_BRANCH: ${{ matrix.ppa }}
         BENCHER_TESTBED: bmc-s1-c1-medium-${{ matrix.filesystem }}
         ENGINES: pwrite,kaio,uring
-        MODES: direct,buffer
         BUFSIZES: 4096,8192,65536,262144
         TARGET: ${{ steps.setup.outputs.target}}
       run: |
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
-          "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -m $MODES -b $BUFSIZES"
+          "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -b $BUFSIZES"
         if [ "$FILESYSTEM" != "raw" ]; then
           bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
             "$SSH raft-benchmark submit -d $TARGET"
