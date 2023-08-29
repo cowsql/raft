@@ -85,11 +85,9 @@ static int writeFile(struct diskOptions *opts,
         return -1;
     }
 
-    if (opts->mode == DISK_MODE_DIRECT) {
-        rv = FsSetDirectIO(fd);
-        if (rv != 0) {
-            return -1;
-        }
+    rv = FsSetDirectIO(fd);
+    if (rv != 0) {
+        return -1;
     }
 
     rv = TracingStart(tracing);
@@ -171,17 +169,16 @@ int DiskRun(int argc, char *argv[], struct report *report)
         }
 
         assert(opts->buf != 0);
-        assert(opts->mode >= 0);
 
-        if (!raw && opts->mode == DISK_MODE_DIRECT) {
+        if (!raw) {
             rv = FsCheckDirectIO(opts->dir, opts->buf);
             if (rv != 0) {
                 goto err;
             }
         }
 
-        rv = asprintf(&name, "disk:%s:%s:%zu", DiskEngineName(opts->engine),
-                      DiskModeName(opts->mode), opts->buf);
+        rv = asprintf(&name, "disk:%s:%zu", DiskEngineName(opts->engine),
+                      opts->buf);
         assert(rv > 0);
         assert(name != NULL);
 
