@@ -171,6 +171,7 @@ static int writeWithUring(struct iovec *iov, unsigned i)
     sqe->addr = (unsigned long)iov->iov_base;
     sqe->len = (unsigned)iov->iov_len;
     sqe->off = i * iov->iov_len;
+    sqe->rw_flags = RWF_DSYNC;
 
     sring_array[index] = index;
     tail++;
@@ -178,54 +179,11 @@ static int writeWithUring(struct iovec *iov, unsigned i)
     /* Update the tail */
     _io_uring_smp_store_release(sring_tail, tail);
 
-    /* Add our submission queue entry to the tail of the SQE ring buffer */
-    tail = *sring_tail;
-    index = tail & *sring_mask;
-    sqe = &sqes[index];
-
-    /* Fill in the parameters required for the read or write operation */
-    sqe->opcode = IORING_OP_FSYNC;
-    sqe->flags = IOSQE_FIXED_FILE;
-    sqe->fd = 0;
-    sqe->addr = (unsigned long)NULL;
-    sqe->len = 0;
-    sqe->off = 0;
-    sqe->fsync_flags = IORING_FSYNC_DATASYNC;
-
-    sring_array[index] = index;
-    tail++;
-
-    /* Update the tail */
-    _io_uring_smp_store_release(sring_tail, tail);
-
-    rv = _io_uring_enter(_ring_fd, 2, 2, IORING_ENTER_GETEVENTS);
-    if (rv != 2) {
+    rv = _io_uring_enter(_ring_fd, 1, 1, IORING_ENTER_GETEVENTS);
+    if (rv != 1) {
         perror("io_uring_enter");
         return -1;
     }
-
-    /* Read barrier */
-    head = _io_uring_smp_load_acquire(cring_head);
-    /*
-     * Remember, this is a ring buffer. If head == tail, it means that the
-     * buffer is empty.
-     * */
-    if (head == *cring_tail) {
-        printf("no cqe\n");
-        return -1;
-    }
-
-    /* Get the entry */
-    cqe = &cqes[head & (*cring_mask)];
-    if (cqe->res < 0) {
-        fprintf(stderr, "Error: %s\n", strerror(abs(cqe->res)));
-        return -1;
-    }
-
-    head++;
-
-    /* Write barrier so that update to the head are made visible */
-    _io_uring_smp_store_release(cring_head, head);
 
     /* Read barrier */
     head = _io_uring_smp_load_acquire(cring_head);
