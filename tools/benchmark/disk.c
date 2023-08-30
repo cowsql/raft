@@ -14,8 +14,8 @@
 #include "fs.h"
 #include "timer.h"
 
-#define RESOLUTION 1000   /* buckets are 1 micro second apart */
-#define BUCKETS 20 * 1000 /* buckets up to 20,000 microseconds */
+#define RESOLUTION 100         /* buckets are 100 nanoseconds apart */
+#define BUCKETS 20 * 1000 * 10 /* buckets up to 20,000 microseconds */
 
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
