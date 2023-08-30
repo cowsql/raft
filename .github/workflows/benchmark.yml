@@ -124,7 +124,7 @@ jobs:
             ;;
           null_blk)
             $SSH sudo modprobe null_blk bs=4096 memory_backed=1 gb=1
-            device=${/dev/nullb0}
+            device=/dev/nullb0
             partition=${device}
             ;;
           *)
