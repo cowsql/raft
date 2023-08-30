@@ -128,7 +128,7 @@ jobs:
             partition=${device}
             ;;
           *)
-            echo "error: unknown block device driver $DRIVER
+            echo "error: unknown block device driver $DRIVER"
             exit 1
             ;;
         esac
@@ -146,7 +146,7 @@ jobs:
             target=$device
             ;;
           *)
-            echo "error: unknown filesystem $filesystem"
+            echo "error: unknown filesystem $FILESYSTEM"
             exit 1
             ;;
         esac
@@ -180,7 +180,7 @@ jobs:
             $SSH sudo modprobe -r null_blk
             ;;
           *)
-            echo "error: unknown block device driver $DRIVER
+            echo "error: unknown block device driver $DRIVER"
             exit 1
             ;;
         esac
