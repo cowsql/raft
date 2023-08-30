@@ -88,7 +88,7 @@ jobs:
           - main
           - stable
         filesystem:
-          - ext2
+          - ext4
           - raw
     runs-on: ubuntu-22.04
     needs: bmc-deploy
@@ -120,8 +120,9 @@ jobs:
         $SSH sudo apt-get update -qq
         $SSH sudo apt-get install -qq -y libraft-tools xfsprogs
         case $FILESYSTEM in
-          ext2)
-            $SSH sudo mkfs.ext2 -b 4096 -F "${partition}"
+          ext4)
+            $SSH sudo mkfs.ext4 -b 4096 -F "${partition}"
+            $SSH sudo tune2fs -O ^has_journal "${partition}"
             $SSH sudo mount "${partition}" "${target}"
             ;;
           raw)
