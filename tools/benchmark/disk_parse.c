@@ -18,7 +18,6 @@ static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
-    {"engine", 'e', "ENGINE", 0, "I/O engine to use: pwrite, kaio or uring", 0},
     {"tracing", 't', "TRACING", 0, "Enable tracing using debugfs", 0},
     {0}};
 
@@ -109,9 +108,6 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
                 case 's':
                     opts->size = (unsigned)atoi(token);
                     break;
-                case 'e':
-                    opts->engine = DiskEngineCode(token);
-                    break;
                 default:
                     return ARGP_ERR_UNKNOWN;
             }
@@ -126,7 +122,6 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
-    opts->engine = DISK_ENGINE_URING;
 }
 
 static void optionsCheck(struct diskOptions *opts)
@@ -137,10 +132,6 @@ static void optionsCheck(struct diskOptions *opts)
     }
     if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
-        exit(1);
-    }
-    if (opts->engine == -1) {
-        printf("Invalid engine\n");
         exit(1);
     }
 }
