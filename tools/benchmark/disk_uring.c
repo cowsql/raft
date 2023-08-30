@@ -166,7 +166,7 @@ static int writeWithUring(struct iovec *iov, unsigned i)
 
     /* Fill in the parameters required for the read or write operation */
     sqe->opcode = IORING_OP_WRITE_FIXED;
-    sqe->flags = IOSQE_FIXED_FILE | IOSQE_IO_LINK;
+    sqe->flags = IOSQE_FIXED_FILE;
     sqe->fd = 0;
     sqe->addr = (unsigned long)iov->iov_base;
     sqe->len = (unsigned)iov->iov_len;
