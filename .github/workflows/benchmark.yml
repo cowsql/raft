@@ -32,11 +32,10 @@ jobs:
         BENCHER_BRANCH: ${{ matrix.ppa }}
         BENCHER_TESTBED: github-ubuntu-22-04
         ENGINES: pwrite,kaio,uring
-        MODES: direct,buffer
         BUFSIZES: 4096,8192,65536
       run: |
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
-          "raft-benchmark disk -e $ENGINES -m $MODES -b $BUFSIZES"
+          "raft-benchmark disk -e $ENGINES -b $BUFSIZES"
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
           "raft-benchmark submit"
 
