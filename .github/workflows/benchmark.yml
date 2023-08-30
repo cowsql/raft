@@ -34,7 +34,7 @@ jobs:
         BUFSIZES: 4096,8192,65536
       run: |
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
-          "raft-benchmark disk -e $ENGINES -b $BUFSIZES"
+          "raft-benchmark disk -b $BUFSIZES"
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
           "raft-benchmark submit"
 
@@ -161,7 +161,7 @@ jobs:
         TARGET: ${{ steps.setup.outputs.target}}
       run: |
         bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
-          "$SSH raft-benchmark disk -d $TARGET -e $ENGINES -b $BUFSIZES"
+          "$SSH raft-benchmark disk -d $TARGET -b $BUFSIZES"
         if [ "$FILESYSTEM" != "raw" ]; then
           bencher run --project raft --testbed $BENCHER_TESTBED --branch $BENCHER_BRANCH \
             "$SSH raft-benchmark submit -d $TARGET"
