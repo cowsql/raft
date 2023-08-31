@@ -75,6 +75,10 @@ jobs:
             fi
             sleep 60
         done
+        if [ "$STATUS" != "powered-on" ]; then
+           echo "Server still not ready: $STATUS"
+           exit 1
+        fi
         ADDR=$(curl -s -H "${HEADER}" ${API_URL}/${ID}/ | jq -r .publicIpAddresses[0])
         echo "address=$ADDR" >> $GITHUB_OUTPUT
 
