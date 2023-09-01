@@ -252,11 +252,8 @@ bin_PROGRAMS += \
 
 tools_raft_benchmark_SOURCES = \
   tools/benchmark/disk.c \
-  tools/benchmark/disk_options.c \
   tools/benchmark/disk_parse.c \
-  tools/benchmark/disk_pwrite.c \
   tools/benchmark/disk_uring.c \
-  tools/benchmark/disk_kaio.c \
   tools/benchmark/fs.c \
   tools/benchmark/main.c \
   tools/benchmark/report.c \

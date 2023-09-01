@@ -8,10 +8,8 @@
 #include <sys/types.h>
 
 #include "disk.h"
-#include "disk_kaio.h"
 #include "disk_options.h"
 #include "disk_parse.h"
-#include "disk_pwrite.h"
 #include "disk_uring.h"
 #include "fs.h"
 #include "timer.h"
@@ -101,19 +99,7 @@ static int writeFile(struct diskOptions *opts,
 
     TimerStart(&timer);
 
-    switch (opts->engine) {
-        case DISK_ENGINE_PWRITE:
-            rv = DiskWriteUsingPwrite(fd, &iov, n, &histogram);
-            break;
-        case DISK_ENGINE_URING:
-            rv = DiskWriteUsingUring(fd, &iov, n, &histogram);
-            break;
-        case DISK_ENGINE_KAIO:
-            rv = DiskWriteUsingKaio(fd, &iov, n, &histogram);
-            break;
-        default:
-            assert(0);
-    }
+    rv = DiskWriteUsingUring(fd, &iov, n, &histogram);
 
     duration = TimerStop(&timer);
 
@@ -177,8 +163,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
             }
         }
 
-        rv = asprintf(&name, "disk:%s:%zu", DiskEngineName(opts->engine),
-                      opts->buf);
+        rv = asprintf(&name, "disk:%zu", opts->buf);
         assert(rv > 0);
         assert(name != NULL);
 
