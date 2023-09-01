@@ -52,7 +52,6 @@ static void reportThroughput(struct benchmark *benchmark,
 
 /* Benchmark sequential write performance. */
 static int writeFile(struct diskOptions *opts,
-                     struct Tracing *tracing,
                      bool raw,
                      struct benchmark *benchmark)
 {
@@ -88,18 +87,13 @@ static int writeFile(struct diskOptions *opts,
         return -1;
     }
 
-    rv = TracingStart(tracing);
-    if (rv != 0) {
-        return rv;
-    }
-
     allocBuffer(&iov, opts->buf);
 
     HistogramInit(&histogram, BUCKETS, RESOLUTION, RESOLUTION);
 
     TimerStart(&timer);
 
-    rv = DiskWriteUsingUring(fd, &iov, n, &histogram);
+    rv = DiskWriteUsingUring(fd, &iov, n, &opts->tracing, &histogram);
 
     duration = TimerStop(&timer);
 
@@ -107,11 +101,6 @@ static int writeFile(struct diskOptions *opts,
 
     if (rv != 0) {
         return -1;
-    }
-
-    rv = TracingStop(tracing);
-    if (rv != 0) {
-        return rv;
     }
 
     reportLatency(benchmark, &histogram);
@@ -165,7 +154,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     benchmark = ReportGrow(report, name);
 
-    rv = writeFile(&opts, &opts.tracing, raw, benchmark);
+    rv = writeFile(&opts, raw, benchmark);
     if (rv != 0) {
         goto err;
     }

@@ -214,6 +214,7 @@ static int writeWithUring(struct iovec *iov, unsigned i)
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
+                        struct Tracing *tracing,
                         struct histogram *histogram)
 {
     struct timer timer;
@@ -225,6 +226,11 @@ int DiskWriteUsingUring(int fd,
         return -1;
     }
 
+    rv = TracingStart(tracing);
+    if (rv != 0) {
+        return rv;
+    }
+
     for (i = 0; i < n; i++) {
         TimerStart(&timer);
         rv = writeWithUring(iov, i);
@@ -232,6 +238,11 @@ int DiskWriteUsingUring(int fd,
             return -1;
         }
         HistogramCount(histogram, TimerStop(&timer));
+    }
+
+    rv = TracingStop(tracing);
+    if (rv != 0) {
+        return rv;
     }
 
     rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);
