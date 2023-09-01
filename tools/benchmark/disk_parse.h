@@ -11,7 +11,7 @@ struct diskMatrix
 {
     struct diskOptions *opts;
     unsigned n_opts;
-    struct tracing tracing;
+    struct Tracing tracing;
 };
 
 /* Parse the given command line arguments. */

@@ -52,7 +52,7 @@ static void reportThroughput(struct benchmark *benchmark,
 
 /* Benchmark sequential write performance. */
 static int writeFile(struct diskOptions *opts,
-                     struct tracing *tracing,
+                     struct Tracing *tracing,
                      bool raw,
                      struct benchmark *benchmark)
 {
