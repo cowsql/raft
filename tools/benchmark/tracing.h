@@ -1,4 +1,4 @@
-/* Enable and disable tracing via debugfs. */
+/* Kernel tracing helpers. */
 
 #ifndef TRACING_H_
 #define TRACING_H_
@@ -7,6 +7,7 @@ struct Tracing
 {
     char *systems[10]; /* Names of the sub-systems to trace. */
     unsigned n;        /* Number of sub-systems to trace. */
+    unsigned switches; /* Number of context switches performed. */
 };
 
 void TracingInit(struct Tracing *t);

@@ -225,6 +225,7 @@ retry:
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
+                        struct FsFileInfo *info,
                         struct Tracing *tracing,
                         struct histogram *histogram)
 {
@@ -234,6 +235,12 @@ int DiskWriteUsingUring(int fd,
     int rv;
 
     rv = initUring(fd, iov);
+    if (rv != 0) {
+        return -1;
+    }
+
+    /* Perform a first write to trigger initialization and warm up caches. */
+    rv = writeWithUring(iov, 0);
     if (rv != 0) {
         return -1;
     }
@@ -257,6 +264,11 @@ int DiskWriteUsingUring(int fd,
         return rv;
     }
 
+    if (tracing->switches != 0 && info->driver != FS_DRIVER_GENERIC) {
+        printf("Error: unexpected context switches: %u\n", tracing->switches);
+        return -1;
+    }
+
     rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);
     if (rv != 0) {
         fprintf(stderr, "Unable to unregister file!\n");
@@ -278,6 +290,7 @@ int DiskWriteUsingUring(int fd,
     (void)fd;
     (void)iov;
     (void)n;
+    (void)info;
     (void)tracing;
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");

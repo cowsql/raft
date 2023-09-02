@@ -1,4 +1,6 @@
+#include <assert.h>
 #include <stdio.h>
+#include <sys/resource.h>
 
 #include "tracing.h"
 
@@ -7,6 +9,7 @@
 void TracingInit(struct Tracing *t)
 {
     t->n = 0;
+    t->switches = 0;
 }
 
 void TracingAdd(struct Tracing *t, char *system)
@@ -42,16 +45,53 @@ static int tracingDisable(const char *name)
     return tracingWrite(name, "0");
 }
 
+static int contextSwitchCounterStart(unsigned *counter)
+{
+    struct rusage usage;
+    int rv;
+
+    rv = getrusage(RUSAGE_SELF, &usage);
+    if (rv != 0) {
+        return -1;
+    }
+
+    *counter = (unsigned)usage.ru_nvcsw;
+
+    return 0;
+}
+
+static int contextSwitchCounterStop(unsigned *counter)
+{
+    struct rusage usage;
+    int rv;
+
+    rv = getrusage(RUSAGE_SELF, &usage);
+    if (rv != 0) {
+        return -1;
+    }
+
+    *counter = (unsigned)usage.ru_nvcsw - *counter;
+
+    return 0;
+}
+
 int TracingStart(struct Tracing *t)
 {
     unsigned i;
     int rv;
+
     for (i = 0; i < t->n; i++) {
         rv = tracingEnable(t->systems[i]);
         if (rv != 0) {
             return rv;
         }
     }
+
+    rv = contextSwitchCounterStart(&t->switches);
+    if (rv != 0) {
+        return rv;
+    }
+
     return 0;
 }
 
@@ -59,11 +99,18 @@ int TracingStop(struct Tracing *t)
 {
     unsigned i;
     int rv;
+
+    rv = contextSwitchCounterStop(&t->switches);
+    if (rv != 0) {
+        return rv;
+    }
+
     for (i = 0; i < t->n; i++) {
         rv = tracingDisable(t->systems[i]);
         if (rv != 0) {
             return rv;
         }
     }
+
     return 0;
 }
