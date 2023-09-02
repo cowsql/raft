@@ -226,7 +226,7 @@ int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
                         struct FsFileInfo *info,
-                        struct Tracing *tracing,
+                        struct Profiler *profiler,
                         struct histogram *histogram)
 {
 #if defined(HAVE_LINUX_IO_URING_H)
@@ -245,7 +245,7 @@ int DiskWriteUsingUring(int fd,
         return -1;
     }
 
-    rv = TracingStart(tracing);
+    rv = ProfilerStart(profiler);
     if (rv != 0) {
         return rv;
     }
@@ -259,14 +259,17 @@ int DiskWriteUsingUring(int fd,
         HistogramCount(histogram, TimerStop(&timer));
     }
 
-    rv = TracingStop(tracing);
+    rv = ProfilerStop(profiler);
     if (rv != 0) {
         return rv;
     }
 
-    if (tracing->switches != 0 && info->driver != FS_DRIVER_GENERIC &&
+    /* 262144 is the maximum buffer size where no context switches happen,
+     * presumably because io_uring inlines smaller requests and uses the
+     * threadpool for larger ones. */
+    if (profiler->switches != 0 && info->driver != FS_DRIVER_GENERIC &&
         iov->iov_len < 262144) {
-        printf("Error: unexpected context switches: %u\n", tracing->switches);
+        printf("Error: unexpected context switches: %u\n", profiler->switches);
         return -1;
     }
 

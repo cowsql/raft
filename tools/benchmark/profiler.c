@@ -2,23 +2,23 @@
 #include <stdio.h>
 #include <sys/resource.h>
 
-#include "tracing.h"
+#include "profiler.h"
 
-#define PATH_TEMPLATE "/sys/kernel/debug/tracing/events/%s/enable"
+#define PATH_TEMPLATE "/sys/kernel/tracing/events/%s/enable"
 
-void TracingInit(struct Tracing *t)
+void ProfilerInit(struct Profiler *p)
 {
-    t->n = 0;
-    t->switches = 0;
+    p->n_traces = 0;
+    p->switches = 0;
 }
 
-void TracingAdd(struct Tracing *t, char *system)
+void ProfilerTrace(struct Profiler *p, char *name)
 {
-    t->systems[t->n] = system;
-    t->n++;
+    p->traces[p->n_traces] = name;
+    p->n_traces++;
 }
 
-static int tracingWrite(const char *name, const char *op)
+static int profilerTraceFsWrite(const char *name, const char *text)
 {
     char path[1024];
     FILE *file;
@@ -26,23 +26,23 @@ static int tracingWrite(const char *name, const char *op)
     file = fopen(path, "w");
 
     if (file == NULL) {
-        perror("fopen debugfs");
+        perror("fopen tracefs");
         return -1;
     }
-    fprintf(file, "%s", op);
+    fprintf(file, "%s", text);
     fclose(file);
 
     return 0;
 }
 
-static int tracingEnable(const char *name)
+static int profilerTraceFsEnable(const char *name)
 {
-    return tracingWrite(name, "1");
+    return profilerTraceFsWrite(name, "1");
 }
 
-static int tracingDisable(const char *name)
+static int profilerTraceFsDisable(const char *name)
 {
-    return tracingWrite(name, "0");
+    return profilerTraceFsWrite(name, "0");
 }
 
 static int contextSwitchCounterStart(unsigned *counter)
@@ -75,19 +75,19 @@ static int contextSwitchCounterStop(unsigned *counter)
     return 0;
 }
 
-int TracingStart(struct Tracing *t)
+int ProfilerStart(struct Profiler *p)
 {
     unsigned i;
     int rv;
 
-    for (i = 0; i < t->n; i++) {
-        rv = tracingEnable(t->systems[i]);
+    for (i = 0; i < p->n_traces; i++) {
+        rv = profilerTraceFsEnable(p->traces[i]);
         if (rv != 0) {
             return rv;
         }
     }
 
-    rv = contextSwitchCounterStart(&t->switches);
+    rv = contextSwitchCounterStart(&p->switches);
     if (rv != 0) {
         return rv;
     }
@@ -95,18 +95,18 @@ int TracingStart(struct Tracing *t)
     return 0;
 }
 
-int TracingStop(struct Tracing *t)
+int ProfilerStop(struct Profiler *p)
 {
     unsigned i;
     int rv;
 
-    rv = contextSwitchCounterStop(&t->switches);
+    rv = contextSwitchCounterStop(&p->switches);
     if (rv != 0) {
         return rv;
     }
 
-    for (i = 0; i < t->n; i++) {
-        rv = tracingDisable(t->systems[i]);
+    for (i = 0; i < p->n_traces; i++) {
+        rv = profilerTraceFsDisable(p->traces[i]);
         if (rv != 0) {
             return rv;
         }

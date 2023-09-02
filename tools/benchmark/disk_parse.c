@@ -16,7 +16,7 @@ static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
-    {"tracing", 't', "TRACING", 0, "Comma-separated subsystems to trace", 0},
+    {"trace", 't', "TRACE", 0, "Comma-separated kernel subsystems to trace", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
@@ -28,7 +28,7 @@ static struct argp argp = {
 };
 
 /* Parse a comma-separated list of kernels subsystem names. */
-static void parseTracing(struct Tracing *tracing, char *arg)
+static void parseTracing(struct Profiler *profiler, char *arg)
 {
     char *token;
     unsigned n_tokens = 1;
@@ -47,7 +47,7 @@ static void parseTracing(struct Tracing *tracing, char *arg)
             token = strtok(NULL, ",");
         }
         assert(token != NULL);
-        TracingAdd(tracing, token);
+        ProfilerTrace(profiler, token);
     }
 }
 
@@ -72,7 +72,7 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             opts->size = (unsigned)atoi(arg);
             break;
         case 't':
-            parseTracing(&opts->tracing, arg);
+            parseTracing(&opts->profiler, arg);
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -86,7 +86,7 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
-    TracingInit(&opts->tracing);
+    ProfilerInit(&opts->profiler);
 }
 
 static void optionsCheck(struct diskOptions *opts)
