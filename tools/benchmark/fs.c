@@ -27,7 +27,7 @@ static char *makeTempTemplate(const char *dir)
 int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
     int dirfd;
-    int flags = O_WRONLY | O_CREAT | O_EXCL;
+    int flags = O_WRONLY | O_CREAT | O_EXCL | O_DIRECT;
     int rv;
 
     *path = makeTempTemplate(dir);
@@ -118,7 +118,7 @@ int FsRemoveTempDir(char *path)
 
 int FsOpenBlockDevice(const char *dir, int *fd)
 {
-    *fd = open(dir, O_RDWR);
+    *fd = open(dir, O_WRONLY | O_DIRECT);
     if (*fd == -1) {
         printf("open '%s': %s\n", dir, strerror(errno));
         return -1;
@@ -140,11 +140,6 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
     rv = FsCreateTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
     if (rv != 0) {
         unlink(path);
-        return -1;
-    }
-
-    rv = FsSetDirectIO(fd);
-    if (rv != 0) {
         return -1;
     }
 
@@ -230,17 +225,4 @@ int FsCheckDirectIO(const char *dir, size_t buf)
 
 err:
     return -1;
-}
-
-int FsSetDirectIO(int fd)
-{
-    int flags; /* Current fcntl flags */
-    int rv;
-    flags = fcntl(fd, F_GETFL);
-    rv = fcntl(fd, F_SETFL, flags | O_DIRECT);
-    if (rv != 0) {
-        printf("fnctl: %s\n", strerror(errno));
-        return -1;
-    }
-    return 0;
 }

@@ -82,11 +82,6 @@ static int writeFile(struct diskOptions *opts,
         return -1;
     }
 
-    rv = FsSetDirectIO(fd);
-    if (rv != 0) {
-        return -1;
-    }
-
     allocBuffer(&iov, opts->buf);
 
     HistogramInit(&histogram, BUCKETS, RESOLUTION, RESOLUTION);
