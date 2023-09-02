@@ -4,12 +4,12 @@
 
 #define PATH_TEMPLATE "/sys/kernel/debug/tracing/events/%s/enable"
 
-void TracingInit(struct tracing *t)
+void TracingInit(struct Tracing *t)
 {
     t->n = 0;
 }
 
-void TracingAdd(struct tracing *t, char *system)
+void TracingAdd(struct Tracing *t, char *system)
 {
     t->systems[t->n] = system;
     t->n++;
@@ -42,7 +42,7 @@ static int tracingDisable(const char *name)
     return tracingWrite(name, "0");
 }
 
-int TracingStart(struct tracing *t)
+int TracingStart(struct Tracing *t)
 {
     unsigned i;
     int rv;
@@ -55,7 +55,7 @@ int TracingStart(struct tracing *t)
     return 0;
 }
 
-int TracingStop(struct tracing *t)
+int TracingStop(struct Tracing *t)
 {
     unsigned i;
     int rv;

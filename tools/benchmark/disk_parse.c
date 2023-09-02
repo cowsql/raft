@@ -9,16 +9,14 @@
 
 #define MEGABYTE (1024 * 1024)
 
-static char doc[] =
-    "Benchmark sequential write performance\n\n"
-    "Each option can be passed multiple comma-separated arguments.\n";
+static char doc[] = "Benchmark sequential write performance\n";
 
 /* Order of fields: {NAME, KEY, ARG, FLAGS, DOC, GROUP}.*/
 static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
-    {"tracing", 't', "TRACING", 0, "Enable tracing using debugfs", 0},
+    {"tracing", 't', "TRACING", 0, "Comma-separated subsystems to trace", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
@@ -29,44 +27,12 @@ static struct argp argp = {
     .doc = doc,
 };
 
-/* Expand the run options in the given matrix by multiplying them by the given
- * factor. */
-static void expandMatrix(struct diskMatrix *matrix, unsigned factor)
+/* Parse a comma-separated list of kernels subsystem names. */
+static void parseTracing(struct Tracing *tracing, char *arg)
 {
-    unsigned n_opts = matrix->n_opts * factor;
-    unsigned i;
-    unsigned j;
-    assert(factor > 1);
-    matrix->opts = realloc(matrix->opts, n_opts * sizeof *matrix->opts);
-    assert(matrix->opts != NULL);
-
-    /* Create copies of the original options. */
-    for (i = 1; i < factor; i++) {
-        for (j = 0; j < matrix->n_opts; j++) {
-            matrix->opts[i * matrix->n_opts + j] = matrix->opts[j];
-        }
-    }
-
-    matrix->n_opts = n_opts;
-}
-
-static error_t argpParser(int key, char *arg, struct argp_state *state)
-{
-    struct diskMatrix *matrix = state->input;
-    struct diskOptions *opts;
     char *token;
-    unsigned n_opts = matrix->n_opts; /* Original size of the matrix */
     unsigned n_tokens = 1;
     unsigned i;
-    unsigned j;
-    unsigned k;
-    bool expanded = false;
-
-    /* All our flags require and argument. So if there's no argument, this is
-     * not a supported flag. */
-    if (arg == NULL) {
-        return ARGP_ERR_UNKNOWN;
-    }
 
     /* Count the number of comma-separated tokens in this argument. */
     for (i = 0; i < strlen(arg); i++) {
@@ -74,7 +40,6 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             n_tokens++;
     }
 
-    k = 0;
     for (i = 0; i < n_tokens; i++) {
         if (i == 0) {
             token = strtok(arg, ",");
@@ -82,36 +47,35 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             token = strtok(NULL, ",");
         }
         assert(token != NULL);
+        TracingAdd(tracing, token);
+    }
+}
 
-        switch (key) {
-            case 't':
-                TracingAdd(&matrix->tracing, token);
-                continue;
-        }
+static error_t argpParser(int key, char *arg, struct argp_state *state)
+{
+    struct diskOptions *opts = state->input;
 
-        /* Multiply the matrix by the number of tokens. */
-        if (!expanded && n_tokens > 1) {
-            expandMatrix(matrix, n_tokens);
-            expanded = true;
-        }
+    /* All our flags require and argument. So if there's no argument, this is
+     * not a supported flag. */
+    if (arg == NULL) {
+        return ARGP_ERR_UNKNOWN;
+    }
 
-        for (j = 0; j < n_opts; j++) {
-            opts = &matrix->opts[k];
-            k++;
-            switch (key) {
-                case 'd':
-                    opts->dir = token;
-                    break;
-                case 'b':
-                    opts->buf = (size_t)atoi(token);
-                    break;
-                case 's':
-                    opts->size = (unsigned)atoi(token);
-                    break;
-                default:
-                    return ARGP_ERR_UNKNOWN;
-            }
-        }
+    switch (key) {
+        case 'd':
+            opts->dir = arg;
+            break;
+        case 'b':
+            opts->buf = (size_t)atoi(arg);
+            break;
+        case 's':
+            opts->size = (unsigned)atoi(arg);
+            break;
+        case 't':
+            parseTracing(&opts->tracing, arg);
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
     }
 
     return 0;
@@ -122,6 +86,7 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
+    TracingInit(&opts->tracing);
 }
 
 static void optionsCheck(struct diskOptions *opts)
@@ -136,21 +101,12 @@ static void optionsCheck(struct diskOptions *opts)
     }
 }
 
-void DiskParse(int argc, char *argv[], struct diskMatrix *matrix)
+void DiskParse(int argc, char *argv[], struct diskOptions *opts)
 {
-    unsigned i;
-
-    matrix->opts = malloc(sizeof *matrix->opts);
-    assert(matrix->opts != NULL);
-    matrix->n_opts = 1;
-
-    optionsInit(&matrix->opts[0]);
-    TracingInit(&matrix->tracing);
+    optionsInit(opts);
 
     argv[0] = "benchmark/run disk";
-    argp_parse(&argp, argc, argv, 0, 0, matrix);
+    argp_parse(&argp, argc, argv, 0, 0, opts);
 
-    for (i = 0; i < matrix->n_opts; i++) {
-        optionsCheck(&matrix->opts[i]);
-    }
+    optionsCheck(opts);
 }

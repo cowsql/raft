@@ -52,7 +52,6 @@ static void reportThroughput(struct benchmark *benchmark,
 
 /* Benchmark sequential write performance. */
 static int writeFile(struct diskOptions *opts,
-                     struct tracing *tracing,
                      bool raw,
                      struct benchmark *benchmark)
 {
@@ -88,18 +87,13 @@ static int writeFile(struct diskOptions *opts,
         return -1;
     }
 
-    rv = TracingStart(tracing);
-    if (rv != 0) {
-        return rv;
-    }
-
     allocBuffer(&iov, opts->buf);
 
     HistogramInit(&histogram, BUCKETS, RESOLUTION, RESOLUTION);
 
     TimerStart(&timer);
 
-    rv = DiskWriteUsingUring(fd, &iov, n, &histogram);
+    rv = DiskWriteUsingUring(fd, &iov, n, &opts->tracing, &histogram);
 
     duration = TimerStop(&timer);
 
@@ -107,11 +101,6 @@ static int writeFile(struct diskOptions *opts,
 
     if (rv != 0) {
         return -1;
-    }
-
-    rv = TracingStop(tracing);
-    if (rv != 0) {
-        return rv;
     }
 
     reportLatency(benchmark, &histogram);
@@ -131,51 +120,44 @@ static int writeFile(struct diskOptions *opts,
 
 int DiskRun(int argc, char *argv[], struct report *report)
 {
-    struct diskMatrix matrix;
-    unsigned i;
+    struct diskOptions opts;
+    struct benchmark *benchmark;
+    struct stat st;
+    bool raw = false; /* Raw I/O directly on a block device */
+    char *name;
     int rv;
 
-    DiskParse(argc, argv, &matrix);
+    DiskParse(argc, argv, &opts);
 
-    for (i = 0; i < matrix.n_opts; i++) {
-        struct diskOptions *opts = &matrix.opts[i];
-        struct benchmark *benchmark;
-        struct stat st;
-        bool raw = false; /* Raw I/O directly on a block device */
-        char *name;
+    rv = stat(opts.dir, &st);
+    if (rv != 0) {
+        printf("stat '%s': %s\n", opts.dir, strerror(errno));
+        goto err;
+    }
 
-        rv = stat(opts->dir, &st);
-        if (rv != 0) {
-            printf("stat '%s': %s\n", opts->dir, strerror(errno));
-            goto err;
-        }
+    if ((st.st_mode & S_IFMT) == S_IFBLK) {
+        raw = true;
+    }
 
-        if ((st.st_mode & S_IFMT) == S_IFBLK) {
-            raw = true;
-        }
+    assert(opts.buf != 0);
 
-        assert(opts->buf != 0);
-
-        if (!raw) {
-            rv = FsCheckDirectIO(opts->dir, opts->buf);
-            if (rv != 0) {
-                goto err;
-            }
-        }
-
-        rv = asprintf(&name, "disk:%zu", opts->buf);
-        assert(rv > 0);
-        assert(name != NULL);
-
-        benchmark = ReportGrow(report, name);
-
-        rv = writeFile(opts, &matrix.tracing, raw, benchmark);
+    if (!raw) {
+        rv = FsCheckDirectIO(opts.dir, opts.buf);
         if (rv != 0) {
             goto err;
         }
     }
 
-    free(matrix.opts);
+    rv = asprintf(&name, "disk:%zu", opts.buf);
+    assert(rv > 0);
+    assert(name != NULL);
+
+    benchmark = ReportGrow(report, name);
+
+    rv = writeFile(&opts, raw, benchmark);
+    if (rv != 0) {
+        goto err;
+    }
 
     return 0;
 

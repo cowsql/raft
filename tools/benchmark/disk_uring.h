@@ -7,10 +7,12 @@
 #include <sys/uio.h>
 
 #include "report.h"
+#include "tracing.h"
 
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
+                        struct Tracing *tracing,
                         struct histogram *histogram);
 
 #endif /* DISK_URING_H_ */
