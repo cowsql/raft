@@ -21,7 +21,8 @@
 
 #include "timer.h"
 
-#define QUEUE_DEPTH 2
+#define QUEUE_DEPTH 1
+#define MAX_CEQ_POLL 5ULL * 1000 * 1000 * 1000 /* At most a few seconds */
 
 /* Macros for barriers needed by io_uring */
 #define _io_uring_smp_store_release(p, v)                       \
@@ -156,6 +157,7 @@ static int writeWithUring(struct iovec *iov, unsigned i)
     struct io_uring_cqe *cqe;
     unsigned index, tail;
     unsigned head;
+    unsigned long long n;
 
     int rv;
 
@@ -179,12 +181,15 @@ static int writeWithUring(struct iovec *iov, unsigned i)
     /* Update the tail */
     _io_uring_smp_store_release(sring_tail, tail);
 
-    rv = _io_uring_enter(_ring_fd, 1, 1, IORING_ENTER_GETEVENTS);
+    rv = _io_uring_enter(_ring_fd, 1, 0, IORING_ENTER_GETEVENTS);
     if (rv != 1) {
         perror("io_uring_enter");
         return -1;
     }
 
+    /* Poll the SQE ring */
+    n = 0;
+retry:
     /* Read barrier */
     head = _io_uring_smp_load_acquire(cring_head);
     /*
@@ -192,8 +197,12 @@ static int writeWithUring(struct iovec *iov, unsigned i)
      * buffer is empty.
      * */
     if (head == *cring_tail) {
-        printf("no cqe\n");
-        return -1;
+        if (n == MAX_CEQ_POLL) {
+            printf("no cqe\n");
+            return -1;
+        }
+        n++;
+        goto retry;
     }
 
     /* Get the entry */
