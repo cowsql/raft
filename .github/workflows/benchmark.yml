@@ -3,9 +3,14 @@ name: Benchmark
 on:
   workflow_dispatch:
     inputs:
-      name:
-        description: "Push name"
-        default: "Bencher push"
+      deploy:
+        description: "Deploy BMC server"
+        type: boolean
+        default: true
+      delete:
+        description: "Delete BMC server"
+        type: boolean
+        default: true
   schedule:
     - cron: '12 4 * * *'
 
@@ -105,7 +110,7 @@ jobs:
   bmc-delete:
     name: On BMC - delete
     runs-on: ubuntu-22.04
-    if: ${{ always() }}
+    if:  ${{ inputs.delete }}
     needs: [bmc-deploy, bmc-run]
     steps:
     - name: Delete
