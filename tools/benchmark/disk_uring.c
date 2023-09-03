@@ -267,11 +267,13 @@ int DiskWriteUsingUring(int fd,
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
+                        struct Tracing *tracing,
                         struct histogram *histogram)
 {
     (void)fd;
     (void)iov;
     (void)n;
+    (void)tracing;
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");
     return -1;
