@@ -53,6 +53,7 @@ static void reportThroughput(struct benchmark *benchmark,
 /* Benchmark sequential write performance. */
 static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 {
+    struct FsFileInfo info;
     struct timer timer;
     struct histogram histogram;
     struct iovec iov;
@@ -60,23 +61,17 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
     int fd;
     unsigned long duration;
     unsigned n = opts->size / (unsigned)opts->buf;
-    struct stat st;
-    bool raw = false;
     int rv;
 
-    rv = stat(opts->dir, &st);
+    rv = FsFileInfo(opts->dir, &info);
     if (rv != 0) {
-        printf("stat '%s': %s\n", opts->dir, strerror(errno));
+        printf("file info '%s': %s\n", opts->dir, strerror(errno));
         return -1;
-    }
-
-    if ((st.st_mode & S_IFMT) == S_IFBLK) {
-        raw = true;
     }
 
     assert(opts->size % opts->buf == 0);
 
-    if (raw) {
+    if (info.type == FS_TYPE_DEVICE) {
         rv = FsOpenBlockDevice(opts->dir, &fd);
     } else {
         rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
@@ -111,7 +106,7 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
     HistogramClose(&histogram);
 
-    if (!raw) {
+    if (info.type == FS_TYPE_REGULAR) {
         rv = FsRemoveTempFile(path, fd);
         if (rv != 0) {
             return -1;
