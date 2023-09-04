@@ -6,6 +6,27 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+enum {
+    FS_TYPE_REGULAR, /* Regular file or directory */
+    FS_TYPE_DEVICE,  /* Block device */
+};
+
+enum {
+    FS_DRIVER_NVME,    /* NVMe driver */
+    FS_DRIVER_NULLB,   /* nullb driver */
+    FS_DRIVER_GENERIC, /* Unspecified underlying driver */
+};
+
+/* Hold information about a file. */
+struct FsFileInfo
+{
+    unsigned type;
+    unsigned driver;
+};
+
+/* Detect file information. */
+int FsFileInfo(const char *path, struct FsFileInfo *info);
+
 /* Create a temporary file of the given size. */
 int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd);
 
@@ -27,8 +48,5 @@ int FsFileExists(const char *dir, const char *name, bool *exists);
 /* Check if direct I/O is possible when writing to the the given fd with the
  * given buffer size. */
 int FsCheckDirectIO(int fd, size_t buf);
-
-/* Set direct I/O on the given file descriptor. */
-int FsSetDirectIO(int fd);
 
 #endif /* FS_H_ */

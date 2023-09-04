@@ -4,6 +4,7 @@
 #include <ftw.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/sysmacros.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -14,6 +15,58 @@
 
 /* Maximum physical block size for direct I/O that we expect to detect. */
 #define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
+
+int FsFileInfo(const char *path, struct FsFileInfo *info)
+{
+    struct stat st;
+    unsigned maj;
+    unsigned min;
+    char block[1024];
+    char link[1024];
+    const char *name;
+    int rv;
+
+    rv = stat(path, &st);
+    if (rv != 0) {
+        perror("stat");
+        return -1;
+    }
+
+    if ((st.st_mode & S_IFMT) == S_IFBLK) {
+        info->type = FS_TYPE_DEVICE;
+        maj = major(st.st_rdev);
+        min = minor(st.st_rdev);
+    } else {
+        info->type = FS_TYPE_REGULAR;
+        maj = major(st.st_dev);
+        min = minor(st.st_dev);
+    }
+
+    sprintf(block, "/sys/dev/block/%d:%d", maj, min);
+
+    rv = (int)readlink(block, link, sizeof link);
+
+    if (rv < 0) {
+        if (errno != ENOENT) {
+            return -1;
+        }
+        info->driver = FS_DRIVER_GENERIC;
+        goto out;
+    }
+
+    name = basename(link);
+
+    if (strcmp(name, "nullb0") == 0) {
+        info->driver = FS_DRIVER_NULLB;
+    } else if (strncmp(name, "nvme", strlen("nvme")) == 0) {
+        info->driver = FS_DRIVER_NVME;
+    } else {
+        info->driver = FS_DRIVER_GENERIC;
+    }
+
+out:
+    return 0;
+}
 
 static char *makeTempTemplate(const char *dir)
 {
