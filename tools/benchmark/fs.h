@@ -12,9 +12,9 @@ enum {
 };
 
 enum {
-    FS_DRIVER_NVME,    /* NVMe driver */
-    FS_DRIVER_NULLB,   /* nullb driver */
-    FS_DRIVER_GENERIC, /* Unspecified underlying driver */
+    FS_DRIVER_NVME = 0, /* NVMe driver */
+    FS_DRIVER_NULLB,    /* nullb driver */
+    FS_DRIVER_GENERIC,  /* Unspecified underlying driver */
 };
 
 /* Hold information about a file. */
