@@ -58,7 +58,6 @@ static int writeFile(struct diskOptions *opts,
     struct timer timer;
     struct histogram histogram;
     struct iovec iov;
-    struct stat st;
     char *path;
     int fd;
     unsigned long duration;
@@ -66,12 +65,6 @@ static int writeFile(struct diskOptions *opts,
     int rv;
 
     assert(opts->size % opts->buf == 0);
-
-    rv = stat(opts->dir, &st);
-    if (rv != 0) {
-        printf("stat '%s': %s\n", opts->dir, strerror(errno));
-        return -1;
-    }
 
     if (raw) {
         rv = FsOpenBlockDevice(opts->dir, &fd);
