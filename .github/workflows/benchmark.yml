@@ -3,10 +3,6 @@ name: Benchmark
 on:
   workflow_dispatch:
     inputs:
-      deploy:
-        description: "Deploy BMC server"
-        type: boolean
-        default: true
       delete:
         description: "Delete BMC server"
         type: boolean
