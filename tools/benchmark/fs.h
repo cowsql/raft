@@ -24,9 +24,9 @@ int FsOpenBlockDevice(const char *dir, int *fd);
 /* Check if a file exists in the given dir. */
 int FsFileExists(const char *dir, const char *name, bool *exists);
 
-/* Check if direct I/O is available when writing to files in the given dir using
- * the given buffer size. */
-int FsCheckDirectIO(const char *dir, size_t buf);
+/* Check if direct I/O is possible when writing to the the given fd with the
+ * given buffer size. */
+int FsCheckDirectIO(int fd, size_t buf);
 
 /* Set direct I/O on the given file descriptor. */
 int FsSetDirectIO(int fd);

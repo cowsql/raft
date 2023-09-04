@@ -128,20 +128,12 @@ int FsOpenBlockDevice(const char *dir, int *fd)
 
 /* Detect all suitable block size we can use to write to the underlying device
  * using direct I/O. */
-static int detectSuitableBlockSizesForDirectIO(const char *dir,
+static int detectSuitableBlockSizesForDirectIO(int fd,
                                                size_t **block_size,
                                                unsigned *n_block_size)
 {
-    char *path;
-    int fd;
     size_t size;
     ssize_t rv;
-
-    rv = FsCreateTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
-    if (rv != 0) {
-        unlink(path);
-        return -1;
-    }
 
     *block_size = NULL;
     *n_block_size = 0;
@@ -162,11 +154,6 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
         *block_size = realloc(*block_size, *n_block_size * sizeof **block_size);
         assert(*block_size != NULL);
         (*block_size)[*n_block_size - 1] = size;
-    }
-
-    rv = FsRemoveTempFile(path, fd);
-    if (rv != 0) {
-        return -1;
     }
 
     return 0;
@@ -198,14 +185,14 @@ int FsFileExists(const char *dir, const char *name, bool *exists)
     return 0;
 }
 
-int FsCheckDirectIO(const char *dir, size_t buf)
+int FsCheckDirectIO(int fd, size_t buf)
 {
     size_t *block_size;
     unsigned n_block_size;
     unsigned i;
     int rv;
 
-    rv = detectSuitableBlockSizesForDirectIO(dir, &block_size, &n_block_size);
+    rv = detectSuitableBlockSizesForDirectIO(fd, &block_size, &n_block_size);
     if (rv != 0) {
         goto err;
     }

@@ -74,13 +74,6 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
         raw = true;
     }
 
-    if (!raw) {
-        rv = FsCheckDirectIO(opts->dir, opts->buf);
-        if (rv != 0) {
-            return -1;
-        }
-    }
-
     assert(opts->size % opts->buf == 0);
 
     if (raw) {
@@ -88,6 +81,11 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
     } else {
         rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
     }
+    if (rv != 0) {
+        return -1;
+    }
+
+    rv = FsCheckDirectIO(fd, opts->buf);
     if (rv != 0) {
         return -1;
     }
