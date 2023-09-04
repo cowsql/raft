@@ -220,12 +220,15 @@ retry:
     return 0;
 }
 
+#endif /* HAVE_LINUX_IO_URING_H */
+
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
                         struct Tracing *tracing,
                         struct histogram *histogram)
 {
+#if defined(HAVE_LINUX_IO_URING_H)
     struct timer timer;
     unsigned i;
     int rv;
@@ -269,16 +272,9 @@ int DiskWriteUsingUring(int fd,
     close(_ring_fd);
 
     return 0;
-}
 
 #else /* HAVE_LINUX_IO_URING_H */
 
-int DiskWriteUsingUring(int fd,
-                        struct iovec *iov,
-                        unsigned n,
-                        struct Tracing *tracing,
-                        struct histogram *histogram)
-{
     (void)fd;
     (void)iov;
     (void)n;
@@ -286,6 +282,6 @@ int DiskWriteUsingUring(int fd,
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");
     return -1;
-}
 
 #endif /* HAVE_LINUX_IO_URING_H */
+}
