@@ -51,9 +51,7 @@ static void reportThroughput(struct benchmark *benchmark,
 }
 
 /* Benchmark sequential write performance. */
-static int writeFile(struct diskOptions *opts,
-                     bool raw,
-                     struct benchmark *benchmark)
+static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 {
     struct timer timer;
     struct histogram histogram;
@@ -62,7 +60,26 @@ static int writeFile(struct diskOptions *opts,
     int fd;
     unsigned long duration;
     unsigned n = opts->size / (unsigned)opts->buf;
+    struct stat st;
+    bool raw = false;
     int rv;
+
+    rv = stat(opts->dir, &st);
+    if (rv != 0) {
+        printf("stat '%s': %s\n", opts->dir, strerror(errno));
+        return -1;
+    }
+
+    if ((st.st_mode & S_IFMT) == S_IFBLK) {
+        raw = true;
+    }
+
+    if (!raw) {
+        rv = FsCheckDirectIO(opts->dir, opts->buf);
+        if (rv != 0) {
+            return -1;
+        }
+    }
 
     assert(opts->size % opts->buf == 0);
 
@@ -110,31 +127,12 @@ int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskOptions opts;
     struct benchmark *benchmark;
-    struct stat st;
-    bool raw = false; /* Raw I/O directly on a block device */
     char *name;
     int rv;
 
     DiskParse(argc, argv, &opts);
 
-    rv = stat(opts.dir, &st);
-    if (rv != 0) {
-        printf("stat '%s': %s\n", opts.dir, strerror(errno));
-        goto err;
-    }
-
-    if ((st.st_mode & S_IFMT) == S_IFBLK) {
-        raw = true;
-    }
-
     assert(opts.buf != 0);
-
-    if (!raw) {
-        rv = FsCheckDirectIO(opts.dir, opts.buf);
-        if (rv != 0) {
-            goto err;
-        }
-    }
 
     rv = asprintf(&name, "disk:%zu", opts.buf);
     assert(rv > 0);
@@ -142,7 +140,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     benchmark = ReportGrow(report, name);
 
-    rv = writeFile(&opts, raw, benchmark);
+    rv = writeFile(&opts, benchmark);
     if (rv != 0) {
         goto err;
     }
