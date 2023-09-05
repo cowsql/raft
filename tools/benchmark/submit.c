@@ -34,7 +34,7 @@ struct server
     struct raft raft;
     struct raft_buffer buf;
     struct raft_apply req;
-    size_t size;
+    size_t entry;
     char *path;
     unsigned i;
     unsigned n;
@@ -54,8 +54,8 @@ int serverInit(struct server *s,
     s->transport.data = NULL;
 
     s->i = 0;
-    s->n = opts->n;
-    s->size = opts->size;
+    s->n = (unsigned)(opts->size / opts->buf);
+    s->entry = opts->buf;
     s->timer.data = s;
 
     HistogramInit(&s->histogram, BUCKETS, RESOLUTION, RESOLUTION);
@@ -221,7 +221,7 @@ static int submitEntry(struct server *s)
     s->start = (unsigned long)uv_hrtime();
     const struct raft_buffer *bufs = &s->buf;
 
-    s->buf.len = s->size - 8 /* CRC */ - 8 /* N entries */ - 16 /* header */;
+    s->buf.len = s->entry - 8 /* CRC */ - 8 /* N entries */ - 16 /* header */;
     if (s->i == 0) {
         s->buf.len -= 8; /* segment format */
     }

@@ -13,8 +13,8 @@ static char doc[] = "Benchmark sequential submit requests\n";
 /* Order of fields: {NAME, KEY, ARG, FLAGS, DOC, GROUP}.*/
 static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
-    {"size", 's', "S", 0, "Size of each submitted entry (default 4k)", 0},
-    {"n", 'n', "N", 0, "Total number of entries to submit (default 2048)", 0},
+    {"buf", 'b', "BUF", 0, "Size of each entry to submit (default 4096)", 0},
+    {"size", 's', "S", 0, "Total number of bytes to submit (default 8M)", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
@@ -33,11 +33,11 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
         case 'd':
             opts->dir = arg;
             break;
+        case 'b':
+            opts->buf = (unsigned)atoi(arg);
+            break;
         case 's':
             opts->size = (unsigned)atoi(arg);
-            break;
-        case 'n':
-            opts->n = (unsigned)atoi(arg);
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -49,18 +49,18 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
 static void optionsInit(struct submitOptions *opts)
 {
     opts->dir = ".";
-    opts->size = 4096;
-    opts->n = 2048;
+    opts->buf = 2048;
+    opts->size = 8 * MEGABYTE;
 }
 
 static void optionsCheck(struct submitOptions *opts)
 {
-    if (opts->size == 0 || (opts->size % 4096) != 0) {
-        printf("Invalid buffer entry size %zu\n", opts->size);
+    if (opts->buf == 0 || opts->buf > MEGABYTE) {
+        printf("Invalid buffer entry size %zu\n", opts->buf);
         exit(1);
     }
-    if (opts->n == 0) {
-        printf("Invalid number of submissions %u\n", opts->n);
+    if (opts->size == 0 || opts->size % 4096 != 0) {
+        printf("Invalid total submission size %u\n", opts->size);
         exit(1);
     }
 }
