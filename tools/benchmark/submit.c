@@ -274,8 +274,10 @@ int SubmitRun(int argc, char *argv[], struct report *report)
 
     uv_loop_close(&loop);
 
-    name = malloc(strlen("submit") + 1);
-    strcpy(name, "submit");
+    rv = asprintf(&name, "submit:%zu", opts.buf);
+    assert(rv > 0);
+    assert(name != NULL);
+
     benchmark = ReportGrow(report, name);
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
     MetricFillHistogram(m, &server.histogram);
