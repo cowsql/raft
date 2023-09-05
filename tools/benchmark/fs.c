@@ -4,6 +4,7 @@
 #include <ftw.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/sysmacros.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -14,6 +15,58 @@
 
 /* Maximum physical block size for direct I/O that we expect to detect. */
 #define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
+
+int FsFileInfo(const char *path, struct FsFileInfo *info)
+{
+    struct stat st;
+    unsigned maj;
+    unsigned min;
+    char block[1024];
+    char link[1024];
+    const char *name;
+    int rv;
+
+    rv = stat(path, &st);
+    if (rv != 0) {
+        perror("stat");
+        return -1;
+    }
+
+    if ((st.st_mode & S_IFMT) == S_IFBLK) {
+        info->type = FS_TYPE_DEVICE;
+        maj = major(st.st_rdev);
+        min = minor(st.st_rdev);
+    } else {
+        info->type = FS_TYPE_REGULAR;
+        maj = major(st.st_dev);
+        min = minor(st.st_dev);
+    }
+
+    sprintf(block, "/sys/dev/block/%d:%d", maj, min);
+
+    rv = (int)readlink(block, link, sizeof link);
+
+    if (rv < 0) {
+        if (errno != ENOENT) {
+            return -1;
+        }
+        info->driver = FS_DRIVER_GENERIC;
+        goto out;
+    }
+
+    name = basename(link);
+
+    if (strcmp(name, "nullb0") == 0) {
+        info->driver = FS_DRIVER_NULLB;
+    } else if (strncmp(name, "nvme", strlen("nvme")) == 0) {
+        info->driver = FS_DRIVER_NVME;
+    } else {
+        info->driver = FS_DRIVER_GENERIC;
+    }
+
+out:
+    return 0;
+}
 
 static char *makeTempTemplate(const char *dir)
 {
@@ -27,7 +80,7 @@ static char *makeTempTemplate(const char *dir)
 int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
     int dirfd;
-    int flags = O_WRONLY | O_CREAT | O_EXCL;
+    int flags = O_WRONLY | O_CREAT | O_EXCL | O_DIRECT;
     int rv;
 
     *path = makeTempTemplate(dir);
@@ -118,7 +171,7 @@ int FsRemoveTempDir(char *path)
 
 int FsOpenBlockDevice(const char *dir, int *fd)
 {
-    *fd = open(dir, O_RDWR);
+    *fd = open(dir, O_WRONLY | O_DIRECT);
     if (*fd == -1) {
         printf("open '%s': %s\n", dir, strerror(errno));
         return -1;
@@ -128,25 +181,12 @@ int FsOpenBlockDevice(const char *dir, int *fd)
 
 /* Detect all suitable block size we can use to write to the underlying device
  * using direct I/O. */
-static int detectSuitableBlockSizesForDirectIO(const char *dir,
+static int detectSuitableBlockSizesForDirectIO(int fd,
                                                size_t **block_size,
                                                unsigned *n_block_size)
 {
-    char *path;
-    int fd;
     size_t size;
     ssize_t rv;
-
-    rv = FsCreateTempFile(dir, MAX_BLOCK_SIZE, &path, &fd);
-    if (rv != 0) {
-        unlink(path);
-        return -1;
-    }
-
-    rv = FsSetDirectIO(fd);
-    if (rv != 0) {
-        return -1;
-    }
 
     *block_size = NULL;
     *n_block_size = 0;
@@ -167,11 +207,6 @@ static int detectSuitableBlockSizesForDirectIO(const char *dir,
         *block_size = realloc(*block_size, *n_block_size * sizeof **block_size);
         assert(*block_size != NULL);
         (*block_size)[*n_block_size - 1] = size;
-    }
-
-    rv = FsRemoveTempFile(path, fd);
-    if (rv != 0) {
-        return -1;
     }
 
     return 0;
@@ -203,14 +238,14 @@ int FsFileExists(const char *dir, const char *name, bool *exists)
     return 0;
 }
 
-int FsCheckDirectIO(const char *dir, size_t buf)
+int FsCheckDirectIO(int fd, size_t buf)
 {
     size_t *block_size;
     unsigned n_block_size;
     unsigned i;
     int rv;
 
-    rv = detectSuitableBlockSizesForDirectIO(dir, &block_size, &n_block_size);
+    rv = detectSuitableBlockSizesForDirectIO(fd, &block_size, &n_block_size);
     if (rv != 0) {
         goto err;
     }
@@ -230,17 +265,4 @@ int FsCheckDirectIO(const char *dir, size_t buf)
 
 err:
     return -1;
-}
-
-int FsSetDirectIO(int fd)
-{
-    int flags; /* Current fcntl flags */
-    int rv;
-    flags = fcntl(fd, F_GETFL);
-    rv = fcntl(fd, F_SETFL, flags | O_DIRECT);
-    if (rv != 0) {
-        printf("fnctl: %s\n", strerror(errno));
-        return -1;
-    }
-    return 0;
 }

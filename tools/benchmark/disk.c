@@ -14,8 +14,17 @@
 #include "fs.h"
 #include "timer.h"
 
-#define RESOLUTION 100         /* buckets are 100 nanoseconds apart */
-#define BUCKETS 20 * 1000 * 10 /* buckets up to 20,000 microseconds */
+/* Histgram resolution when the underlying block driver is NVMe. */
+#define RESOLUTION_NVME 500        /* buckets are 0.5 microseconds apart */
+#define BUCKETS_NVME 20 * 1000 * 2 /* buckets up to 20,000 microseconds */
+
+/* Histgram resolution when the underlying block driver is nullb. */
+#define RESOLUTION_NULLB 50     /* buckets are 50 nanoseconds apart */
+#define BUCKETS_NULLB 1000 * 20 /* buckets up to 1,000 microseconds */
+
+/* Histgram resolution when the underlying block driver is unspecified. */
+#define RESOLUTION_GENERIC 1000   /* buckets are 1 microsecond apart */
+#define BUCKETS_GENERIC 20 * 1000 /* buckets up to 20,000 microseconds */
 
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
@@ -50,46 +59,77 @@ static void reportThroughput(struct benchmark *benchmark,
     MetricFillThroughput(m, megabytes, duration);
 }
 
-/* Benchmark sequential write performance. */
-static int writeFile(struct diskOptions *opts,
-                     bool raw,
-                     struct benchmark *benchmark)
+/* Init the given histogram using a resolution and buckets count appropriate for
+ * the given driver type. */
+static void initHistogramForDriverType(struct histogram *histogram,
+                                       unsigned type)
 {
+    unsigned buckets;
+    unsigned resolution;
+
+    switch (type) {
+        case FS_DRIVER_NVME:
+            buckets = BUCKETS_NVME;
+            resolution = RESOLUTION_NVME;
+            break;
+        case FS_DRIVER_NULLB:
+            buckets = BUCKETS_NULLB;
+            resolution = RESOLUTION_NULLB;
+            break;
+        case FS_DRIVER_GENERIC:
+            buckets = BUCKETS_GENERIC;
+            resolution = RESOLUTION_GENERIC;
+            break;
+        default:
+            assert(0);
+            break;
+    }
+    HistogramInit(histogram, buckets, resolution, resolution);
+}
+
+/* Benchmark sequential write performance. */
+static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
+{
+    struct FsFileInfo info;
     struct timer timer;
     struct histogram histogram;
     struct iovec iov;
-    struct stat st;
     char *path;
     int fd;
     unsigned long duration;
     unsigned n = opts->size / (unsigned)opts->buf;
+    bool raw;
     int rv;
 
-    assert(opts->size % opts->buf == 0);
-
-    rv = stat(opts->dir, &st);
+    rv = FsFileInfo(opts->dir, &info);
     if (rv != 0) {
-        printf("stat '%s': %s\n", opts->dir, strerror(errno));
+        printf("file info '%s': %s\n", opts->dir, strerror(errno));
         return -1;
     }
+    raw = info.type == FS_TYPE_DEVICE;
+
+    assert(opts->size % opts->buf == 0);
 
     if (raw) {
         rv = FsOpenBlockDevice(opts->dir, &fd);
     } else {
         rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
+        if (rv == 0) {
+            rv = FsFileInfo(path, &info);
+        }
     }
     if (rv != 0) {
         return -1;
     }
 
-    rv = FsSetDirectIO(fd);
+    rv = FsCheckDirectIO(fd, opts->buf);
     if (rv != 0) {
         return -1;
     }
 
     allocBuffer(&iov, opts->buf);
 
-    HistogramInit(&histogram, BUCKETS, RESOLUTION, RESOLUTION);
+    initHistogramForDriverType(&histogram, info.driver);
 
     TimerStart(&timer);
 
@@ -122,31 +162,12 @@ int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskOptions opts;
     struct benchmark *benchmark;
-    struct stat st;
-    bool raw = false; /* Raw I/O directly on a block device */
     char *name;
     int rv;
 
     DiskParse(argc, argv, &opts);
 
-    rv = stat(opts.dir, &st);
-    if (rv != 0) {
-        printf("stat '%s': %s\n", opts.dir, strerror(errno));
-        goto err;
-    }
-
-    if ((st.st_mode & S_IFMT) == S_IFBLK) {
-        raw = true;
-    }
-
     assert(opts.buf != 0);
-
-    if (!raw) {
-        rv = FsCheckDirectIO(opts.dir, opts.buf);
-        if (rv != 0) {
-            goto err;
-        }
-    }
 
     rv = asprintf(&name, "disk:%zu", opts.buf);
     assert(rv > 0);
@@ -154,7 +175,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     benchmark = ReportGrow(report, name);
 
-    rv = writeFile(&opts, raw, benchmark);
+    rv = writeFile(&opts, benchmark);
     if (rv != 0) {
         goto err;
     }
