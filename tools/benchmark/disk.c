@@ -133,7 +133,7 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
     TimerStart(&timer);
 
-    rv = DiskWriteUsingUring(fd, &iov, n, &opts->tracing, &histogram);
+    rv = DiskWriteUsingUring(fd, &iov, n, &info, &opts->tracing, &histogram);
 
     duration = TimerStop(&timer);
 
