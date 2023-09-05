@@ -44,6 +44,7 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
 
     sprintf(block, "/sys/dev/block/%d:%d", maj, min);
 
+    memset(link, 0, sizeof link);
     rv = (int)readlink(block, link, sizeof link);
 
     if (rv < 0) {
