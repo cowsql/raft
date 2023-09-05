@@ -421,6 +421,7 @@ static int uvAliveSegmentReady(struct uv *uv,
         ErrMsgWrapf(uv->io->errmsg, "setup writer for open-%llu", counter);
         return rv;
     }
+    UvWriterSetTracer(&segment->writer, uv->tracer);
     segment->counter = counter;
     return 0;
 }

@@ -251,6 +251,7 @@ int UvWriterInit(struct UvWriter *w,
     QUEUE_INIT(&w->work_queue);
     w->closing = false;
     w->errmsg = errmsg;
+    w->tracer = NULL;
 
     /* Set direct I/O if available. */
     if (direct) {
@@ -408,6 +409,11 @@ void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb)
     } else {
         uv_close((struct uv_handle_s *)&w->check, uvWriterCheckCloseCb);
     }
+}
+
+void UvWriterSetTracer(struct UvWriter *w, struct raft_tracer *tracer)
+{
+    w->tracer = tracer;
 }
 
 /* Return the total lengths of the given buffers. */
