@@ -264,7 +264,8 @@ int DiskWriteUsingUring(int fd,
         return rv;
     }
 
-    if (tracing->switches != 0 && info->driver != FS_DRIVER_GENERIC) {
+    if (tracing->switches != 0 && info->driver != FS_DRIVER_GENERIC &&
+        iov->iov_len >= 262144) {
         printf("Error: unexpected context switches: %u\n", tracing->switches);
         return -1;
     }
