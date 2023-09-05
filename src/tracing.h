@@ -14,7 +14,16 @@ extern struct raft_tracer NoopTracer;
 /* Default stderr tracer. */
 extern struct raft_tracer StderrTracer;
 
-/* Emit a message with the given tracer at level 5. */
+/* Use TRACER to trace an event of type TYPE with the given INFO. */
+#define Trace(TRACER, TYPE, INFO)          \
+    do {                                   \
+        if (LIKELY(TRACER == NULL)) {      \
+            break;                         \
+        }                                  \
+        TRACER->trace(TRACER, TYPE, INFO); \
+    } while (0)
+
+/* Emit diagnostic message with the given tracer at level 5. */
 #define Tracef(TRACER, ...) Logf(TRACER, 5, __VA_ARGS__)
 
 /* Use the tracer to log an event at the given level.
