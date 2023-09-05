@@ -15,18 +15,6 @@
 #include "fs.h"
 #include "timer.h"
 
-/* Histgram resolution when the underlying block driver is NVMe. */
-#define RESOLUTION_NVME 500        /* buckets are 0.5 microseconds apart */
-#define BUCKETS_NVME 20 * 1000 * 2 /* buckets up to 20,000 microseconds */
-
-/* Histgram resolution when the underlying block driver is nullb. */
-#define RESOLUTION_NULLB 50     /* buckets are 50 nanoseconds apart */
-#define BUCKETS_NULLB 1000 * 20 /* buckets up to 1,000 microseconds */
-
-/* Histgram resolution when the underlying block driver is unspecified. */
-#define RESOLUTION_GENERIC 1000   /* buckets are 1 microsecond apart */
-#define BUCKETS_GENERIC 20 * 1000 /* buckets up to 20,000 microseconds */
-
 /* Allocate a buffer of the given size. */
 static void allocBuffer(struct iovec *iov, size_t size)
 {
@@ -40,34 +28,6 @@ static void allocBuffer(struct iovec *iov, size_t size)
     for (i = 0; i < size; i++) {
         *(((uint8_t *)iov->iov_base) + i) = i % 128;
     }
-}
-
-/* Init the given histogram using a resolution and buckets count appropriate for
- * the given driver type. */
-static void initHistogramForDriverType(struct histogram *histogram,
-                                       unsigned type)
-{
-    unsigned buckets;
-    unsigned resolution;
-
-    switch (type) {
-        case FS_DRIVER_NVME:
-            buckets = BUCKETS_NVME;
-            resolution = RESOLUTION_NVME;
-            break;
-        case FS_DRIVER_NULLB:
-            buckets = BUCKETS_NULLB;
-            resolution = RESOLUTION_NULLB;
-            break;
-        case FS_DRIVER_GENERIC:
-            buckets = BUCKETS_GENERIC;
-            resolution = RESOLUTION_GENERIC;
-            break;
-        default:
-            assert(0);
-            break;
-    }
-    HistogramInit(histogram, buckets, resolution, resolution);
 }
 
 /* Prepare the file or device to write to. */
@@ -174,7 +134,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     allocBuffer(&iov, opts.buf);
 
-    initHistogramForDriverType(&histogram, info.driver);
+    HistogramInit(&histogram, info.buckets, info.resolution);
 
     TimerStart(&timer);
 
@@ -224,7 +184,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
         assert(rv > 0);
         assert(name != NULL);
 
-        initHistogramForDriverType(&histogram, info.driver);
+        HistogramInit(&histogram, info.buckets, info.resolution);
 
         if (data->n_commands != n && info.driver != FS_DRIVER_GENERIC) {
             printf("Error: unexpected commands: %u\n", data->n_commands);
@@ -246,7 +206,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
             assert(rv > 0);
             assert(name != NULL);
 
-            initHistogramForDriverType(&histogram, info.driver);
+            HistogramInit(&histogram, info.buckets, info.resolution);
 
             if (data->n_commands != n) {
                 printf("Error: unexpected commands: %u\n", data->n_commands);
