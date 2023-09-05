@@ -225,7 +225,6 @@ retry:
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
-                        struct FsFileInfo *info,
                         struct Profiler *profiler,
                         struct histogram *histogram)
 {
@@ -264,15 +263,6 @@ int DiskWriteUsingUring(int fd,
         return rv;
     }
 
-    /* 262144 is the maximum buffer size where no context switches happen,
-     * presumably because io_uring inlines smaller requests and uses the
-     * threadpool for larger ones. */
-    if (profiler->switches != 0 && info->driver != FS_DRIVER_GENERIC &&
-        iov->iov_len < 262144) {
-        printf("Error: unexpected context switches: %u\n", profiler->switches);
-        return -1;
-    }
-
     rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);
     if (rv != 0) {
         fprintf(stderr, "Unable to unregister file!\n");
@@ -294,7 +284,6 @@ int DiskWriteUsingUring(int fd,
     (void)fd;
     (void)iov;
     (void)n;
-    (void)info;
     (void)tracing;
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");

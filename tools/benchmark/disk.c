@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "disk.h"
 #include "disk_options.h"
@@ -41,24 +42,6 @@ static void allocBuffer(struct iovec *iov, size_t size)
     }
 }
 
-static void reportLatency(struct benchmark *benchmark,
-                          struct histogram *histogram)
-{
-    struct metric *m;
-    m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
-    MetricFillHistogram(m, histogram);
-}
-
-static void reportThroughput(struct benchmark *benchmark,
-                             unsigned long duration,
-                             unsigned size)
-{
-    struct metric *m;
-    unsigned megabytes = size / (1024 * 1024); /* N megabytes written */
-    m = BenchmarkGrow(benchmark, METRIC_KIND_THROUGHPUT);
-    MetricFillThroughput(m, megabytes, duration);
-}
-
 /* Init the given histogram using a resolution and buckets count appropriate for
  * the given driver type. */
 static void initHistogramForDriverType(struct histogram *histogram,
@@ -87,42 +70,93 @@ static void initHistogramForDriverType(struct histogram *histogram,
     HistogramInit(histogram, buckets, resolution, resolution);
 }
 
-/* Benchmark sequential write performance. */
-static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
+/* Prepare the file or device to write to. */
+static int openFile(struct diskOptions *opts,
+                    struct FsFileInfo *info,
+                    int *fd,
+                    char **path)
 {
-    struct FsFileInfo info;
-    struct timer timer;
-    struct histogram histogram;
-    struct iovec iov;
-    char *path;
-    int fd;
-    unsigned long duration;
     unsigned n = opts->size / (unsigned)opts->buf;
-    bool raw;
     int rv;
 
-    rv = FsFileInfo(opts->dir, &info);
+    rv = FsFileInfo(opts->dir, info);
     if (rv != 0) {
         printf("file info '%s': %s\n", opts->dir, strerror(errno));
         return -1;
     }
-    raw = info.type == FS_TYPE_DEVICE;
 
-    assert(opts->size % opts->buf == 0);
-
-    if (raw) {
-        rv = FsOpenBlockDevice(opts->dir, &fd);
+    if (info->type == FS_TYPE_DEVICE) {
+        rv = FsOpenBlockDevice(opts->dir, fd);
     } else {
-        rv = FsCreateTempFile(opts->dir, n * opts->buf, &path, &fd);
+        rv = FsCreateTempFile(opts->dir, n * opts->buf, path, fd);
         if (rv == 0) {
-            rv = FsFileInfo(path, &info);
+            rv = FsFileInfo(*path, info);
         }
     }
     if (rv != 0) {
         return -1;
     }
 
-    rv = FsCheckDirectIO(fd, opts->buf);
+    rv = FsCheckDirectIO(*fd, opts->buf);
+    if (rv != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static int closeFile(struct FsFileInfo *info, int fd, char *path)
+{
+    int rv;
+
+    if (info->type != FS_TYPE_DEVICE) {
+        rv = FsRemoveTempFile(path, fd);
+    } else {
+        rv = close(fd);
+    }
+    if (rv != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static void reportLatency(struct benchmark *benchmark,
+                          struct histogram *histogram)
+{
+    struct metric *m;
+    m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
+    MetricFillHistogram(m, histogram);
+}
+
+static void reportThroughput(struct benchmark *benchmark,
+                             unsigned long duration,
+                             unsigned size)
+{
+    struct metric *m;
+    unsigned megabytes = size / (1024 * 1024); /* N megabytes written */
+    m = BenchmarkGrow(benchmark, METRIC_KIND_THROUGHPUT);
+    MetricFillThroughput(m, megabytes, duration);
+}
+
+/* Benchmark sequential write performance. */
+static int writeFile(struct diskOptions *opts,
+                     struct Profiler *profiler,
+                     struct report *report)
+{
+    struct FsFileInfo info;
+    struct benchmark *benchmark;
+    struct timer timer;
+    struct histogram histogram;
+    struct iovec iov;
+    char *name;
+    char *path;
+    int fd;
+    unsigned long duration;
+    unsigned n = opts->size / (unsigned)opts->buf;
+    int rv;
+
+    rv = openFile(opts, &info, &fd, &path);
     if (rv != 0) {
         return -1;
     }
@@ -133,7 +167,7 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 
     TimerStart(&timer);
 
-    rv = DiskWriteUsingUring(fd, &iov, n, &info, &opts->profiler, &histogram);
+    rv = DiskWriteUsingUring(fd, &iov, n, profiler, &histogram);
 
     duration = TimerStop(&timer);
 
@@ -143,15 +177,76 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
         return -1;
     }
 
+    rv = closeFile(&info, fd, path);
+    if (rv != 0) {
+        return -1;
+    }
+
+    /* 262144 is the maximum buffer size where no context switches happen,
+     * presumably because io_uring inlines smaller requests and uses the
+     * threadpool for larger ones. */
+    if (profiler->switches != 0 && info.driver != FS_DRIVER_GENERIC &&
+        opts->buf < 262144) {
+        printf("Error: unexpected context switches: %u\n", profiler->switches);
+        return -1;
+    }
+
+    rv = asprintf(&name, "disk:%zu", opts->buf);
+    assert(rv > 0);
+    assert(name != NULL);
+
+    benchmark = ReportGrow(report, name);
+
     reportLatency(benchmark, &histogram);
     reportThroughput(benchmark, duration, opts->size);
 
     HistogramClose(&histogram);
 
-    if (!raw) {
-        rv = FsRemoveTempFile(path, fd);
-        if (rv != 0) {
+    if (getuid() == 0) {
+        struct ProfilerDataSource *data;
+        const char *system;
+        unsigned i;
+
+        system = "block";
+        data = &profiler->block;
+        rv = asprintf(&name, "disk:%s:%zu", system, opts->buf);
+        assert(rv > 0);
+        assert(name != NULL);
+
+        initHistogramForDriverType(&histogram, info.driver);
+
+        if (data->n_commands != n && info.driver != FS_DRIVER_GENERIC) {
+            printf("Error: unexpected commands: %u\n", data->n_commands);
             return -1;
+        }
+        for (i = 0; i < data->n_commands; i++) {
+            HistogramCount(&histogram, data->commands[i].duration);
+        }
+
+        benchmark = ReportGrow(report, name);
+        reportLatency(benchmark, &histogram);
+        HistogramClose(&histogram);
+
+        if (info.driver == FS_DRIVER_NVME) {
+            system = "nvme";
+            data = &profiler->block;
+            rv = asprintf(&name, "disk:%s:%zu", system, opts->buf);
+            assert(rv > 0);
+            assert(name != NULL);
+
+            initHistogramForDriverType(&histogram, info.driver);
+
+            if (data->n_commands != n) {
+                printf("Error: unexpected commands: %u\n", data->n_commands);
+                return -1;
+            }
+            for (i = 0; i < data->n_commands; i++) {
+                HistogramCount(&histogram, data->commands[i].duration);
+            }
+
+            benchmark = ReportGrow(report, name);
+            reportLatency(benchmark, &histogram);
+            HistogramClose(&histogram);
         }
     }
 
@@ -161,24 +256,27 @@ static int writeFile(struct diskOptions *opts, struct benchmark *benchmark)
 int DiskRun(int argc, char *argv[], struct report *report)
 {
     struct diskOptions opts;
-    struct benchmark *benchmark;
-    char *name;
+    struct Profiler profiler;
+    unsigned i;
     int rv;
 
     DiskParse(argc, argv, &opts);
 
-    assert(opts.buf != 0);
+    rv = ProfilerInit(&profiler);
+    if (rv != 0) {
+        return -1;
+    }
 
-    rv = asprintf(&name, "disk:%zu", opts.buf);
-    assert(rv > 0);
-    assert(name != NULL);
+    for (i = 0; i < opts.n_traces; i++) {
+        ProfilerTrace(&profiler, opts.traces[i]);
+    }
 
-    benchmark = ReportGrow(report, name);
-
-    rv = writeFile(&opts, benchmark);
+    rv = writeFile(&opts, &profiler, report);
     if (rv != 0) {
         goto err;
     }
+
+    ProfilerClose(&profiler);
 
     return 0;
 

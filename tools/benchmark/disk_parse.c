@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "disk.h"
 #include "disk_parse.h"
@@ -28,7 +29,7 @@ static struct argp argp = {
 };
 
 /* Parse a comma-separated list of kernels subsystem names. */
-static void parseTracing(struct Profiler *profiler, char *arg)
+static void parseTracing(struct diskOptions *opts, char *arg)
 {
     char *token;
     unsigned n_tokens = 1;
@@ -47,7 +48,8 @@ static void parseTracing(struct Profiler *profiler, char *arg)
             token = strtok(NULL, ",");
         }
         assert(token != NULL);
-        ProfilerTrace(profiler, token);
+        opts->traces[opts->n_traces] = token;
+        opts->n_traces++;
     }
 }
 
@@ -72,7 +74,7 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             opts->size = (unsigned)atoi(arg);
             break;
         case 't':
-            parseTracing(&opts->profiler, arg);
+            parseTracing(opts, arg);
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -86,7 +88,7 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
-    ProfilerInit(&opts->profiler);
+    opts->n_traces = 0;
 }
 
 static void optionsCheck(struct diskOptions *opts)
@@ -97,6 +99,10 @@ static void optionsCheck(struct diskOptions *opts)
     }
     if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
+        exit(1);
+    }
+    if (opts->n_traces > 0 && getuid() != 0) {
+        printf("Tracing requires root\n");
         exit(1);
     }
 }

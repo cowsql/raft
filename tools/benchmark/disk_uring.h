@@ -13,7 +13,6 @@
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
-                        struct FsFileInfo *info,
                         struct Profiler *profiler,
                         struct histogram *histogram);
 
