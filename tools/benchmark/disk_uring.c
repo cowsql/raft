@@ -284,7 +284,7 @@ int DiskWriteUsingUring(int fd,
     (void)fd;
     (void)iov;
     (void)n;
-    (void)tracing;
+    (void)profiler;
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");
     return -1;
