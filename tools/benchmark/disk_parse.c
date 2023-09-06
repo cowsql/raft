@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "disk.h"
 #include "disk_parse.h"
@@ -16,7 +17,7 @@ static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
-    {"tracing", 't', "TRACING", 0, "Comma-separated subsystems to trace", 0},
+    {"trace", 't', "TRACE", 0, "Comma-separated kernel subsystems to trace", 0},
     {0}};
 
 static error_t argpParser(int key, char *arg, struct argp_state *state);
@@ -28,7 +29,7 @@ static struct argp argp = {
 };
 
 /* Parse a comma-separated list of kernels subsystem names. */
-static void parseTracing(struct Tracing *tracing, char *arg)
+static void parseTracing(struct diskOptions *opts, char *arg)
 {
     char *token;
     unsigned n_tokens = 1;
@@ -47,7 +48,8 @@ static void parseTracing(struct Tracing *tracing, char *arg)
             token = strtok(NULL, ",");
         }
         assert(token != NULL);
-        TracingAdd(tracing, token);
+        opts->traces[opts->n_traces] = token;
+        opts->n_traces++;
     }
 }
 
@@ -72,7 +74,7 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             opts->size = (unsigned)atoi(arg);
             break;
         case 't':
-            parseTracing(&opts->tracing, arg);
+            parseTracing(opts, arg);
             break;
         default:
             return ARGP_ERR_UNKNOWN;
@@ -86,7 +88,7 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
-    TracingInit(&opts->tracing);
+    opts->n_traces = 0;
 }
 
 static void optionsCheck(struct diskOptions *opts)
@@ -97,6 +99,10 @@ static void optionsCheck(struct diskOptions *opts)
     }
     if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
+        exit(1);
+    }
+    if (opts->n_traces > 0 && getuid() != 0) {
+        printf("Tracing requires root\n");
         exit(1);
     }
 }

@@ -225,8 +225,7 @@ retry:
 int DiskWriteUsingUring(int fd,
                         struct iovec *iov,
                         unsigned n,
-                        struct FsFileInfo *info,
-                        struct Tracing *tracing,
+                        struct Profiler *profiler,
                         struct histogram *histogram)
 {
 #if defined(HAVE_LINUX_IO_URING_H)
@@ -245,7 +244,7 @@ int DiskWriteUsingUring(int fd,
         return -1;
     }
 
-    rv = TracingStart(tracing);
+    rv = ProfilerStart(profiler);
     if (rv != 0) {
         return rv;
     }
@@ -259,15 +258,9 @@ int DiskWriteUsingUring(int fd,
         HistogramCount(histogram, TimerStop(&timer));
     }
 
-    rv = TracingStop(tracing);
+    rv = ProfilerStop(profiler);
     if (rv != 0) {
         return rv;
-    }
-
-    if (tracing->switches != 0 && info->driver != FS_DRIVER_GENERIC &&
-        iov->iov_len < 262144) {
-        printf("Error: unexpected context switches: %u\n", tracing->switches);
-        return -1;
     }
 
     rv = _io_uring_register(_ring_fd, IORING_UNREGISTER_FILES, NULL, 0);
@@ -291,7 +284,6 @@ int DiskWriteUsingUring(int fd,
     (void)fd;
     (void)iov;
     (void)n;
-    (void)info;
     (void)tracing;
     (void)histogram;
     fprintf(stderr, "io_uring not available\n");
