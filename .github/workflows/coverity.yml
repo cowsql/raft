@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -qq lcov linux-libc-dev liblz4-dev libuv1-dev btrfs-progs xfsprogs zfsutils-linux
+          sudo apt-get install -qq lcov linux-libc-dev libuv1-dev btrfs-progs xfsprogs zfsutils-linux
 
       - name: Run coverity
         run: |

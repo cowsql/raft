@@ -68,12 +68,13 @@ sudo apt-get install libraft-dev
 Building
 --------
 
-To build ``libraft`` from source you'll need:
-* A reasonably recent version of [libuv](https://libuv.org/) (v1.18.0 or beyond).
-* Optionally, but recommended, a reasonably recent version of [liblz4](https://lz4.github.io/lz4/) (v1.7.1 or beyond).
+To build ``libraft`` from source you'll need a reasonably recent version of [libuv](https://libuv.org/) (v1.18.0 or beyond).
+
+On a Debian (or derivative) systems:
+
 
 ```bash
-sudo apt-get install libuv1-dev liblz4-dev libtool pkg-config build-essential
+sudo apt-get install libuv1-dev libtool pkg-config build-essential
 autoreconf -i
 ./configure --enable-example
 make
@@ -174,13 +175,6 @@ To add more servers to the cluster use the ```raft_add()``` and
 
 Usage Notes
 -----------
-
-The default [libuv](http://libuv.org) based ```raft_io``` implementation compresses the raft
-snapshots using the ```liblz4``` library. Next to saving disk space, the lz4
-compressed snapshots offer additional data integrity checks in the form of a
-[Content Checksum](https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md), this allows raft
-to detect corruptions that occurred during storage. It is therefore recommended to not disable
-lz4 compression by means of the ```--disable-lz4``` configure flag.
 
 Detailed tracing will be enabled when the environment variable `LIBRAFT_TRACE` is set upon startup.
 
