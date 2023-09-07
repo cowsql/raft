@@ -3,7 +3,6 @@
     "sources": [
 	"src/byte.c",
 	"src/client.c",
-	"src/compress.c",
 	"src/configuration.c",
 	"src/convert.c",
 	"src/election.c",

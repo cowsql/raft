@@ -52,10 +52,9 @@ sudo apt-get install libraft-dev
 从源码编译libraft，需要准备：
 
 - 最较新版本的[libuv](https://libuv.org/)（v1.18.0或之后的版本）
-- 可选的[liblz4](https://lz4.github.io/lz4/)（推荐使用）（v1.7.1或之后的版本）
 
 ```bash
-sudo apt-get install libuv1-dev liblz4-dev libtool pkg-config build-essential
+sudo apt-get install libuv1-dev libtool pkg-config build-essential
 
 autoreconf -i
 
@@ -148,8 +147,6 @@ raft_apply(&raft, &req, &buf, 1, apply_callback);
 7. 添加更多的服务器节点到集群使用```raft_add()``` 和```raft_promote``` APIs
 
 ## Usage Notes
-
-默认基于 [libuv](http://libuv.org) 的 `raft_io` 实现使用 `liblz4 `库压缩 raft 快照。 除了节省磁盘空间，`lz4 `压缩快照以[内容校验和](https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md)的形式提供额外的数据完整性检查，这允许 `raft`检测存储期间发生的损坏。 因此，建议不要通过`--disable-lz4` 配置标志禁用 `lz4 `压缩。
 
 当环境变量LIBRAFT_TRACE在启动时被设置，将启用详细跟踪。
 
