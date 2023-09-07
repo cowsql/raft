@@ -478,6 +478,7 @@ static int processBlockBioQueue(struct ProfilerEventGroup *g,
     unsigned i = data->n_commands;
     data->commands[i].id = t->sector;
     data->commands[i].start = s->time;
+    data->commands[i].duration = 0;
     data->n_commands++;
     return 0;
 }
@@ -491,6 +492,10 @@ static int processBlockRqComplete(struct ProfilerEventGroup *g,
     for (i = 0; i < data->n_commands; i++) {
         if (data->commands[i].id != t->sector) {
             continue;
+        }
+        if (data->commands[i].duration != 0) {
+            printf("unexpected non-zero block command duration\n");
+            return -1;
         }
         data->commands[i].duration = s->time - data->commands[i].start;
         return 0;
@@ -507,6 +512,10 @@ static int processBlockBioComplete(struct ProfilerEventGroup *g,
     for (i = 0; i < data->n_commands; i++) {
         if (data->commands[i].id != t->sector) {
             continue;
+        }
+        if (data->commands[i].duration != 0) {
+            printf("unexpected non-zero block command duration\n");
+            return -1;
         }
         data->commands[i].duration = s->time - data->commands[i].start;
         return 0;
