@@ -3,10 +3,10 @@ name: Benchmark
 on:
   workflow_dispatch:
     inputs:
-      delete:
-        description: "Delete BMC server"
+      keep:
+        description: "Keep BMC server"
         type: boolean
-        default: true
+        default: false
   schedule:
     - cron: '12 4 * * *'
 
@@ -106,7 +106,7 @@ jobs:
   bmc-delete:
     name: On BMC - delete
     runs-on: ubuntu-22.04
-    if: ${{ !contains(inputs.delete, 'false') }}
+    if: always() && (inputs.keep == '' || inputs.keep == 'false')
     needs: [bmc-deploy, bmc-run]
     steps:
     - name: Delete
