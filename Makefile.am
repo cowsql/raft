@@ -15,6 +15,7 @@ libraft_la_LDFLAGS = -version-info 3:0:0
 libraft_la_SOURCES = \
   src/byte.c \
   src/client.c \
+  src/compress.c \
   src/configuration.c \
   src/convert.c \
   src/election.c \
@@ -62,6 +63,7 @@ libtest_la_SOURCES = \
 
 test_unit_core_SOURCES = \
   src/byte.c \
+  src/compress.c \
   src/configuration.c \
   src/err.c \
   src/flags.c \
@@ -69,6 +71,7 @@ test_unit_core_SOURCES = \
   src/log.c \
   test/unit/main_core.c \
   test/unit/test_byte.c \
+  test/unit/test_compress.c \
   test/unit/test_configuration.c \
   test/unit/test_err.c \
   test/unit/test_flags.c \
@@ -76,6 +79,13 @@ test_unit_core_SOURCES = \
   test/unit/test_queue.c
 test_unit_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
+
+if LZ4_AVAILABLE
+test_unit_core_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+test_unit_core_LDFLAGS = $(LZ4_LIBS)
+libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+libraft_la_LDFLAGS += $(LZ4_LIBS)
+endif # LZ4_AVAILABLE
 
 if FIXTURE_ENABLED
 
@@ -201,6 +211,11 @@ test_integration_uv_LDFLAGS = -no-install
 test_integration_uv_LDADD = libtest.la $(UV_LIBS)
 
 AM_CFLAGS += $(UV_CFLAGS)
+
+if LZ4_AVAILABLE
+test_integration_uv_CFLAGS += -DLZ4_AVAILABLE
+test_integration_uv_LDFLAGS += $(LZ4_LIBS)
+endif # LZ4_AVAILABLE
 
 endif # UV_ENABLED
 

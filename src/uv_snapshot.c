@@ -4,6 +4,7 @@
 #include "array.h"
 #include "assert.h"
 #include "byte.h"
+#include "compress.h"
 #include "configuration.h"
 #include "heap.h"
 #include "uv.h"
@@ -329,6 +330,19 @@ static int uvSnapshotLoadData(struct uv *uv,
     if (rv != 0) {
         tracef("stat %s: %s", filename, errmsg);
         goto err;
+    }
+
+    if (IsCompressed(buf.base, buf.len)) {
+        struct raft_buffer decompressed = {0};
+        tracef("snapshot decompress start");
+        rv = Decompress(buf, &decompressed, errmsg);
+        tracef("snapshot decompress end %d", rv);
+        if (rv != 0) {
+            tracef("decompress failed rv:%d", rv);
+            goto err_after_read_file;
+        }
+        RaftHeapFree(buf.base);
+        buf = decompressed;
     }
 
     snapshot->bufs = RaftHeapMalloc(sizeof *snapshot->bufs);
