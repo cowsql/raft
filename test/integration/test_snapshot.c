@@ -120,13 +120,6 @@ static int fsmSnapshotFail(struct raft_fsm *fsm,
         }                                                           \
     }
 
-#define RESET_FSM_ASYNC(I)                           \
-    {                                                \
-        struct raft_fsm *fsm = CLUSTER_RAFT(I)->fsm; \
-        FsmClose(fsm);                               \
-        FsmInitAsync(fsm, fsm->version);             \
-    }
-
 #define SET_FAULTY_SNAPSHOT()                                 \
     {                                                         \
         unsigned i;                                           \
@@ -563,19 +556,9 @@ TEST(snapshot, installSnapshotDuringEntriesWrite, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-static char *fsm_version[] = {"1", "2", "3", NULL};
-static char *fsm_snapshot_async[] = {"0", "1", NULL};
+static char *fsm_version[] = {"1", "2", NULL};
 static MunitParameterEnum fsm_snapshot_async_params[] = {
-    {CLUSTER_SS_ASYNC_PARAM, fsm_snapshot_async},
     {CLUSTER_FSM_VERSION_PARAM, fsm_version},
-    {NULL, NULL},
-};
-
-static char *fsm_snapshot_only_async[] = {"1", NULL};
-static char *fsm_version_only_async[] = {"3", NULL};
-static MunitParameterEnum fsm_snapshot_only_async_params[] = {
-    {CLUSTER_SS_ASYNC_PARAM, fsm_snapshot_only_async},
-    {CLUSTER_FSM_VERSION_PARAM, fsm_version_only_async},
     {NULL, NULL},
 };
 
@@ -669,72 +652,6 @@ TEST(snapshot,
     CLUSTER_MAKE_PROGRESS;
 
     /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
-
-TEST(snapshot,
-     takeSnapshotAsyncFail,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_only_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_SNAPSHOT_ASYNC();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
-
-TEST(snapshot,
-     takeSnapshotAsyncFailOnce,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_only_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_SNAPSHOT_ASYNC();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    /* Wait for snapshot to fail. */
-    CLUSTER_STEP_UNTIL_ELAPSED(200);
-    /* napshot will have failed here. */
-
-    /* Set the non-faulty fsm->snapshot_async function */
-    RESET_FSM_ASYNC(CLUSTER_LEADER);
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Wait for snapshot to be finished */
-    CLUSTER_STEP_UNTIL_ELAPSED(200);
-
-    /* Reconnect the follower and wait for it to catch up */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 5000);
-
-    /* Check that the leader has sent a snapshot */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
     return MUNIT_OK;
 }
 
