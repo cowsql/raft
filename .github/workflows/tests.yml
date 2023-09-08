@@ -40,7 +40,7 @@ jobs:
       run: |
           export LIBRAFT_TRACE=1
           ./test/lib/fs.sh setup
-          make -j$(nproc --all) check $(./test/lib/fs.sh detect) || (cat ./test-suite.log && false)
+          make check $(./test/lib/fs.sh detect) || (cat ./test-suite.log && false)
           ./test/lib/fs.sh teardown
 
     - name: Coverage
