@@ -80,6 +80,7 @@ struct raft_fixture
  * `raft_fixture_grow`.
  */
 RAFT_API int raft_fixture_init(struct raft_fixture *f);
+RAFT_API int raft_fixture_initialize(struct raft_fixture *f);
 
 /**
  * Release all memory used by the fixture.

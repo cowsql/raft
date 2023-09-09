@@ -268,13 +268,5 @@ static int ioFsmVersionCheck(struct raft *r,
         return -1;
     }
 
-    if ((fsm->version > 2 && fsm->snapshot_async != NULL) &&
-        ((io->version < 2) || (io->async_work == NULL))) {
-        ErrMsgPrintf(
-            r->errmsg,
-            "async snapshot requires io->version > 1 and async_work method.");
-        return -1;
-    }
-
     return 0;
 }

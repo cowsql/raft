@@ -24,8 +24,7 @@
     do {                                                                       \
         unsigned _n = DEFAULT_N;                                               \
         bool _pre_vote = false;                                                \
-        bool _ss_async = false;                                                \
-        int _fsm_version = 3;                                                  \
+        int _fsm_version = 2;                                                  \
         unsigned _hb = 0;                                                      \
         unsigned _i;                                                           \
         int _rv;                                                               \
@@ -39,10 +38,6 @@
         if (munit_parameters_get(params, CLUSTER_HEARTBEAT_PARAM) != NULL) {   \
             _hb = atoi(munit_parameters_get(params, CLUSTER_HEARTBEAT_PARAM)); \
         }                                                                      \
-        if (munit_parameters_get(params, CLUSTER_SS_ASYNC_PARAM) != NULL) {    \
-            _ss_async =                                                        \
-                atoi(munit_parameters_get(params, CLUSTER_SS_ASYNC_PARAM));    \
-        }                                                                      \
         if (munit_parameters_get(params, CLUSTER_FSM_VERSION_PARAM) != NULL) { \
             _fsm_version =                                                     \
                 atoi(munit_parameters_get(params, CLUSTER_FSM_VERSION_PARAM)); \
@@ -51,11 +46,7 @@
         _rv = raft_fixture_init(&f->cluster);                                  \
         munit_assert_int(_rv, ==, 0);                                          \
         for (_i = 0; _i < _n; _i++) {                                          \
-            if (!_ss_async || _fsm_version < 3) {                              \
-                FsmInit(&f->fsms[_i], _fsm_version);                           \
-            } else {                                                           \
-                FsmInitAsync(&f->fsms[_i], _fsm_version);                      \
-            }                                                                  \
+            FsmInit(&f->fsms[_i], _fsm_version);                               \
             _rv = raft_fixture_grow(&f->cluster, &f->fsms[_i]);                \
             munit_assert_int(_rv, ==, 0);                                      \
         }                                                                      \
@@ -89,9 +80,6 @@
 
 /* Munit parameter for setting HeartBeat timeout */
 #define CLUSTER_HEARTBEAT_PARAM "cluster-heartbeat"
-
-/* Munit parameter for setting snapshot behaviour */
-#define CLUSTER_SS_ASYNC_PARAM "cluster-snapshot-async"
 
 /* Munit parameter for setting fsm version */
 #define CLUSTER_FSM_VERSION_PARAM "fsm-version"
