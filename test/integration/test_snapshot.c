@@ -498,6 +498,50 @@ TEST(snapshot, installSnapshotHeartBeats, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* A follower receives an AppendEntries message while installing a snapshot . */
+TEST(snapshot, receiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_transfer transfer;
+    int rv;
+
+    /* Set a very low threshold and trailing entries number on server 0. */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 2);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(0), 1);
+
+    /* Prevent server 2 from receving messages from server 1. */
+    CLUSTER_SATURATE_BOTHWAYS(0, 2);
+
+    /* Set a high disk latency on the follower, so it will take a while to
+     * complete installing the snapshot. */
+    CLUSTER_SET_DISK_LATENCY(2, 1000);
+
+    /* Apply a few of entries, to force a snapshot to be taken. */
+    CLUSTER_MAKE_PROGRESS;
+    CLUSTER_MAKE_PROGRESS;
+
+    /* Reconnect the follower and wait for it to receive a snapshot. */
+    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
+    CLUSTER_STEP_UNTIL(server_installing_snapshot, CLUSTER_RAFT(2), 2000);
+
+    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 64);
+
+    /* Apply a new entry, server 0 won't send it to server 2 since it is waiting
+     * for it to complete installing the snapshot. */
+    CLUSTER_MAKE_PROGRESS;
+
+    /* Transfer leadership from server 0 to server 1. */
+    rv = raft_transfer(CLUSTER_RAFT(0), &transfer, 2, NULL);
+    munit_assert_int(rv, ==, 0);
+    CLUSTER_STEP_UNTIL_STATE_IS(1, RAFT_LEADER, 1000);
+
+    /* Since server 1 hasn't taken a snapshot, it still has the entries that
+     * server 2 is missing, and will try to send them to it. */
+    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 2000);
+
+    return MUNIT_OK;
+}
+
 /* InstallSnapshot RPC arrives while persisting Entries */
 TEST(snapshot, installSnapshotDuringEntriesWrite, setUp, tearDown, 0, NULL)
 {
