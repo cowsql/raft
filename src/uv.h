@@ -274,11 +274,6 @@ int UvSnapshotGet(struct raft_io *io,
                   struct raft_io_snapshot_get *req,
                   raft_io_snapshot_get_cb cb);
 
-/* Implementation of raft_io->async_work (defined in uv_work.c). */
-int UvAsyncWork(struct raft_io *io,
-                struct raft_io_async_work *req,
-                raft_io_async_work_cb cb);
-
 /* Return a list of all snapshots and segments found in the data directory. Both
  * snapshots and segments are ordered by filename (closed segments come before
  * open ones). */

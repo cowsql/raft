@@ -84,24 +84,6 @@ static int ioMethodSnapshotPutFail(struct raft_io *raft_io,
         }                                                                \
     }
 
-static int ioMethodAsyncWorkFail(struct raft_io *raft_io,
-                                 struct raft_io_async_work *req,
-                                 raft_io_async_work_cb cb)
-{
-    (void)raft_io;
-    (void)req;
-    (void)cb;
-    return -1;
-}
-
-#define SET_FAULTY_ASYNC_WORK()                                      \
-    {                                                                \
-        unsigned i;                                                  \
-        for (i = 0; i < CLUSTER_N; i++) {                            \
-            CLUSTER_RAFT(i)->io->async_work = ioMethodAsyncWorkFail; \
-        }                                                            \
-    }
-
 static int fsmSnapshotFail(struct raft_fsm *fsm,
                            struct raft_buffer *bufs[],
                            unsigned *n_bufs)
@@ -111,14 +93,6 @@ static int fsmSnapshotFail(struct raft_fsm *fsm,
     (void)n_bufs;
     return -1;
 }
-
-#define SET_FAULTY_SNAPSHOT_ASYNC()                                 \
-    {                                                               \
-        unsigned i;                                                 \
-        for (i = 0; i < CLUSTER_N; i++) {                           \
-            CLUSTER_RAFT(i)->fsm->snapshot_async = fsmSnapshotFail; \
-        }                                                           \
-    }
 
 #define SET_FAULTY_SNAPSHOT()                                 \
     {                                                         \
@@ -616,31 +590,6 @@ TEST(snapshot,
     (void)params;
 
     SET_FAULTY_SNAPSHOT_PUT();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
-
-TEST(snapshot,
-     takeSnapshotAsyncWorkFail,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_ASYNC_WORK();
 
     /* Set very low threshold and trailing entries number */
     SET_SNAPSHOT_THRESHOLD(3);
