@@ -26,7 +26,7 @@ int replicationTrigger(struct raft *r, raft_index index);
  *   response during the last heartbeat interval), then send a message only if
  *   haven't sent any during the last heartbeat interval.
  *
- * - If we are pipelining entries to the follower, then send any new entries
+ * - If we are pipelining entries to the follower, then send any new entries we
  *   haven't yet sent.
  *
  * If a message should be sent, the rules to decide what type of message to send
