@@ -1189,14 +1189,15 @@ int replicationAppend(struct raft *r,
         goto err_after_request_alloc;
     }
 
+    /* The number of entries we just acquired must be exactly n, which is the
+     * number of new entries present in the message (here "new entries" means
+     * entries that we don't have yet in our in-memory log).  That's because we
+     * call logAppend above exactly n times, once for each new log entry, so
+     * logAcquire will return exactly n entries. */
     assert(request->args.n_entries == n);
-    if (request->args.n_entries == 0) {
-        tracef("No log entries found at index %llu", request->index);
-        ErrMsgPrintf(r->errmsg, "No log entries found at index %llu",
-                     request->index);
-        rv = RAFT_SHUTDOWN;
-        goto err_after_acquire_entries;
-    }
+
+    /* The n == 0 case is handled above. */
+    assert(request->args.n_entries > 0);
 
     request->req.data = request;
     rv = r->io->append(r->io, &request->req, request->args.entries,

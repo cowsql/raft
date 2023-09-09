@@ -108,9 +108,10 @@ int logAppendConfiguration(struct raft_log *l,
                            const raft_term term,
                            const struct raft_configuration *configuration);
 
-/* Acquire an array of entries from the given index onwards. * The payload
- * memory referenced by the @buf attribute of the returned entries is guaranteed
- * to be valid until logRelease() is called. */
+/* Acquire an array of entries from the given index onwards.
+ *
+ * The payload memory referenced by the @buf attribute of the returned entries
+ * is guaranteed to be valid until logRelease() is called. */
 int logAcquire(struct raft_log *l,
                raft_index index,
                struct raft_entry *entries[],
