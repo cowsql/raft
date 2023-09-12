@@ -80,8 +80,9 @@ static char *makeTempTemplate(const char *dir)
 
 int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
-    int dirfd;
     int flags = O_WRONLY | O_CREAT | O_EXCL | O_DIRECT;
+    void *buf;
+    int dirfd;
     int rv;
 
     *path = makeTempTemplate(dir);
@@ -96,6 +97,18 @@ int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
         errno = rv;
         printf("posix_fallocate: %s\n", strerror(errno));
         unlink(*path);
+        return -1;
+    }
+
+    buf = aligned_alloc(size, size);
+    assert(buf != NULL);
+
+    rv = (int)pwrite(*fd, buf, size, 0);
+
+    free(buf);
+
+    if (rv != (int)size) {
+        printf("pwrite '%s': %d\n", *path, rv);
         return -1;
     }
 
@@ -180,39 +193,6 @@ int FsOpenBlockDevice(const char *dir, int *fd)
     return 0;
 }
 
-/* Detect all suitable block size we can use to write to the underlying device
- * using direct I/O. */
-static int detectSuitableBlockSizesForDirectIO(int fd,
-                                               size_t **block_size,
-                                               unsigned *n_block_size)
-{
-    size_t size;
-    ssize_t rv;
-
-    *block_size = NULL;
-    *n_block_size = 0;
-
-    for (size = MIN_BLOCK_SIZE; size <= MAX_BLOCK_SIZE; size *= 2) {
-        struct iovec iov;
-        iov.iov_len = size;
-        iov.iov_base = aligned_alloc(iov.iov_len, iov.iov_len);
-        assert(iov.iov_base != NULL);
-        rv = pwritev2(fd, &iov, 1, 0, RWF_DSYNC | RWF_HIPRI);
-        free(iov.iov_base);
-        if (rv == -1) {
-            assert(errno == EINVAL);
-            continue; /* Try with a bigger buffer size */
-        }
-        assert((size_t)rv == size);
-        *n_block_size += 1;
-        *block_size = realloc(*block_size, *n_block_size * sizeof **block_size);
-        assert(*block_size != NULL);
-        (*block_size)[*n_block_size - 1] = size;
-    }
-
-    return 0;
-}
-
 int FsFileExists(const char *dir, const char *name, bool *exists)
 {
     char *path;
@@ -237,33 +217,4 @@ int FsFileExists(const char *dir, const char *name, bool *exists)
     }
 
     return 0;
-}
-
-int FsCheckDirectIO(int fd, size_t buf)
-{
-    size_t *block_size;
-    unsigned n_block_size;
-    unsigned i;
-    int rv;
-
-    rv = detectSuitableBlockSizesForDirectIO(fd, &block_size, &n_block_size);
-    if (rv != 0) {
-        goto err;
-    }
-
-    for (i = 0; i < n_block_size; i++) {
-        if (block_size[i] == buf) {
-            break;
-        }
-    }
-    free(block_size);
-
-    if (i == n_block_size) {
-        goto err;
-    }
-
-    return 0;
-
-err:
-    return -1;
 }

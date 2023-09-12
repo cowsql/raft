@@ -97,11 +97,6 @@ static int openFile(struct diskOptions *opts,
         return -1;
     }
 
-    rv = FsCheckDirectIO(*fd, opts->buf);
-    if (rv != 0) {
-        return -1;
-    }
-
     return 0;
 }
 
