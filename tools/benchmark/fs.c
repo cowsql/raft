@@ -80,8 +80,9 @@ static char *makeTempTemplate(const char *dir)
 
 int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
 {
-    int dirfd;
     int flags = O_WRONLY | O_CREAT | O_EXCL | O_DIRECT;
+    void *buf;
+    int dirfd;
     int rv;
 
     *path = makeTempTemplate(dir);
@@ -96,6 +97,18 @@ int FsCreateTempFile(const char *dir, size_t size, char **path, int *fd)
         errno = rv;
         printf("posix_fallocate: %s\n", strerror(errno));
         unlink(*path);
+        return -1;
+    }
+
+    buf = aligned_alloc(size, size);
+    assert(buf != NULL);
+
+    rv = (int)pwrite(*fd, buf, size, 0);
+
+    free(buf);
+
+    if (rv != (int)size) {
+        printf("pwrite '%s': %d\n", *path, rv);
         return -1;
     }
 
