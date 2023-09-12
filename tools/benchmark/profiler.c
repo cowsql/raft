@@ -448,10 +448,18 @@ static int processNvmeSetupCmd(struct ProfilerEventGroup *g,
 {
     struct ProfilerDataSource *data = &g->p->nvme;
     unsigned i = data->n_commands;
+    u16 control = *(u16 *)(t->cdw10 + 10);
+
     if (t->opcode != 0x01 /* Write opcode, from linux/nvme.h */) {
         printf("unexpected nvme opecode 0x%x\n", t->opcode);
         return -1;
     }
+
+    if (control != 0x4000 /* Flush flag, from trace output */) {
+        printf("unexpected nvme control 0x%x\n", control);
+        return -1;
+    }
+
     data->commands[i].id = t->cid;
     data->commands[i].start = s->time;
     data->n_commands++;
@@ -602,7 +610,10 @@ static int profilerEventGroupStop(struct ProfilerEventGroup *g)
 
     for (i = 0; i < n; i++) {
         u32 size;
-        processPerfSample(g, sample, &size);
+        rv = processPerfSample(g, sample, &size);
+        if (rv != 0) {
+            return -1;
+        }
         sample = (void *)((char *)sample + size);
     }
 
