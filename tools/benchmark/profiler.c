@@ -448,6 +448,10 @@ static int processNvmeSetupCmd(struct ProfilerEventGroup *g,
 {
     struct ProfilerDataSource *data = &g->p->nvme;
     unsigned i = data->n_commands;
+    if (t->opcode != 0x01 /* Write opcode, from linux/nvme.h */) {
+        printf("unexpected nvme opecode 0x%x\n", t->opcode);
+        return -1;
+    }
     data->commands[i].id = t->cid;
     data->commands[i].start = s->time;
     data->n_commands++;
