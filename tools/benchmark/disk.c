@@ -134,11 +134,10 @@ static void reportThroughput(struct benchmark *benchmark,
     MetricFillThroughput(m, megabytes, duration);
 }
 
-/* Benchmark sequential write performance. */
-static int writeFile(struct diskOptions *opts,
-                     struct Profiler *profiler,
-                     struct report *report)
+int DiskRun(int argc, char *argv[], struct report *report)
 {
+    struct diskOptions opts;
+    struct Profiler profiler;
     struct FsFileInfo info;
     struct benchmark *benchmark;
     struct timer timer;
@@ -148,21 +147,35 @@ static int writeFile(struct diskOptions *opts,
     char *path;
     int fd;
     unsigned long duration;
-    unsigned n = opts->size / (unsigned)opts->buf;
+    unsigned i;
+    unsigned n;
+
     int rv;
 
-    rv = openFile(opts, &info, &fd, &path);
+    DiskParse(argc, argv, &opts);
+
+    rv = openFile(&opts, &info, &fd, &path);
     if (rv != 0) {
         return -1;
     }
 
-    allocBuffer(&iov, opts->buf);
+    rv = ProfilerInit(&profiler, &info);
+    if (rv != 0) {
+        return -1;
+    }
+
+    for (i = 0; i < opts.n_traces; i++) {
+        ProfilerTrace(&profiler, opts.traces[i]);
+    }
+
+    allocBuffer(&iov, opts.buf);
 
     initHistogramForDriverType(&histogram, info.driver);
 
     TimerStart(&timer);
 
-    rv = DiskWriteUsingUring(fd, &iov, n, profiler, &histogram);
+    n = opts.size / (unsigned)opts.buf;
+    rv = DiskWriteUsingUring(fd, &iov, n, &profiler, &histogram);
 
     duration = TimerStop(&timer);
 
@@ -180,31 +193,30 @@ static int writeFile(struct diskOptions *opts,
     /* 262144 is the maximum buffer size where no context switches happen,
      * presumably because io_uring inlines smaller requests and uses the
      * threadpool for larger ones. */
-    if (profiler->switches != 0 && info.driver != FS_DRIVER_GENERIC &&
-        opts->buf < 262144) {
-        printf("Error: unexpected context switches: %u\n", profiler->switches);
+    if (profiler.switches != 0 && info.driver != FS_DRIVER_GENERIC &&
+        opts.buf < 262144) {
+        printf("Error: unexpected context switches: %u\n", profiler.switches);
         return -1;
     }
 
-    rv = asprintf(&name, "disk:%zu", opts->buf);
+    rv = asprintf(&name, "disk:%zu", opts.buf);
     assert(rv > 0);
     assert(name != NULL);
 
     benchmark = ReportGrow(report, name);
 
     reportLatency(benchmark, &histogram);
-    reportThroughput(benchmark, duration, opts->size);
+    reportThroughput(benchmark, duration, opts.size);
 
     HistogramClose(&histogram);
 
     if (getuid() == 0) {
         struct ProfilerDataSource *data;
         const char *system;
-        unsigned i;
 
         system = "block";
-        data = &profiler->block;
-        rv = asprintf(&name, "disk:%s:%zu", system, opts->buf);
+        data = &profiler.block;
+        rv = asprintf(&name, "disk:%s:%zu", system, opts.buf);
         assert(rv > 0);
         assert(name != NULL);
 
@@ -215,6 +227,7 @@ static int writeFile(struct diskOptions *opts,
             return -1;
         }
         for (i = 0; i < data->n_commands; i++) {
+            assert(data->commands[i].duration > 0);
             HistogramCount(&histogram, data->commands[i].duration);
         }
 
@@ -224,8 +237,8 @@ static int writeFile(struct diskOptions *opts,
 
         if (info.driver == FS_DRIVER_NVME) {
             system = "nvme";
-            data = &profiler->block;
-            rv = asprintf(&name, "disk:%s:%zu", system, opts->buf);
+            data = &profiler.block;
+            rv = asprintf(&name, "disk:%s:%zu", system, opts.buf);
             assert(rv > 0);
             assert(name != NULL);
 
@@ -236,6 +249,7 @@ static int writeFile(struct diskOptions *opts,
                 return -1;
             }
             for (i = 0; i < data->n_commands; i++) {
+                assert(data->commands[i].duration > 0);
                 HistogramCount(&histogram, data->commands[i].duration);
             }
 
@@ -245,36 +259,7 @@ static int writeFile(struct diskOptions *opts,
         }
     }
 
-    return 0;
-}
-
-int DiskRun(int argc, char *argv[], struct report *report)
-{
-    struct diskOptions opts;
-    struct Profiler profiler;
-    unsigned i;
-    int rv;
-
-    DiskParse(argc, argv, &opts);
-
-    rv = ProfilerInit(&profiler);
-    if (rv != 0) {
-        return -1;
-    }
-
-    for (i = 0; i < opts.n_traces; i++) {
-        ProfilerTrace(&profiler, opts.traces[i]);
-    }
-
-    rv = writeFile(&opts, &profiler, report);
-    if (rv != 0) {
-        goto err;
-    }
-
     ProfilerClose(&profiler);
 
     return 0;
-
-err:
-    return -1;
 }

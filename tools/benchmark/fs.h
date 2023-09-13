@@ -22,6 +22,8 @@ struct FsFileInfo
 {
     unsigned type;
     unsigned driver;
+    unsigned block_dev_start; /* First sector of the underlying block device */
+    unsigned block_dev_end;   /* End sector of the underlying block device */
 };
 
 /* Detect file information. */

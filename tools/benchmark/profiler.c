@@ -95,6 +95,7 @@ struct blockBioQueue
     struct tracepoint tp;
     u32 dev;
     u64 sector;
+    u32 nr_sector;
 };
 
 struct blockRqComplete
@@ -295,10 +296,11 @@ static int profilerInitPerf(struct Profiler *p)
     return 0;
 }
 
-int ProfilerInit(struct Profiler *p)
+int ProfilerInit(struct Profiler *p, struct FsFileInfo *device)
 {
     int rv;
 
+    p->device = device;
     p->n_traces = 0;
     p->switches = 0;
 
@@ -447,7 +449,26 @@ static int processNvmeSetupCmd(struct ProfilerEventGroup *g,
                                struct nvmeSetupCmd *t)
 {
     struct ProfilerDataSource *data = &g->p->nvme;
+    struct FsFileInfo *device = g->p->device;
     unsigned i = data->n_commands;
+    u64 slba = *(u64 *)(t->cdw10);
+    u16 control = *(u16 *)(t->cdw10 + 10);
+
+    /* Skip writes targeted to other partitions. */
+    if (slba < device->block_dev_start || slba >= device->block_dev_end) {
+        return 0;
+    }
+
+    if (t->opcode != 0x01 /* Write opcode, from linux/nvme.h */) {
+        printf("unexpected nvme opcode 0x%x\n", t->opcode);
+        return -1;
+    }
+
+    if (control != 0x4000 /* Flush flag, from trace output */) {
+        printf("unexpected nvme control 0x%x\n", control);
+        return -1;
+    }
+
     data->commands[i].id = t->cid;
     data->commands[i].start = s->time;
     data->n_commands++;
@@ -460,6 +481,7 @@ static int processNvmeCompleteRq(struct ProfilerEventGroup *g,
 {
     struct ProfilerDataSource *data = &g->p->nvme;
     unsigned i;
+
     for (i = 0; i < data->n_commands; i++) {
         if (data->commands[i].id != (unsigned long long)t->cid) {
             continue;
@@ -467,7 +489,11 @@ static int processNvmeCompleteRq(struct ProfilerEventGroup *g,
         data->commands[i].duration = s->time - data->commands[i].start;
         return 0;
     }
-    return -1;
+
+    /* The setup for this completion was probably skipped. TODO: make sure of
+     * that. */
+
+    return 0;
 }
 
 static int processBlockBioQueue(struct ProfilerEventGroup *g,
@@ -475,11 +501,20 @@ static int processBlockBioQueue(struct ProfilerEventGroup *g,
                                 struct blockBioQueue *t)
 {
     struct ProfilerDataSource *data = &g->p->block;
+    struct FsFileInfo *device = g->p->device;
     unsigned i = data->n_commands;
+
+    /* Skip writes targeted to other partitions. */
+    if (t->sector < device->block_dev_start ||
+        t->sector >= device->block_dev_end) {
+        return 0;
+    }
+
     data->commands[i].id = t->sector;
     data->commands[i].start = s->time;
     data->commands[i].duration = 0;
     data->n_commands++;
+
     return 0;
 }
 
@@ -488,7 +523,15 @@ static int processBlockRqComplete(struct ProfilerEventGroup *g,
                                   struct blockRqComplete *t)
 {
     struct ProfilerDataSource *data = &g->p->block;
+    struct FsFileInfo *device = g->p->device;
     unsigned i;
+
+    /* Skip writes targeted to other partitions. */
+    if (t->sector < device->block_dev_start ||
+        t->sector >= device->block_dev_end) {
+        return 0;
+    }
+
     for (i = 0; i < data->n_commands; i++) {
         if (data->commands[i].id != t->sector) {
             continue;
@@ -508,7 +551,15 @@ static int processBlockBioComplete(struct ProfilerEventGroup *g,
                                    struct blockBioComplete *t)
 {
     struct ProfilerDataSource *data = &g->p->block;
+    struct FsFileInfo *device = g->p->device;
     unsigned i;
+
+    /* Skip writes targeted to other partitions. */
+    if (t->sector < device->block_dev_start ||
+        t->sector >= device->block_dev_end) {
+        return 0;
+    }
+
     for (i = 0; i < data->n_commands; i++) {
         if (data->commands[i].id != t->sector) {
             continue;
@@ -598,7 +649,10 @@ static int profilerEventGroupStop(struct ProfilerEventGroup *g)
 
     for (i = 0; i < n; i++) {
         u32 size;
-        processPerfSample(g, sample, &size);
+        rv = processPerfSample(g, sample, &size);
+        if (rv != 0) {
+            return -1;
+        }
         sample = (void *)((char *)sample + size);
     }
 

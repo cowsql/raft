@@ -3,6 +3,8 @@
 #ifndef PROFILER_H_
 #define PROFILER_H_
 
+#include "fs.h"
+
 struct Profiler;
 
 /* Group of per-CPU perf events. */
@@ -30,16 +32,17 @@ struct ProfilerDataSource
 
 struct Profiler
 {
-    const char *traces[10]; /* Names of the kernel sub-systems to trace. */
-    unsigned n_traces;      /* Number of sub-systems to trace. */
-    unsigned switches;      /* Number of context switches performed. */
+    struct FsFileInfo *device; /* Information about the underlying device. */
+    const char *traces[10];    /* Names of the kernel sub-systems to trace. */
+    unsigned n_traces;         /* Number of sub-systems to trace. */
+    unsigned switches;         /* Number of context switches performed. */
     struct ProfilerEventGroup *groups; /* Groups of per-CPU events.. */
     unsigned n_groups;
     struct ProfilerDataSource nvme;
     struct ProfilerDataSource block;
 };
 
-int ProfilerInit(struct Profiler *t);
+int ProfilerInit(struct Profiler *t, struct FsFileInfo *device);
 
 void ProfilerClose(struct Profiler *t);
 

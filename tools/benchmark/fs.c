@@ -16,11 +16,63 @@
 /* Maximum physical block size for direct I/O that we expect to detect. */
 #define MAX_BLOCK_SIZE (1024 * 1024) /* 1M */
 
+#define SYS_BLOCK_PATH "/sys/dev/block/%d:%d"
+
+/* Read an integer value from the file /sys/dev/block/<maj>:<min>/name . */
+static int readBlockDeviceInfo(unsigned maj,
+                               unsigned min,
+                               const char *name,
+                               unsigned *value)
+{
+    char path[1024];
+    char buf[256];
+    FILE *file;
+    int rv;
+    sprintf(path, SYS_BLOCK_PATH "/%s", maj, min, name);
+
+    file = fopen(path, "r");
+    if (file == NULL) {
+        /* Special case null_blk devices which don't create a "start" file. */
+        if (strcmp(name, "start") == 0 && errno == ENOENT) {
+            *value = 0;
+            return 0;
+        }
+
+        fprintf(stderr, "fopen device info at %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+
+    rv = (int)fread(buf, sizeof buf, 1, file);
+    if (rv < 0) {
+        fprintf(stderr, "fread device info at %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+
+    *value = (unsigned)atoi(buf);
+
+    fclose(file);
+
+    return 0;
+}
+
+/* Read the start sector of the given block device. */
+static int readBlockDeviceStart(unsigned maj, unsigned min, unsigned *start)
+{
+    return readBlockDeviceInfo(maj, min, "start", start);
+}
+
+/* Read the size in sectors of the given block device. */
+static int readBlockDeviceSize(unsigned maj, unsigned min, unsigned *size)
+{
+    return readBlockDeviceInfo(maj, min, "size", size);
+}
+
 int FsFileInfo(const char *path, struct FsFileInfo *info)
 {
     struct stat st;
     unsigned maj;
     unsigned min;
+    unsigned dev_size;
     char block[1024];
     char link[1024];
     const char *name;
@@ -42,7 +94,7 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
         min = minor(st.st_dev);
     }
 
-    sprintf(block, "/sys/dev/block/%d:%d", maj, min);
+    sprintf(block, SYS_BLOCK_PATH, maj, min);
 
     memset(link, 0, sizeof link);
     rv = (int)readlink(block, link, sizeof link);
@@ -54,6 +106,16 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
         info->driver = FS_DRIVER_GENERIC;
         goto out;
     }
+
+    rv = readBlockDeviceStart(maj, min, &info->block_dev_start);
+    if (rv != 0) {
+        return -1;
+    }
+    rv = readBlockDeviceSize(maj, min, &dev_size);
+    if (rv != 0) {
+        return -1;
+    }
+    info->block_dev_end = info->block_dev_start + dev_size;
 
     name = basename(link);
 
