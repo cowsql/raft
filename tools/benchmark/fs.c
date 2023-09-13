@@ -152,13 +152,17 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
 
     if (strcmp(name, "nullb0") == 0) {
         info->driver = FS_DRIVER_NULLB;
+        sprintf(parent, "%s/%s/queue/write_cache", dirname(block), link);
     } else if (strncmp(name, "nvme", strlen("nvme")) == 0) {
         info->driver = FS_DRIVER_NVME;
+        sprintf(parent, "%s/%s/queue/write_cache", dirname(block),
+                dirname(link));
     } else {
         info->driver = FS_DRIVER_GENERIC;
+        info->block_dev_write_through = false;
+        goto out;
     }
 
-    sprintf(parent, "%s/%s/queue/write_cache", dirname(block), dirname(link));
     rv = readBlockDeviceWriteCache(parent, &info->block_dev_write_through);
     if (rv != 0) {
         return rv;
