@@ -15,12 +15,14 @@ extern struct raft_tracer NoopTracer;
 extern struct raft_tracer StderrTracer;
 
 /* Use TRACER to trace an event of type TYPE with the given INFO. */
-#define Trace(TRACER, TYPE, INFO)          \
-    do {                                   \
-        if (LIKELY(TRACER == NULL)) {      \
-            break;                         \
-        }                                  \
-        TRACER->trace(TRACER, TYPE, INFO); \
+#define Trace(TRACER, TYPE, INFO)              \
+    do {                                       \
+        if (LIKELY(TRACER == NULL)) {          \
+            break;                             \
+        }                                      \
+        if (LIKELY(TRACER->version == 2)) {    \
+            TRACER->trace(TRACER, TYPE, INFO); \
+        }                                      \
     } while (0)
 
 /* Emit diagnostic message with the given tracer at level 5. */
