@@ -238,6 +238,12 @@ int DiskWriteUsingUring(int fd,
         return -1;
     }
 
+    /* Perform a first write to trigger initialization and warm up caches. */
+    rv = writeWithUring(iov, 0);
+    if (rv != 0) {
+        return -1;
+    }
+
     rv = ProfilerStart(profiler);
     if (rv != 0) {
         return rv;
