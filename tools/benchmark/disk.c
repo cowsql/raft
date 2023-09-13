@@ -210,7 +210,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     HistogramClose(&histogram);
 
-    if (getuid() == 0) {
+    if (getuid() == 0 && info.driver != FS_DRIVER_GENERIC) {
         struct ProfilerDataSource *data;
         const char *system;
 

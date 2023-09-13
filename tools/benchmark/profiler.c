@@ -414,10 +414,12 @@ int ProfilerStart(struct Profiler *p)
         return rv;
     }
 
-    for (i = 0; i < p->n_groups; i++) {
-        rv = profilerEventGroupStart(&p->groups[i]);
-        if (rv != 0) {
-            return -1;
+    if (p->device->driver != FS_DRIVER_GENERIC) {
+        for (i = 0; i < p->n_groups; i++) {
+            rv = profilerEventGroupStart(&p->groups[i]);
+            if (rv != 0) {
+                return -1;
+            }
         }
     }
 
@@ -685,10 +687,12 @@ int ProfilerStop(struct Profiler *p)
         }
     }
 
-    for (i = 0; i < p->n_groups; i++) {
-        rv = profilerEventGroupStop(&p->groups[i]);
-        if (rv != 0) {
-            return -1;
+    if (p->device->driver != FS_DRIVER_GENERIC) {
+        for (i = 0; i < p->n_groups; i++) {
+            rv = profilerEventGroupStop(&p->groups[i]);
+            if (rv != 0) {
+                return -1;
+            }
         }
     }
 
