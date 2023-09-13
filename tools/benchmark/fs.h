@@ -24,6 +24,7 @@ struct FsFileInfo
     unsigned driver;
     unsigned block_dev_start; /* First sector of the underlying block device */
     unsigned block_dev_end;   /* End sector of the underlying block device */
+    bool block_dev_write_through; /* True if device has power-loss protection */
 };
 
 /* Detect file information. */

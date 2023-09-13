@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <libgen.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/sysmacros.h>
@@ -67,6 +68,35 @@ static int readBlockDeviceSize(unsigned maj, unsigned min, unsigned *size)
     return readBlockDeviceInfo(maj, min, "size", size);
 }
 
+/* Check if a block device has power-loss protection via write-through.
+ *
+ * https://stackoverflow.com/questions/72353566/when-should-i-use-req-op-flush-in-a-kernel-blockdev-driver-do-req-op-flush-bio
+ */
+static int readBlockDeviceWriteCache(const char *path, bool *write_through)
+{
+    char buf[256];
+    FILE *file;
+    int rv;
+
+    file = fopen(path, "r");
+    if (file == NULL) {
+        fprintf(stderr, "fopen write_cache at %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+
+    rv = (int)fread(buf, sizeof buf, 1, file);
+    if (rv < 0) {
+        fprintf(stderr, "fread write_cache at %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+
+    fclose(file);
+
+    *write_through = strcmp(buf, "write through\n") == 0;
+
+    return 0;
+}
+
 int FsFileInfo(const char *path, struct FsFileInfo *info)
 {
     struct stat st;
@@ -75,6 +105,7 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
     unsigned dev_size;
     char block[1024];
     char link[1024];
+    char parent[1024];
     const char *name;
     int rv;
 
@@ -125,6 +156,12 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
         info->driver = FS_DRIVER_NVME;
     } else {
         info->driver = FS_DRIVER_GENERIC;
+    }
+
+    sprintf(parent, "%s/%s/queue/write_cache", dirname(block), dirname(link));
+    rv = readBlockDeviceWriteCache(parent, &info->block_dev_write_through);
+    if (rv != 0) {
+        return rv;
     }
 
 out:

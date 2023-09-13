@@ -453,6 +453,7 @@ static int processNvmeSetupCmd(struct ProfilerEventGroup *g,
     unsigned i = data->n_commands;
     u64 slba = *(u64 *)(t->cdw10);
     u16 control = *(u16 *)(t->cdw10 + 10);
+    u16 flags;
 
     /* Skip writes targeted to other partitions. */
     if (slba < device->block_dev_start || slba >= device->block_dev_end) {
@@ -464,8 +465,16 @@ static int processNvmeSetupCmd(struct ProfilerEventGroup *g,
         return -1;
     }
 
-    if (control != 0x4000 /* Flush flag, from trace output */) {
-        printf("unexpected nvme control 0x%x\n", control);
+    /* When the device has power-loss protection, we expect to have no flush
+     * flags in the NVMe command. */
+    if (device->block_dev_write_through) {
+        flags = 0x0;
+    } else {
+        flags = 0x4000;
+    }
+
+    if (control != flags /* Possible flush flag (check trace output) */) {
+        printf("unexpected nvme control 0x%x vs 0x%x\n", control, flags);
         return -1;
     }
 
