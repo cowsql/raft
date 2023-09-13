@@ -27,7 +27,7 @@ struct raft_progress
     raft_flags features; /* What the server is capable of. */
 };
 
-/* Create and initialize the array of progress objects used by the leader to *
+/* Create and initialize the array of progress objects used by the leader to
  * track followers. The match index will be set to zero, and the next index to
  * the current last index plus 1. */
 int progressBuildArray(struct raft *r);

@@ -135,8 +135,10 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
             result = needs_heartbeat;
             break;
         case PROGRESS__PIPELINE:
-            /* In replication mode we send empty append entries messages only if
-             * haven't sent anything in the last heartbeat interval. */
+            /* In pipeline mode we replicate new entries immediately, and send
+             * empty append entries messages if we haven't sent anything in the
+             * last heartbeat interval (i.e. there were no new entries in that
+             * period). */
             result = !progressIsUpToDate(r, i) || needs_heartbeat;
             break;
     }
