@@ -37,10 +37,7 @@ struct report
 };
 
 /* Initialize a histogram object. */
-void HistogramInit(struct histogram *h,
-                   unsigned n,
-                   unsigned long first,
-                   unsigned gap);
+void HistogramInit(struct histogram *h, unsigned n, unsigned gap);
 
 void HistogramClose(struct histogram *h);
 

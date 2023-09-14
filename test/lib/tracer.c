@@ -2,11 +2,18 @@
 
 #include "munit.h"
 
-void TracerEmit(struct raft_tracer *t,
-                const char *file,
-                int line,
-                const char *message)
+static void traceDiagnostic(const struct raft_tracer_info *info)
+{
+    fprintf(stderr, "%20s:%*d - %s\n", info->diagnostic.file, 3,
+            info->diagnostic.line, info->diagnostic.message);
+}
+
+void TracerTrace(struct raft_tracer *t, int type, const void *info)
 {
     (void)t;
-    fprintf(stderr, "%20s:%*d - %s\n", file, 3, line, message);
+    switch (type) {
+        case RAFT_TRACER_DIAGNOSTIC:
+            traceDiagnostic(info);
+            break;
+    };
 }

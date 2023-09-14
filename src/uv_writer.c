@@ -4,8 +4,12 @@
 #include <unistd.h>
 
 #include "../include/raft.h"
+#include "../include/raft/uv.h"
 #include "assert.h"
 #include "heap.h"
+#include "tracing.h"
+
+#define trace(TYPE, INFO) Trace(w->tracer, TYPE, INFO)
 
 /* Copy the error message from the request object to the writer object. */
 static void uvWriterReqTransferErrMsg(struct UvWriterReq *req)
@@ -32,6 +36,8 @@ static void uvWriterReqSetStatus(struct UvWriterReq *req, int result)
  * callback if set. */
 static void uvWriterReqFinish(struct UvWriterReq *req)
 {
+    struct UvWriter *w = req->writer;
+    trace(RAFT_UV_TRACER_WRITE_COMPLETE, NULL);
     QUEUE_REMOVE(&req->queue);
     if (req->status != 0) {
         uvWriterReqTransferErrMsg(req);
@@ -251,6 +257,7 @@ int UvWriterInit(struct UvWriter *w,
     QUEUE_INIT(&w->work_queue);
     w->closing = false;
     w->errmsg = errmsg;
+    w->tracer = NULL;
 
     /* Set direct I/O if available. */
     if (direct) {
@@ -410,6 +417,11 @@ void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb)
     }
 }
 
+void UvWriterSetTracer(struct UvWriter *w, struct raft_tracer *tracer)
+{
+    w->tracer = tracer;
+}
+
 /* Return the total lengths of the given buffers. */
 static size_t lenOfBufs(const uv_buf_t bufs[], unsigned n)
 {
@@ -431,6 +443,8 @@ int UvWriterSubmit(struct UvWriter *w,
     int rv = 0;
     struct iocb *iocbs = &req->iocb;
     assert(!w->closing);
+
+    trace(RAFT_UV_TRACER_WRITE_SUBMIT, NULL);
 
     /* TODO: at the moment we are not leveraging the support for concurrent
      *       writes, so ensure that we're getting write requests

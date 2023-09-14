@@ -20,8 +20,10 @@ enum {
 /* Hold information about a file. */
 struct FsFileInfo
 {
-    unsigned type;
-    unsigned driver;
+    unsigned type;            /* Regular file or device. */
+    unsigned driver;          /* Underlying block device driver */
+    unsigned buckets;         /* N. of buckets to use for histograms */
+    unsigned resolution;      /* Resolution to use for histograms */
     unsigned block_dev_start; /* First sector of the underlying block device */
     unsigned block_dev_end;   /* End sector of the underlying block device */
     bool block_dev_write_through; /* True if device has power-loss protection */

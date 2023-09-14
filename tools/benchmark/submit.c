@@ -9,9 +9,7 @@
 #include "fs.h"
 #include "submit.h"
 #include "submit_parse.h"
-
-#define RESOLUTION 1000   /* buckets are 1 micro second apart */
-#define BUCKETS 20 * 1000 /* buckets up to 20,000 microseconds */
+#include "timer.h"
 
 static int fsmApply(struct raft_fsm *fsm,
                     const struct raft_buffer *buf,
@@ -23,10 +21,13 @@ static int fsmApply(struct raft_fsm *fsm,
     return 0;
 }
 
+static void trace(struct raft_tracer *t, int type, const void *info);
+
 struct server
 {
     struct uv_loop_s *loop;
     struct uv_timer_s timer;
+    struct raft_tracer tracer;
     struct raft_configuration configuration;
     struct raft_uv_transport transport;
     struct raft_io io;
@@ -40,12 +41,39 @@ struct server
     unsigned n;
     unsigned long start;
     struct histogram histogram;
+    struct timer write_timer;
+    struct histogram writes;
 };
+
+static void traceWriteSubmit(struct server *s)
+{
+    TimerStart(&s->write_timer);
+}
+
+static void traceWriteComplete(struct server *s)
+{
+    HistogramCount(&s->writes, TimerStop(&s->write_timer));
+}
+
+static void trace(struct raft_tracer *t, int type, const void *info)
+{
+    struct server *s = t->impl;
+    (void)info;
+    switch (type) {
+        case RAFT_UV_TRACER_WRITE_SUBMIT:
+            traceWriteSubmit(s);
+            break;
+        case RAFT_UV_TRACER_WRITE_COMPLETE:
+            traceWriteComplete(s);
+            break;
+    };
+}
 
 int serverInit(struct server *s,
                struct submitOptions *opts,
                struct uv_loop_s *loop)
 {
+    struct FsFileInfo info;
     const char *address = "127.0.0.1:8080";
     int rv;
 
@@ -58,13 +86,24 @@ int serverInit(struct server *s,
     s->entry = opts->buf;
     s->timer.data = s;
 
-    HistogramInit(&s->histogram, BUCKETS, RESOLUTION, RESOLUTION);
+    rv = FsFileInfo(opts->dir, &info);
+    if (rv != 0) {
+        printf("failed to get dir info\n");
+        return -1;
+    }
+
+    HistogramInit(&s->histogram, info.buckets, info.resolution);
+    HistogramInit(&s->writes, info.buckets, info.resolution);
 
     rv = FsCreateTempDir(opts->dir, &s->path);
     if (rv != 0) {
         printf("failed to create temp dir\n");
         return -1;
     }
+
+    s->tracer.version = 2;
+    s->tracer.trace = trace;
+    s->tracer.impl = s;
 
     rv = raft_uv_tcp_init(&s->transport, loop);
     if (rv != 0) {
@@ -77,6 +116,8 @@ int serverInit(struct server *s,
         printf("failed to init io\n");
         return -1;
     }
+
+    raft_uv_set_tracer(&s->io, &s->tracer);
 
     s->fsm.version = 1;
     s->fsm.apply = fsmApply;
@@ -132,6 +173,7 @@ static int serverClose(struct server *s)
     }
 
     HistogramClose(&s->histogram);
+    HistogramClose(&s->writes);
 
     return 0;
 }
@@ -281,6 +323,14 @@ int SubmitRun(int argc, char *argv[], struct report *report)
     benchmark = ReportGrow(report, name);
     m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
     MetricFillHistogram(m, &server.histogram);
+
+    rv = asprintf(&name, "submit:write:%zu", opts.buf);
+    assert(rv > 0);
+    assert(name != NULL);
+
+    benchmark = ReportGrow(report, name);
+    m = BenchmarkGrow(benchmark, METRIC_KIND_LATENCY);
+    MetricFillHistogram(m, &server.writes);
 
     rv = serverClose(&server);
     if (rv != 0) {

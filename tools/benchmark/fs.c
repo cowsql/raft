@@ -19,6 +19,18 @@
 
 #define SYS_BLOCK_PATH "/sys/dev/block/%d:%d"
 
+/* Histgram resolution when the underlying block driver is NVMe. */
+#define RESOLUTION_NVME 500        /* buckets are 0.5 microseconds apart */
+#define BUCKETS_NVME 20 * 1000 * 2 /* buckets up to 20,000 microseconds */
+
+/* Histgram resolution when the underlying block driver is nullb. */
+#define RESOLUTION_NULLB 50     /* buckets are 50 nanoseconds apart */
+#define BUCKETS_NULLB 1000 * 20 /* buckets up to 1,000 microseconds */
+
+/* Histgram resolution when the underlying block driver is unspecified. */
+#define RESOLUTION_GENERIC 1000   /* buckets are 1 microsecond apart */
+#define BUCKETS_GENERIC 20 * 1000 /* buckets up to 20,000 microseconds */
+
 /* Read an integer value from the file /sys/dev/block/<maj>:<min>/name . */
 static int readBlockDeviceInfo(unsigned maj,
                                unsigned min,
@@ -169,6 +181,24 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
     }
 
 out:
+    switch (info->driver) {
+        case FS_DRIVER_NVME:
+            info->buckets = BUCKETS_NVME;
+            info->resolution = RESOLUTION_NVME;
+            break;
+        case FS_DRIVER_NULLB:
+            info->buckets = BUCKETS_NULLB;
+            info->resolution = RESOLUTION_NULLB;
+            break;
+        case FS_DRIVER_GENERIC:
+            info->buckets = BUCKETS_GENERIC;
+            info->resolution = RESOLUTION_GENERIC;
+            break;
+        default:
+            assert(0);
+            break;
+    }
+
     return 0;
 }
 

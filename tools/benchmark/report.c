@@ -4,10 +4,7 @@
 
 #include "report.h"
 
-void HistogramInit(struct histogram *h,
-                   unsigned n,
-                   unsigned long first,
-                   unsigned gap)
+void HistogramInit(struct histogram *h, unsigned n, unsigned gap)
 {
     unsigned i;
     assert(n >= 2);
@@ -17,7 +14,7 @@ void HistogramInit(struct histogram *h,
         h->buckets[i] = 0;
     }
     assert(h->buckets != NULL);
-    h->first = first;
+    h->first = gap;
     h->gap = gap;
 }
 

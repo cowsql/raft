@@ -5,6 +5,12 @@
 
 #include "../raft.h"
 
+/**
+ * Trace events fired when a disk write gets submitted and completed.
+ */
+#define RAFT_UV_TRACER_WRITE_SUBMIT (1 << 8)
+#define RAFT_UV_TRACER_WRITE_COMPLETE (2 << 8)
+
 struct raft_uv_transport;
 
 /**

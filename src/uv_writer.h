@@ -34,6 +34,8 @@ struct UvWriter
     queue work_queue;         /* Threadpool write requests */
     bool closing;             /* Whether we're closing or closed */
     char *errmsg;             /* Description of last error */
+
+    struct raft_tracer *tracer; /* Tracer to use */
 };
 
 /* Initialize a file writer. */
@@ -47,6 +49,9 @@ int UvWriterInit(struct UvWriter *w,
 
 /* Close the given file and release all associated resources. */
 void UvWriterClose(struct UvWriter *w, UvWriterCloseCb cb);
+
+/* Set a tracer on this writer. */
+void UvWriterSetTracer(struct UvWriter *w, struct raft_tracer *tracer);
 
 /* Write request. */
 struct UvWriterReq;
