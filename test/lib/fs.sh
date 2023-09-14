@@ -63,7 +63,7 @@ if [ "${cmd}" = "setup" ]; then
 	    sudo mount -t tmpfs -o size=32m tmpfs ./tmp/tmpfs
 	else
 	    # Create a loopback disk device
-	    dd if=/dev/zero of="./tmp/.${type}" bs=4096 count=28672 > /dev/null 2>&1
+	    dd if=/dev/zero of="./tmp/.${type}" bs=4096 count=86016 > /dev/null 2>&1
 	    loop=$(sudo losetup -f)
 	    sudo losetup "${loop}" "./tmp/.${type}"
 

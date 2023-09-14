@@ -1487,6 +1487,11 @@ static void applyChange(struct raft *r, const raft_index index)
 
 static bool shouldTakeSnapshot(struct raft *r)
 {
+    /* We currently support only synchronous FSMs, where entries are applied
+     * synchronously as soon as we advance the commit index, so the two
+     * values always match when we get here. */
+    assert(r->last_applied == r->commit_index);
+
     /* If we are shutting down, let's not do anything. */
     if (r->state == RAFT_UNAVAILABLE) {
         return false;
@@ -1499,7 +1504,7 @@ static bool shouldTakeSnapshot(struct raft *r)
     };
 
     /* If we didn't reach the threshold yet, do nothing. */
-    if (r->last_applied - r->log->snapshot.last_index < r->snapshot.threshold) {
+    if (r->commit_index - r->log->snapshot.last_index < r->snapshot.threshold) {
         return false;
     }
 
@@ -1579,11 +1584,16 @@ static int takeSnapshot(struct raft *r)
     struct raft_snapshot *snapshot;
     int rv;
 
-    tracef("take snapshot at %lld", r->last_applied);
+    /* We currently support only synchronous FSMs, where entries are applied
+     * synchronously as soon as we advance the commit index, so the two
+     * values always match when we get here. */
+    assert(r->last_applied == r->commit_index);
+
+    tracef("take snapshot at %lld", r->commit_index);
 
     snapshot = &r->snapshot.pending;
-    snapshot->index = r->last_applied;
-    snapshot->term = logTermOf(r->log, r->last_applied);
+    snapshot->index = r->commit_index;
+    snapshot->term = logTermOf(r->log, r->commit_index);
     snapshot->bufs = NULL;
     snapshot->n_bufs = 0;
 
