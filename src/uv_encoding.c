@@ -67,13 +67,13 @@ static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 {
     size_t conf_size = configurationEncodedSize(&p->conf);
     return sizeof(uint64_t) + /* Leader's term. */
-           sizeof(uint64_t) + /* Leader ID */
            sizeof(uint64_t) + /* Snapshot's last index */
            sizeof(uint64_t) + /* Term of last index */
            sizeof(uint64_t) + /* Configuration's index */
            sizeof(uint64_t) + /* Length of configuration */
            conf_size +        /* Configuration data */
-           sizeof(uint64_t);  /* Length of snapshot data */
+           sizeof(uint64_t) + /* Length of snapshot data */
+           sizeof(uint64_t);  /* XXX: currently unused */
 }
 
 static size_t sizeofTimeoutNow(void)
@@ -160,14 +160,18 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
 
     cursor = buf;
 
-    bytePut64(&cursor, p->term);       /* Leader's term. */
-    bytePut64(&cursor, p->last_index); /* Snapshot last index. */
-    bytePut64(&cursor, p->last_term);  /* Term of last index. */
-    bytePut64(&cursor, p->conf_index); /* Configuration index. */
-    bytePut64(&cursor, conf_size);     /* Configuration length. */
-    configurationEncodeToBuf(&p->conf, cursor);
+    bytePut64(&cursor, p->term);       /* Leader's term */
+    bytePut64(&cursor, p->last_index); /* Snapshot's last index */
+    bytePut64(&cursor, p->last_term);  /* Term of last index */
+    bytePut64(&cursor, p->conf_index); /* Configuration's index */
+    bytePut64(&cursor, conf_size);     /* Length of configuration */
+
+    configurationEncodeToBuf(&p->conf, cursor); /* Configuration data */
     cursor = (uint8_t *)cursor + conf_size;
-    bytePut64(&cursor, p->data.len); /* Snapshot data size. */
+
+    bytePut64(&cursor, p->data.len); /* Length of snapshot data */
+
+    bytePut64(&cursor, 0); /* XXX: currently unused */
 }
 
 static void encodeTimeoutNow(const struct raft_timeout_now *p, void *buf)
