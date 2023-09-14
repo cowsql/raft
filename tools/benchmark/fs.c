@@ -105,7 +105,7 @@ int FsFileInfo(const char *path, struct FsFileInfo *info)
     unsigned dev_size;
     char block[1024];
     char link[1024];
-    char parent[1024];
+    char parent[8192]; /* TODO: suppress -Werror=format-overflow */
     const char *name;
     int rv;
 
