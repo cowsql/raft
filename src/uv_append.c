@@ -74,10 +74,8 @@ struct uvAppend
 static void uvAliveSegmentWriterCloseCb(struct UvWriter *writer)
 {
     struct uvAliveSegment *segment = writer->data;
-    struct uv *uv = segment->uv;
     uvSegmentBufferClose(&segment->pending);
     RaftHeapFree(segment);
-    uvMaybeFireCloseCb(uv);
 }
 
 /* Submit a request to close the current open segment. */
