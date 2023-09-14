@@ -17,6 +17,7 @@ static struct argp_option options[] = {
     {"dir", 'd', "DIR", 0, "Directory to use for temp files (default '.')", 0},
     {"buf", 'b', "BUF", 0, "Write buffer size (default 4096)", 0},
     {"size", 's', "S", 0, "Size of the file to write (default 8M)", 0},
+    {"perf", 'p', NULL, 0, "Turn on kernel performance measuring", 0},
     {"trace", 't', "TRACE", 0, "Comma-separated kernel subsystems to trace", 0},
     {0}};
 
@@ -57,12 +58,6 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
 {
     struct diskOptions *opts = state->input;
 
-    /* All our flags require and argument. So if there's no argument, this is
-     * not a supported flag. */
-    if (arg == NULL) {
-        return ARGP_ERR_UNKNOWN;
-    }
-
     switch (key) {
         case 'd':
             opts->dir = arg;
@@ -72,6 +67,9 @@ static error_t argpParser(int key, char *arg, struct argp_state *state)
             break;
         case 's':
             opts->size = (unsigned)atoi(arg);
+            break;
+        case 'p':
+            opts->perf = true;
             break;
         case 't':
             parseTracing(opts, arg);
@@ -88,6 +86,7 @@ static void optionsInit(struct diskOptions *opts)
     opts->dir = ".";
     opts->buf = 4096;
     opts->size = 8 * MEGABYTE;
+    opts->perf = false;
     opts->n_traces = 0;
 }
 
@@ -99,6 +98,10 @@ static void optionsCheck(struct diskOptions *opts)
     }
     if (opts->size == 0 || opts->size % 4096 != 0) {
         printf("Invalid file size %u\n", opts->size);
+        exit(1);
+    }
+    if (opts->perf && getuid() != 0) {
+        printf("Performance measurment requires root\n");
         exit(1);
     }
     if (opts->n_traces > 0 && getuid() != 0) {
