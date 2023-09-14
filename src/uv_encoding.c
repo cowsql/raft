@@ -47,8 +47,7 @@ static size_t sizeofAppendEntries(const struct raft_append_entries *p)
            sizeof(uint64_t) + /* Previous log entry index */
            sizeof(uint64_t) + /* Previous log entry term */
            sizeof(uint64_t) + /* Leader's commit index */
-           sizeof(uint64_t) + /* Number of entries in the batch */
-           16 * p->n_entries /* One header per entry */;
+           uvSizeofBatchHeader(p->n_entries) /* Batch header */;
 }
 
 static size_t sizeofAppendEntriesResultV0(void)
