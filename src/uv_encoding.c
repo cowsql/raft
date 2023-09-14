@@ -42,13 +42,12 @@ static size_t sizeofRequestVoteResult(void)
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 {
-    return sizeof(uint64_t) + /* Leader's term. */
-           sizeof(uint64_t) + /* Leader ID */
-           sizeof(uint64_t) + /* Previous log entry index */
-           sizeof(uint64_t) + /* Previous log entry term */
-           sizeof(uint64_t) + /* Leader's commit index */
-           sizeof(uint64_t) + /* Number of entries in the batch */
-           16 * p->n_entries /* One header per entry */;
+    return sizeof(uint64_t) +                  /* Leader's term. */
+           sizeof(uint64_t) +                  /* Previous log entry index */
+           sizeof(uint64_t) +                  /* Previous log entry term */
+           sizeof(uint64_t) +                  /* Leader's commit index */
+           uvSizeofBatchHeader(p->n_entries) + /* Batch header */
+           sizeof(uint64_t);                   /* XXX: currently unused */
 }
 
 static size_t sizeofAppendEntriesResultV0(void)
@@ -60,20 +59,21 @@ static size_t sizeofAppendEntriesResultV0(void)
 
 static size_t sizeofAppendEntriesResult(void)
 {
-    return sizeofAppendEntriesResultV0() + sizeof(uint64_t) /* 64 bit Flags. */;
+    return sizeofAppendEntriesResultV0() + /* Size of older version 0 message */
+           sizeof(uint64_t) /* Server features. */;
 }
 
 static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
 {
     size_t conf_size = configurationEncodedSize(&p->conf);
     return sizeof(uint64_t) + /* Leader's term. */
-           sizeof(uint64_t) + /* Leader ID */
            sizeof(uint64_t) + /* Snapshot's last index */
            sizeof(uint64_t) + /* Term of last index */
            sizeof(uint64_t) + /* Configuration's index */
            sizeof(uint64_t) + /* Length of configuration */
            conf_size +        /* Configuration data */
-           sizeof(uint64_t);  /* Length of snapshot data */
+           sizeof(uint64_t) + /* Length of snapshot data */
+           sizeof(uint64_t);  /* XXX: currently unused */
 }
 
 static size_t sizeofTimeoutNow(void)
@@ -130,11 +130,14 @@ static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
     cursor = buf;
 
     bytePut64(&cursor, p->term);           /* Leader's term. */
-    bytePut64(&cursor, p->prev_log_index); /* Previous index. */
-    bytePut64(&cursor, p->prev_log_term);  /* Previous term. */
-    bytePut64(&cursor, p->leader_commit);  /* Commit index. */
+    bytePut64(&cursor, p->prev_log_index); /* Previous log entry index. */
+    bytePut64(&cursor, p->prev_log_term);  /* Previous log entry term. */
+    bytePut64(&cursor, p->leader_commit);  /* Leader's commit index. */
 
-    uvEncodeBatchHeader(p->entries, p->n_entries, cursor);
+    uvEncodeBatchHeader(p->entries, p->n_entries, cursor); /* Batch header */
+
+    cursor = (uint8_t *)cursor + uvSizeofBatchHeader(p->n_entries);
+    bytePut64(&cursor, 0); /* XXX: currently unused */
 }
 
 static void encodeAppendEntriesResult(
@@ -157,14 +160,18 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
 
     cursor = buf;
 
-    bytePut64(&cursor, p->term);       /* Leader's term. */
-    bytePut64(&cursor, p->last_index); /* Snapshot last index. */
-    bytePut64(&cursor, p->last_term);  /* Term of last index. */
-    bytePut64(&cursor, p->conf_index); /* Configuration index. */
-    bytePut64(&cursor, conf_size);     /* Configuration length. */
-    configurationEncodeToBuf(&p->conf, cursor);
+    bytePut64(&cursor, p->term);       /* Leader's term */
+    bytePut64(&cursor, p->last_index); /* Snapshot's last index */
+    bytePut64(&cursor, p->last_term);  /* Term of last index */
+    bytePut64(&cursor, p->conf_index); /* Configuration's index */
+    bytePut64(&cursor, conf_size);     /* Length of configuration */
+
+    configurationEncodeToBuf(&p->conf, cursor); /* Configuration data */
     cursor = (uint8_t *)cursor + conf_size;
-    bytePut64(&cursor, p->data.len); /* Snapshot data size. */
+
+    bytePut64(&cursor, p->data.len); /* Length of snapshot data */
+
+    bytePut64(&cursor, 0); /* XXX: currently unused */
 }
 
 static void encodeTimeoutNow(const struct raft_timeout_now *p, void *buf)
