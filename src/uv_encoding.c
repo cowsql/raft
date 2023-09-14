@@ -42,12 +42,12 @@ static size_t sizeofRequestVoteResult(void)
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
 {
-    return sizeof(uint64_t) + /* Leader's term. */
-           sizeof(uint64_t) + /* Leader ID */
-           sizeof(uint64_t) + /* Previous log entry index */
-           sizeof(uint64_t) + /* Previous log entry term */
-           sizeof(uint64_t) + /* Leader's commit index */
-           uvSizeofBatchHeader(p->n_entries) /* Batch header */;
+    return sizeof(uint64_t) +                  /* Leader's term. */
+           sizeof(uint64_t) +                  /* Previous log entry index */
+           sizeof(uint64_t) +                  /* Previous log entry term */
+           sizeof(uint64_t) +                  /* Leader's commit index */
+           uvSizeofBatchHeader(p->n_entries) + /* Batch header */
+           sizeof(uint64_t);                   /* XXX: currently unused */
 }
 
 static size_t sizeofAppendEntriesResultV0(void)
@@ -134,7 +134,10 @@ static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
     bytePut64(&cursor, p->prev_log_term);  /* Previous log entry term. */
     bytePut64(&cursor, p->leader_commit);  /* Leader's commit index. */
 
-    uvEncodeBatchHeader(p->entries, p->n_entries, cursor);
+    uvEncodeBatchHeader(p->entries, p->n_entries, cursor); /* Batch header */
+
+    cursor = (uint8_t *)cursor + uvSizeofBatchHeader(p->n_entries);
+    bytePut64(&cursor, 0); /* XXX: currently unused */
 }
 
 static void encodeAppendEntriesResult(
