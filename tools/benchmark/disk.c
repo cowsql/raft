@@ -159,9 +159,13 @@ int DiskRun(int argc, char *argv[], struct report *report)
         return -1;
     }
 
-    rv = ProfilerInit(&profiler, &info);
-    if (rv != 0) {
-        return -1;
+    ProfilerInit(&profiler, &info);
+
+    if (opts.perf) {
+        rv = ProfilerPerf(&profiler);
+        if (rv != 0) {
+            return -1;
+        }
     }
 
     for (i = 0; i < opts.n_traces; i++) {
@@ -193,8 +197,8 @@ int DiskRun(int argc, char *argv[], struct report *report)
     /* 262144 is the maximum buffer size where no context switches happen,
      * presumably because io_uring inlines smaller requests and uses the
      * threadpool for larger ones. */
-    if (profiler.switches != 0 && info.driver != FS_DRIVER_GENERIC &&
-        opts.buf < 262144) {
+    if (opts.perf && profiler.switches != 0 &&
+        info.driver != FS_DRIVER_GENERIC) {
         printf("Error: unexpected context switches: %u\n", profiler.switches);
         return -1;
     }
@@ -210,7 +214,7 @@ int DiskRun(int argc, char *argv[], struct report *report)
 
     HistogramClose(&histogram);
 
-    if (getuid() == 0 && info.driver != FS_DRIVER_GENERIC) {
+    if (opts.perf && info.driver != FS_DRIVER_GENERIC) {
         struct ProfilerDataSource *data;
         const char *system;
 

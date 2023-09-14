@@ -272,11 +272,6 @@ static int profilerInitPerf(struct Profiler *p)
     unsigned i;
     int rv;
 
-    if (getuid() != 0) {
-        p->n_groups = 0;
-        return 0;
-    }
-
     profilerInitDataSource(&p->nvme, NVME);
     profilerInitDataSource(&p->block, BLOCK);
 
@@ -296,19 +291,21 @@ static int profilerInitPerf(struct Profiler *p)
     return 0;
 }
 
-int ProfilerInit(struct Profiler *p, struct FsFileInfo *device)
+void ProfilerInit(struct Profiler *p, struct FsFileInfo *device)
 {
-    int rv;
-
     p->device = device;
     p->n_traces = 0;
+    p->n_groups = 0;
     p->switches = 0;
+}
 
+int ProfilerPerf(struct Profiler *p)
+{
+    int rv;
     rv = profilerInitPerf(p);
     if (rv != 0) {
         return rv;
     }
-
     return 0;
 }
 

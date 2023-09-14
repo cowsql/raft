@@ -42,17 +42,20 @@ struct Profiler
     struct ProfilerDataSource block;
 };
 
-int ProfilerInit(struct Profiler *t, struct FsFileInfo *device);
+void ProfilerInit(struct Profiler *p, struct FsFileInfo *device);
 
-void ProfilerClose(struct Profiler *t);
+void ProfilerClose(struct Profiler *p);
+
+/* Turn on performance profiling. */
+int ProfilerPerf(struct Profiler *p);
 
 /* Trace the given kernel sub-system using tracefs. The output will be available
  * under /sys/kernel/tracing/trace. */
-void ProfilerTrace(struct Profiler *t, const char *system);
+void ProfilerTrace(struct Profiler *p, const char *system);
 
 /* Enable on profiler the given subsystem. */
-int ProfilerStart(struct Profiler *t);
+int ProfilerStart(struct Profiler *p);
 
-int ProfilerStop(struct Profiler *t);
+int ProfilerStop(struct Profiler *p);
 
 #endif /* PROFILER_H_ */
