@@ -59,7 +59,8 @@ static size_t sizeofAppendEntriesResultV0(void)
 
 static size_t sizeofAppendEntriesResult(void)
 {
-    return sizeofAppendEntriesResultV0() + sizeof(uint64_t) /* 64 bit Flags. */;
+    return sizeofAppendEntriesResultV0() + /* Size of older version 0 message */
+           sizeof(uint64_t) /* Server features. */;
 }
 
 static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
