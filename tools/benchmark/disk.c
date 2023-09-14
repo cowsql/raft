@@ -163,14 +163,25 @@ int DiskRun(int argc, char *argv[], struct report *report)
         return -1;
     }
 
-    rv = asprintf(&name, "disk:%zu", opts.buf);
-    assert(rv > 0);
-    assert(name != NULL);
+    /* Only report disk benchmarks if kernel sub-systems performance measurement
+     * is disabled.
+     *
+     * In CI we run the "raft-benchmark disk" command twice: once with kernel
+     * sub-systems performance measurement enabled, to report raw block/nvme
+     * metrics, and once with kernel sub-systems performance measurement
+     * disabled, to report the actual end-to-end metrics. That's because
+     * enabling kernel sub-systems performance measurement has a noticeable
+     * (albeit low) overhead.
+     */
+    if (!opts.perf) {
+        rv = asprintf(&name, "disk:%zu", opts.buf);
+        assert(rv > 0);
+        assert(name != NULL);
 
-    benchmark = ReportGrow(report, name);
-
-    reportLatency(benchmark, &histogram);
-    reportThroughput(benchmark, duration, opts.size);
+        benchmark = ReportGrow(report, name);
+        reportLatency(benchmark, &histogram);
+        reportThroughput(benchmark, duration, opts.size);
+    }
 
     HistogramClose(&histogram);
 
