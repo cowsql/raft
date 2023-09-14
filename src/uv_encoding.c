@@ -129,9 +129,9 @@ static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
     cursor = buf;
 
     bytePut64(&cursor, p->term);           /* Leader's term. */
-    bytePut64(&cursor, p->prev_log_index); /* Previous index. */
-    bytePut64(&cursor, p->prev_log_term);  /* Previous term. */
-    bytePut64(&cursor, p->leader_commit);  /* Commit index. */
+    bytePut64(&cursor, p->prev_log_index); /* Previous log entry index. */
+    bytePut64(&cursor, p->prev_log_term);  /* Previous log entry term. */
+    bytePut64(&cursor, p->leader_commit);  /* Leader's commit index. */
 
     uvEncodeBatchHeader(p->entries, p->n_entries, cursor);
 }
