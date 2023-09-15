@@ -62,6 +62,9 @@ enum {
  */
 RAFT_API const char *raft_strerror(int errnum);
 
+/**
+ * Hold the value of a raft server ID. Guaranteed to be at least 64-bit long.
+ */
 typedef unsigned long long raft_id;
 
 /**
