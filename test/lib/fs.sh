@@ -22,15 +22,15 @@ types="tmpfs"
 if sudo losetup -f > /dev/null 2>&1; then
     types="$types ext4"
 
-    if [ "$(which mkfs.btrfs)" != "" ]; then
+    if [ "$(sudo which mkfs.btrfs)" != "" ]; then
         types="$types btrfs"
     fi
 
-    if [ "$(which mkfs.xfs)" != "" ]; then
+    if [ "$(sudo which mkfs.xfs)" != "" ]; then
         types="$types xfs"
     fi
 
-    if [ "$(which zfs)" != "" ]; then
+    if [ "$(sudo which zfs)" != "" ]; then
         types="$types zfs"
     fi
 
