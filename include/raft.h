@@ -11,6 +11,11 @@
 #define RAFT_API __attribute__((visibility("default")))
 #endif
 
+/* Helper for statically checking ABI compatibility when changing or adding
+ * struct fields. */
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
+    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
+
 /**
  * Version.
  */
@@ -81,11 +86,6 @@ typedef unsigned long long raft_index;
  * Hold a time value expressed in milliseconds since the epoch.
  */
 typedef unsigned long long raft_time;
-
-/* Helper for statically checking ABI compatibility when changing or adding
- * struct fields. */
-#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
-    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
 
 /**
  * Hold the features a raft node is capable of.
