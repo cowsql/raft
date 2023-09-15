@@ -477,18 +477,8 @@ int UvWriterSubmit(struct UvWriter *w,
     req->iocb.aio_offset = (int64_t)offset;
     *((void **)(&req->iocb.aio_data)) = (void *)req;
 
-#if defined(RWF_HIPRI)
-    /* High priority request, if possible */
-    /* TODO: do proper kernel feature detection for this one. */
-    /* req->iocb.aio_rw_flags |= RWF_HIPRI; */
-#endif
-
-#if defined(RWF_DSYNC)
-    /* Use per-request synchronous I/O if available. Otherwise, we have opened
-     * the file with O_DSYNC. */
-    /* TODO: do proper kernel feature detection for this one. */
-    /* req->iocb.aio_rw_flags |= RWF_DSYNC; */
-#endif
+    /* Use per-request synchronous I/O if available. */
+    req->iocb.aio_rw_flags |= RWF_DSYNC;
 
     /* If io_submit can be run in a 100% non-blocking way, we'll try to write
      * without using the threadpool. */
