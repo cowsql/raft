@@ -651,10 +651,11 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                           \
-    struct                                                         \
-    {                                                              \
-        raft_time now; /* Current time, updated via raft_step() */ \
+#define RAFT__EXTENSIONS                                             \
+    struct                                                           \
+    {                                                                \
+        raft_time now;   /* Current time, updated via raft_step() */ \
+        unsigned random; /* Pseudo-random number generator state */  \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -886,6 +887,13 @@ RAFT_API int raft_init(struct raft *r,
                        const char *address);
 
 RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
+
+/**
+ * Seed the state of the pseudo random number generator.
+ *
+ * This should be called only once, before calling raft_start().
+ */
+RAFT_API void raft_seed(struct raft *r, unsigned random);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must

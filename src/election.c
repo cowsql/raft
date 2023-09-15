@@ -4,6 +4,7 @@
 #include "configuration.h"
 #include "heap.h"
 #include "log.h"
+#include "random.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -33,8 +34,8 @@ struct followerOrCandidateState *getFollowerOrCandidateState(struct raft *r)
 void electionResetTimer(struct raft *r)
 {
     struct followerOrCandidateState *state = getFollowerOrCandidateState(r);
-    unsigned timeout = (unsigned)r->io->random(r->io, (int)r->election_timeout,
-                                               2 * (int)r->election_timeout);
+    unsigned timeout = RandomWithinRange(&r->random, r->election_timeout,
+                                         2 * r->election_timeout);
     assert(timeout >= r->election_timeout);
     assert(timeout <= r->election_timeout * 2);
     state->randomized_election_timeout = timeout;
