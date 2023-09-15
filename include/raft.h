@@ -554,6 +554,15 @@ enum {
 };
 
 /**
+ * Represents a task that can be queued and executed asynchronously.
+ */
+struct raft_task
+{
+    unsigned char type;
+    unsigned char reserved[7];
+};
+
+/**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
  * methods.
