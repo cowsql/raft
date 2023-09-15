@@ -225,6 +225,8 @@ int raft_assign(struct raft *r,
     raft_index last_index;
     int rv;
 
+    r->now = r->io->time(r->io);
+
     tracef("raft_assign to id:%llu the role:%d", id, role);
     if (role != RAFT_STANDBY && role != RAFT_VOTER && role != RAFT_SPARE) {
         rv = RAFT_BADROLE;
@@ -300,7 +302,7 @@ int raft_assign(struct raft *r,
     /* Initialize the first catch-up round. */
     r->leader_state.round_number = 1;
     r->leader_state.round_index = last_index;
-    r->leader_state.round_start = r->io->time(r->io);
+    r->leader_state.round_start = r->now;
 
     /* Immediately initiate an AppendEntries request. */
     rv = replicationProgress(r, server_index);

@@ -63,7 +63,7 @@ int recvInstallSnapshot(struct raft *r,
     if (rv != 0) {
         return rv;
     }
-    r->election_timer_start = r->io->time(r->io);
+    r->election_timer_start = r->now;
 
     rv = replicationInstallSnapshot(r, args, &result->rejected, &async);
     if (rv != 0) {

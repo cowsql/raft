@@ -87,6 +87,7 @@ void recvCb(struct raft_io *io, struct raft_message *message)
 {
     struct raft *r = io->data;
     int rv;
+    r->now = r->io->time(r->io);
     if (r->state == RAFT_UNAVAILABLE) {
         switch (message->type) {
             case RAFT_IO_APPEND_ENTRIES:

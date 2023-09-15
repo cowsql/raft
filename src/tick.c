@@ -109,7 +109,6 @@ static bool checkContactQuorum(struct raft *r)
 /* Apply time-dependent rules for leaders (Figure 3.1). */
 static int tickLeader(struct raft *r)
 {
-    raft_time now = r->io->time(r->io);
     assert(r->state == RAFT_LEADER);
 
     /* Check if we still can reach a majority of servers.
@@ -120,13 +119,13 @@ static int tickLeader(struct raft *r)
      *   successful round of heartbeats to a majority of its cluster; this
      *   allows clients to retry their requests with another server.
      */
-    if (now - r->election_timer_start >= r->election_timeout) {
+    if (r->now - r->election_timer_start >= r->election_timeout) {
         if (!checkContactQuorum(r)) {
             tracef("unable to contact majority of cluster -> step down");
             convertToFollower(r);
             return 0;
         }
-        r->election_timer_start = r->io->time(r->io);
+        r->election_timer_start = r->now;
     }
 
     /* Possibly send heartbeats.
@@ -153,7 +152,7 @@ static int tickLeader(struct raft *r)
     if (r->leader_state.promotee_id != 0) {
         raft_id id = r->leader_state.promotee_id;
         unsigned server_index;
-        raft_time round_duration = now - r->leader_state.round_start;
+        raft_time round_duration = r->now - r->leader_state.round_start;
         bool is_too_slow;
         bool is_unresponsive;
 
@@ -224,6 +223,7 @@ void tickCb(struct raft_io *io)
     struct raft *r;
     int rv;
     r = io->data;
+    r->now = r->io->time(r->io);
     rv = tick(r);
     if (rv != 0) {
         convertToUnavailable(r);
@@ -233,8 +233,7 @@ void tickCb(struct raft_io *io)
     /* For all states: if there is a leadership transfer request in progress,
      * check if it's expired. */
     if (r->transfer != NULL) {
-        raft_time now = r->io->time(r->io);
-        if (now - r->transfer->start >= r->election_timeout) {
+        if (r->now - r->transfer->start >= r->election_timeout) {
             membershipLeadershipTransferClose(r);
         }
     }
