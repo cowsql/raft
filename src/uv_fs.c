@@ -776,10 +776,19 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
         assert(event.res == (int)size);
         *ok = true;
     } else {
-        /* UNTESTED: this should basically fail only because of disk errors,
-         * since we allocated the file with posix_fallocate and the block size
-         * is supposed to be correct. */
-        *ok = false;
+        if (event.res == -EAGAIN) {
+            /* UNTESTED: starting from around kernel version 6, xfs has started
+             * to occasionally fail with EAGAIN, presumeably because the write
+             * would block in some way. We still want to try submitting writes
+             * asynchronously in that case, and we'll deal with retries in the
+             * writer. */
+            *ok = true;
+        } else {
+            /* UNTESTED: this should basically fail only because of disk errors,
+             * since we allocated the file with posix_fallocate and the block
+             * size is supposed to be correct. */
+            *ok = false;
+        }
     }
 
     return 0;
