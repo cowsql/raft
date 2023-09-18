@@ -44,15 +44,15 @@ struct io_uring_cqe *cqes;
  * provide wrappers for io_uring system calls.
  * */
 
-int _io_uring_setup(unsigned entries, struct io_uring_params *p)
+static int _io_uring_setup(unsigned entries, struct io_uring_params *p)
 {
     return (int)syscall(__NR_io_uring_setup, entries, p);
 }
 
-int _io_uring_enter(int ring_fd,
-                    unsigned int to_submit,
-                    unsigned int min_complete,
-                    unsigned int flags)
+static int _io_uring_enter(int ring_fd,
+                           unsigned int to_submit,
+                           unsigned int min_complete,
+                           unsigned int flags)
 {
     return (int)syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete,
                         flags, NULL, 0);
