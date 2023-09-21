@@ -13,6 +13,7 @@
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
+#include "recv.h"
 #include "tracing.h"
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -147,7 +148,7 @@ void raft_seed(struct raft *r, unsigned random)
 }
 
 /* Handle the completion of a task. */
-static int taskDone(struct raft *r, struct raft_task *task, int status)
+static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
     assert(task != NULL);
 
@@ -165,6 +166,15 @@ static int taskDone(struct raft *r, struct raft_task *task, int status)
     return 0;
 }
 
+/* Handle new messages. */
+static int stepReceive(struct raft *r,
+                       raft_id id,
+                       const char *address,
+                       struct raft_message *message)
+{
+    return recvMessage(r, id, address, message);
+}
+
 int raft_step(struct raft *r,
               struct raft_event *event,
               raft_time *timeout,
@@ -177,7 +187,14 @@ int raft_step(struct raft *r,
 
     switch (event->type) {
         case RAFT_DONE:
-            rv = taskDone(r, &event->done.task, event->done.status);
+            rv = stepDone(r, &event->done.task, event->done.status);
+            break;
+        case RAFT_RECEIVE:
+            rv = stepReceive(r, event->receive.id, event->receive.address,
+                             event->receive.message);
+            break;
+        default:
+            rv = 0;
             break;
     }
 
