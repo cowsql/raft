@@ -577,9 +577,13 @@ struct raft_task
     };
 };
 
+/**
+ * Type codes of events to be passed to raft_step().
+ */
 enum {
-    RAFT_DONE = 1,
-    RAFT_RECEIVE,
+    RAFT_DONE = 1, /* A task has been completed. */
+    RAFT_RECEIVE,  /* A message has been received. */
+    RAFT_TIMEOUT,  /* The timeout has expired. */
 };
 
 /**
