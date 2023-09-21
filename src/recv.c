@@ -20,10 +20,10 @@
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Dispatch a single RPC message to the appropriate handler. */
-static int recvMessage(struct raft *r,
-                       raft_id id,
-                       const char *address,
-                       struct raft_message *message)
+int recvMessage(struct raft *r,
+                raft_id id,
+                const char *address,
+                struct raft_message *message)
 {
     int rv = 0;
 
