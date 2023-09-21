@@ -31,7 +31,7 @@ C-Raft implements all the basic features described in the Raft dissertation:
 It also includes a few optional enhancements:
 
 * Optimistic pipelining to reduce log replication latency
-* Writing to leader's disk in parallel
+* Writing to the leader's disk in parallel
 * Automatic stepping down when the leader loses quorum
 * Leadership transfer extension
 * Non-voting servers
