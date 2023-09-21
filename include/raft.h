@@ -557,12 +557,24 @@ enum {
 };
 
 /**
+ * Parameters of tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
+ */
+struct raft_persist_term_and_vote
+{
+    raft_term term;
+    raft_id voted_for;
+};
+
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
 {
     unsigned char type;
     unsigned char reserved[7];
+    union {
+        struct raft_persist_term_and_vote persist_term_and_vote;
+    };
 };
 
 enum { RAFT_DONE = 1 };
