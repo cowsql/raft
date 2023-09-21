@@ -557,6 +557,16 @@ enum {
 };
 
 /**
+ * Parameters of tasks of type #RAFT_SEND_MESSAGE.
+ */
+struct raft_send_message
+{
+    raft_id id;
+    const char *address; /* TODO: make a copy */
+    struct raft_message message;
+};
+
+/**
  * Parameters of tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
  */
 struct raft_persist_term_and_vote
@@ -573,6 +583,7 @@ struct raft_task
     unsigned char type;
     unsigned char reserved[7];
     union {
+        struct raft_send_message send_message;
         struct raft_persist_term_and_vote persist_term_and_vote;
     };
 };
