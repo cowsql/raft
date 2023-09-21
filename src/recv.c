@@ -101,10 +101,6 @@ void recvCb(struct raft_io *io, struct raft_message *message)
         }
         return;
     }
-    rv = recvMessage(r, message->server_id, message->server_address, message);
-    if (rv != 0) {
-        goto err;
-    }
 
     event.type = RAFT_RECEIVE;
     event.time = r->now;
