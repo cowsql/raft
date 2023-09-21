@@ -146,6 +146,55 @@ void raft_seed(struct raft *r, unsigned random)
     r->random = random;
 }
 
+/* Handle the completion of a task. */
+static int taskDone(struct raft *r, struct raft_task *task, int status)
+{
+    assert(task != NULL);
+
+    switch (task->type) {
+        case RAFT_PERSIST_TERM_AND_VOTE:
+            /* TODO: reason more about what todo upon errors */
+            if (status != 0 && r->state != RAFT_UNAVAILABLE) {
+                convertToUnavailable(r);
+            }
+            break;
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+int raft_step(struct raft *r,
+              struct raft_event *event,
+              raft_time *timeout,
+              struct raft_task **tasks,
+              unsigned *n_tasks)
+{
+    int rv;
+
+    r->now = event->time;
+
+    switch (event->type) {
+        case RAFT_DONE:
+            rv = taskDone(r, &event->done.task, event->done.status);
+            break;
+    }
+
+    if (rv != 0) {
+        return rv;
+    }
+
+    (void)timeout;
+
+    *tasks = r->tasks;
+    *n_tasks = r->n_tasks;
+
+    r->n_tasks = 0;
+
+    return 0;
+}
+
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;

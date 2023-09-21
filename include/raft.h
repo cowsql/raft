@@ -565,6 +565,26 @@ struct raft_task
     unsigned char reserved[7];
 };
 
+enum { RAFT_DONE = 1 };
+
+/**
+ * Represents an external event that drives the raft engine forward (for example
+ * receiving a message or completing a task.
+ */
+struct raft_event
+{
+    unsigned char type;
+    unsigned char reserved[7];
+    raft_time time;
+    union {
+        struct
+        {
+            struct raft_task task;
+            int status;
+        } done;
+    };
+};
+
 /**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
@@ -924,6 +944,28 @@ RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
  * This should be called only once, before calling raft_start().
  */
 RAFT_API void raft_seed(struct raft *r, unsigned random);
+
+/**
+ * Notify the raft engine of the given @event.
+ *
+ * The @timeout output parameter will be filled with the time at which the next
+ * timeout event should be fired. Any previously scheduled timeout that has not
+ * yet been fired should be cancelled.
+ *
+ * The @tasks output parameter will point to an array of @n_tasks pending tasks
+ * that should be performed.
+ *
+ * The memory of the @tasks array is guaranteed to be valid until the next call
+ * to raft_step(), and must be freed by consuming code.
+ *
+ * Tasks of type #RAFT_PERSIST_TERM_AND_VOTE must be carried out synchronously
+ * before any subsequent task (such as sending messages) is even started.
+ */
+RAFT_API int raft_step(struct raft *r,
+                       struct raft_event *event,
+                       raft_time *timeout,
+                       struct raft_task **tasks,
+                       unsigned *n_tasks);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must
