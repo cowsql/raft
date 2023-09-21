@@ -76,7 +76,9 @@ static int initUring(int fd, struct iovec *iov)
 
     /* See io_uring_setup(2) for io_uring_params.flags you can set */
     memset(&p, 0, sizeof(p));
+#if defined(IORING_SETUP_SINGLE_ISSUER)
     p.flags = IORING_SETUP_SINGLE_ISSUER;
+#endif
     _ring_fd = _io_uring_setup(QUEUE_DEPTH, &p);
     if (_ring_fd < 0) {
         perror("io_uring_setup");
