@@ -584,6 +584,8 @@ enum {
     RAFT_DONE = 1, /* A task has been completed. */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
+    RAFT_SUBMIT,   /* New entries have been submitted. */
+    RAFT_TRANSFER, /* Submission of leadership trasfer request */
 };
 
 /**
