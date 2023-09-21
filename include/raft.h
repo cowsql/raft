@@ -11,6 +11,11 @@
 #define RAFT_API __attribute__((visibility("default")))
 #endif
 
+/* Helper for statically checking ABI compatibility when changing or adding
+ * struct fields. */
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
+    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
+
 /**
  * Version.
  */
@@ -62,6 +67,9 @@ enum {
  */
 RAFT_API const char *raft_strerror(int errnum);
 
+/**
+ * Hold the value of a raft server ID. Guaranteed to be at least 64-bit long.
+ */
 typedef unsigned long long raft_id;
 
 /**
@@ -78,11 +86,6 @@ typedef unsigned long long raft_index;
  * Hold a time value expressed in milliseconds since the epoch.
  */
 typedef unsigned long long raft_time;
-
-/* Helper for statically checking ABI compatibility when changing or adding
- * struct fields. */
-#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
-    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
 
 /**
  * Hold the features a raft node is capable of.
@@ -539,6 +542,30 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
 /**
+ * Type codes for async tasks issued by #raft and that must be completed by
+ * consumers.
+ */
+enum {
+    RAFT_SEND_MESSAGE = 1,
+    RAFT_PERSIST_ENTRIES,
+    RAFT_PERSIST_TERM_AND_VOTE,
+    RAFT_PERSIST_SNAPSHOT,
+    RAFT_LOAD_SNAPSHOT,
+    RAFT_APPLY_COMMAND,
+    RAFT_TAKE_SNAPSHOT,
+    RAFT_RESTORE_SNAPSHOT
+};
+
+/**
+ * Represents a task that can be queued and executed asynchronously.
+ */
+struct raft_task
+{
+    unsigned char type;
+    unsigned char reserved[7];
+};
+
+/**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
  * methods.
@@ -651,11 +678,14 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                             \
-    struct                                                           \
-    {                                                                \
-        raft_time now;   /* Current time, updated via raft_step() */ \
-        unsigned random; /* Pseudo-random number generator state */  \
+#define RAFT__EXTENSIONS                                                     \
+    struct                                                                   \
+    {                                                                        \
+        raft_time now;           /* Current time, updated via raft_step() */ \
+        unsigned random;         /* Pseudo-random number generator state */  \
+        struct raft_task *tasks; /* Queue of pending raft_task operations */ \
+        unsigned n_tasks;        /* Length of the task queue */              \
+        unsigned n_tasks_cap;    /* Capacity of the task queue */            \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);

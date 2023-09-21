@@ -103,6 +103,9 @@ int raft_init(struct raft *r,
     }
     r->now = r->io->time(r->io);
     raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
+    r->tasks = NULL;
+    r->n_tasks = 0;
+    r->n_tasks_cap = 0;
     return 0;
 
 err_after_address_alloc:
@@ -130,6 +133,9 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     assert(r->close_cb == NULL);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
+    }
+    if (r->tasks != NULL) {
+        raft_free(r->tasks);
     }
     r->close_cb = cb;
     r->io->close(r->io, ioCloseCb);
