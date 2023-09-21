@@ -31,6 +31,35 @@ static struct raft_task *taskAppend(struct raft *r)
     return &r->tasks[r->n_tasks - 1];
 }
 
+int TaskSendMessage(struct raft *r,
+                    raft_id id,
+                    const char *address,
+                    struct raft_message *message)
+{
+    struct raft_task *task;
+    struct raft_send_message *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_SEND_MESSAGE;
+
+    params = &task->send_message;
+    params->id = id;
+    params->address = address;
+    params->message = *message;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}
+
 int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for)
 {
     struct raft_task *task;
