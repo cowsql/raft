@@ -119,7 +119,7 @@ that includes a copyright exception letting users to statically link the library
 code in their project and release the final work under their own terms. See the
 full `license`_ text.
 
-.. _license: https://github.com/canonical/raft/blob/master/LICENSE
+.. _license: https://github.com/cowsql/raft/blob/main/LICENSE
 
 toc
 ~~~
