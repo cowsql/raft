@@ -2,6 +2,7 @@
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
+#include "legacy.h"
 #include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
@@ -20,6 +21,7 @@ int raft_apply(struct raft *r,
                raft_apply_cb cb)
 {
     raft_index index;
+    struct raft_event event;
     int rv;
 
     tracef("raft_apply n %d", n);
@@ -55,6 +57,14 @@ int raft_apply(struct raft *r,
         goto err_after_log_append;
     }
 
+    event.type = RAFT_SUBMIT;
+    event.time = r->io->time(r->io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err_after_log_append;
+    }
+
     return 0;
 
 err_after_log_append:
@@ -69,6 +79,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
     raft_index index;
     struct raft_buffer buf;
+    struct raft_event event;
     int rv;
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
@@ -104,6 +115,14 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         goto err_after_log_append;
     }
 
+    event.type = RAFT_SUBMIT;
+    event.time = r->io->time(r->io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err_after_log_append;
+    }
+
     return 0;
 
 err_after_log_append:
@@ -122,6 +141,7 @@ static int clientChangeConfiguration(
 {
     raft_index index;
     raft_term term = r->current_term;
+    struct raft_event event;
     int rv;
 
     (void)req;
@@ -156,6 +176,14 @@ static int clientChangeConfiguration(
     }
 
     r->configuration_uncommitted_index = index;
+
+    event.type = RAFT_SUBMIT;
+    event.time = r->io->time(r->io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err_after_log_append;
+    }
 
     return 0;
 
@@ -403,6 +431,7 @@ int raft_transfer(struct raft *r,
                   raft_transfer_cb cb)
 {
     const struct raft_server *server;
+    struct raft_event event;
     unsigned i;
     int rv;
 
@@ -443,6 +472,14 @@ int raft_transfer(struct raft *r,
             r->transfer = NULL;
             goto err;
         }
+    }
+
+    event.type = RAFT_TRANSFER;
+    event.time = r->io->time(r->io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err;
     }
 
     return 0;
