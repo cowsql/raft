@@ -111,6 +111,13 @@ You can compile and run it with:
 
    cc main.c -o main -lraft -luv && ./main
 
+Source
+------
+
+The source tree is available on `github`_.
+
+.. _github: https://github.com/cowsql/raft
+
 Licence
 -------
 
