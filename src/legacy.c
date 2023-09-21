@@ -11,6 +11,7 @@ static struct raft_event *eventAppend(struct raft_event *events[],
         return NULL;
     }
 
+    *events = array;
     *n_events += 1;
 
     return &(*events)[*n_events - 1];
@@ -67,7 +68,11 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 
     /* Initially the set of events contains only the event passed as argument,
      * but might grow if some of the tasks get completed synchronously. */
-    events = event;
+    events = raft_malloc(sizeof *events);
+    if (events == NULL) {
+        return RAFT_NOMEM;
+    }
+    events[0] = *event;
     n_events = 1;
 
     for (i = 0; i < n_events; i++) {
@@ -102,11 +107,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
+    raft_free(events);
     return 0;
 err:
-    if (n_events > 1) {
-        raft_free(events);
-    }
+    raft_free(events);
 
     return rv;
 }
