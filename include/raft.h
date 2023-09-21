@@ -946,6 +946,28 @@ RAFT_API void raft_close(struct raft *r, raft_close_cb cb);
 RAFT_API void raft_seed(struct raft *r, unsigned random);
 
 /**
+ * Notify the raft engine of the given @event.
+ *
+ * The @timeout output parameter will be filled with the time at which the next
+ * timeout event should be fired. Any previously scheduled timeout that has not
+ * yet been fired should be cancelled.
+ *
+ * The @tasks output parameter will point to an array of @n_tasks pending tasks
+ * that should be performed.
+ *
+ * The memory of the @tasks array is guaranteed to be valid until the next call
+ * to raft_step(), and must be freed by consuming code.
+ *
+ * Tasks of type #RAFT_PERSIST_TERM_AND_VOTE must be carried out synchronously
+ * before any subsequent task (such as sending messages) is even started.
+ */
+RAFT_API int raft_step(struct raft *r,
+                       struct raft_event *event,
+                       raft_time *timeout,
+                       struct raft_task **tasks,
+                       unsigned *n_tasks);
+
+/**
  * Bootstrap this raft instance using the given configuration. The instance must
  * not have been started yet and must be completely pristine, otherwise
  * #RAFT_CANTBOOTSTRAP will be returned.
