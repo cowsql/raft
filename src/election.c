@@ -5,6 +5,7 @@
 #include "heap.h"
 #include "log.h"
 #include "random.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -139,21 +140,14 @@ int electionStart(struct raft *r)
      * RPC during our Candidate state while we already voted for a server during
      * the term. */
     if (!r->candidate_state.in_pre_vote) {
-        /* Increment current term */
+        /* Increment current term and vote for self */
         term = r->current_term + 1;
-        rv = r->io->set_term(r->io, term);
+        rv = TaskPersistTermAndVote(r, term, r->id);
         if (rv != 0) {
-            tracef("set_term failed %d", rv);
+            tracef("persist term and vote failed %d", rv);
             goto err;
         }
         tracef("beginning of term %llu", term);
-
-        /* Vote for self */
-        rv = r->io->set_vote(r->io, r->id);
-        if (rv != 0) {
-            tracef("set_vote self failed %d", rv);
-            goto err;
-        }
 
         /* Update our cache too. */
         r->current_term = term;
@@ -282,9 +276,9 @@ int electionVote(struct raft *r,
 
 grant_vote:
     if (!args->pre_vote) {
-        rv = r->io->set_vote(r->io, args->candidate_id);
+        rv = TaskPersistTermAndVote(r, r->current_term, args->candidate_id);
         if (rv != 0) {
-            tracef("set_vote failed %d", rv);
+            tracef("persist term and vote failed %d", rv);
             return rv;
         }
         r->voted_for = args->candidate_id;

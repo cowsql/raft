@@ -14,6 +14,7 @@
 #include "recv_request_vote_result.h"
 #include "recv_timeout_now.h"
 #include "string.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -142,7 +143,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     tracef("%s", msg);
 
     /* Save the new term to persistent store, resetting the vote. */
-    rv = r->io->set_term(r->io, term);
+    rv = TaskPersistTermAndVote(r, term, 0);
     if (rv != 0) {
         return rv;
     }
