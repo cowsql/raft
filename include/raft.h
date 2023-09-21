@@ -565,6 +565,26 @@ struct raft_task
     unsigned char reserved[7];
 };
 
+enum { RAFT_DONE = 1 };
+
+/**
+ * Represents an external event that drives the raft engine forward (for example
+ * receiving a message or completing a task.
+ */
+struct raft_event
+{
+    unsigned char type;
+    unsigned char reserved[7];
+    raft_time time;
+    union {
+        struct
+        {
+            struct raft_task task;
+            int status;
+        } done;
+    };
+};
+
 /**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
