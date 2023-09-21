@@ -3,6 +3,7 @@
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
+#include "legacy.h"
 #include "membership.h"
 #include "progress.h"
 #include "replication.h"
@@ -221,13 +222,22 @@ static int tick(struct raft *r)
 void tickCb(struct raft_io *io)
 {
     struct raft *r;
+    struct raft_event event;
     int rv;
+
     r = io->data;
     r->now = r->io->time(r->io);
     rv = tick(r);
     if (rv != 0) {
-        convertToUnavailable(r);
-        return;
+        goto err;
+    }
+
+    event.type = RAFT_TIMEOUT;
+    event.time = r->io->time(io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err;
     }
 
     /* For all states: if there is a leadership transfer request in progress,
@@ -237,6 +247,11 @@ void tickCb(struct raft_io *io)
             membershipLeadershipTransferClose(r);
         }
     }
+
+    return;
+
+err:
+    convertToUnavailable(r);
 }
 
 #undef tracef

@@ -23,6 +23,7 @@ libraft_la_SOURCES = \
   src/err.c \
   src/flags.c \
   src/heap.c \
+  src/legacy.c \
   src/lifecycle.c \
   src/log.c \
   src/membership.c \
@@ -41,6 +42,7 @@ libraft_la_SOURCES = \
   src/start.c \
   src/state.c \
   src/syscall.c \
+  src/task.c \
   src/tick.c \
   src/tracing.c
 

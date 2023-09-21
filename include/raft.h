@@ -557,15 +557,36 @@ enum {
 };
 
 /**
+ * Parameters of tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
+ */
+struct raft_persist_term_and_vote
+{
+    raft_term term;
+    raft_id voted_for;
+};
+
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
 {
     unsigned char type;
     unsigned char reserved[7];
+    union {
+        struct raft_persist_term_and_vote persist_term_and_vote;
+    };
 };
 
-enum { RAFT_DONE = 1 };
+/**
+ * Type codes of events to be passed to raft_step().
+ */
+enum {
+    RAFT_DONE = 1, /* A task has been completed. */
+    RAFT_RECEIVE,  /* A message has been received. */
+    RAFT_TIMEOUT,  /* The timeout has expired. */
+    RAFT_SUBMIT,   /* New entries have been submitted. */
+    RAFT_TRANSFER, /* Submission of leadership trasfer request */
+};
 
 /**
  * Represents an external event that drives the raft engine forward (for example
@@ -582,6 +603,12 @@ struct raft_event
             struct raft_task task;
             int status;
         } done;
+        struct
+        {
+            raft_id id;
+            const char *address;
+            struct raft_message *message;
+        } receive;
     };
 };
 

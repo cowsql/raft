@@ -4,6 +4,7 @@
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
+#include "legacy.h"
 #include "log.h"
 #include "membership.h"
 #include "recv_append_entries.h"
@@ -13,6 +14,7 @@
 #include "recv_request_vote_result.h"
 #include "recv_timeout_now.h"
 #include "string.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -86,7 +88,9 @@ static int recvMessage(struct raft *r, struct raft_message *message)
 void recvCb(struct raft_io *io, struct raft_message *message)
 {
     struct raft *r = io->data;
+    struct raft_event event;
     int rv;
+
     r->now = r->io->time(r->io);
     if (r->state == RAFT_UNAVAILABLE) {
         switch (message->type) {
@@ -103,8 +107,24 @@ void recvCb(struct raft_io *io, struct raft_message *message)
     }
     rv = recvMessage(r, message);
     if (rv != 0) {
-        convertToUnavailable(r);
+        goto err;
     }
+
+    event.type = RAFT_RECEIVE;
+    event.time = r->now;
+    event.receive.id = message->server_id;
+    event.receive.address = message->server_address;
+    event.receive.message = message;
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err;
+    }
+
+    return;
+
+err:
+    convertToUnavailable(r);
 }
 
 int recvBumpCurrentTerm(struct raft *r, raft_term term)
@@ -123,7 +143,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     tracef("%s", msg);
 
     /* Save the new term to persistent store, resetting the vote. */
-    rv = r->io->set_term(r->io, term);
+    rv = TaskPersistTermAndVote(r, term, 0);
     if (rv != 0) {
         return rv;
     }
