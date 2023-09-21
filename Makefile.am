@@ -41,6 +41,7 @@ libraft_la_SOURCES = \
   src/start.c \
   src/state.c \
   src/syscall.c \
+  src/task.c \
   src/tick.c \
   src/tracing.c
 
