@@ -4,22 +4,16 @@
 #include "election.h"
 #include "recv.h"
 #include "replication.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
-
-static void requestVoteSendCb(struct raft_io_send *req, int status)
-{
-    (void)status;
-    raft_free(req);
-}
 
 int recvRequestVote(struct raft *r,
                     const raft_id id,
                     const char *address,
                     const struct raft_request_vote *args)
 {
-    struct raft_io_send *req;
     struct raft_message message;
     struct raft_request_vote_result *result = &message.request_vote_result;
     bool has_leader;
@@ -129,18 +123,9 @@ reply:
     }
 
     message.type = RAFT_IO_REQUEST_VOTE_RESULT;
-    message.server_id = id;
-    message.server_address = address;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return RAFT_NOMEM;
-    }
-    req->data = r;
-
-    rv = r->io->send(r->io, req, &message, requestVoteSendCb);
+    rv = TaskSendMessage(r, id, address, &message);
     if (rv != 0) {
-        raft_free(req);
         return rv;
     }
 

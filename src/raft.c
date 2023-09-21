@@ -153,6 +153,9 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
     assert(task != NULL);
 
     switch (task->type) {
+        case RAFT_SEND_MESSAGE:
+            /* Ignore the status, in case of errors we'll retry. */
+            break;
         case RAFT_PERSIST_TERM_AND_VOTE:
             /* TODO: reason more about what todo upon errors */
             if (status != 0 && r->state != RAFT_UNAVAILABLE) {
