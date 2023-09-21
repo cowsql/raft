@@ -577,7 +577,10 @@ struct raft_task
     };
 };
 
-enum { RAFT_DONE = 1 };
+enum {
+    RAFT_DONE = 1,
+    RAFT_RECEIVE,
+};
 
 /**
  * Represents an external event that drives the raft engine forward (for example
@@ -594,6 +597,12 @@ struct raft_event
             struct raft_task task;
             int status;
         } done;
+        struct
+        {
+            raft_id id;
+            const char *address;
+            struct raft_message *message;
+        } receive;
     };
 };
 
