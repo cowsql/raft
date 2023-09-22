@@ -1,5 +1,6 @@
 #include "legacy.h"
 #include "assert.h"
+#include "configuration.h"
 #include "err.h"
 
 static struct raft_event *eventAppend(struct raft_event *events[],
@@ -114,6 +115,60 @@ err:
     return rv;
 }
 
+struct ioForwardLoadSnapshot
+{
+    struct raft_io_snapshot_get get;
+    struct raft *r;
+    struct raft_task task;
+};
+
+static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
+                                    struct raft_snapshot *snapshot,
+                                    int status)
+{
+    struct ioForwardLoadSnapshot *req = get->data;
+    struct raft *r = req->r;
+    struct raft_task *task = &req->task;
+    struct raft_load_snapshot *params = &task->load_snapshot;
+
+    if (status == 0) {
+        assert(snapshot->index == params->index);
+        assert(snapshot->n_bufs == 1);
+        params->chunk = snapshot->bufs[0];
+        configurationClose(&snapshot->configuration);
+        raft_free(snapshot->bufs);
+        raft_free(snapshot);
+    }
+
+    raft_free(req);
+    ioTaskDone(r, task, status);
+}
+
+static int ioForwardLoadSnapshot(struct raft *r, struct raft_task *task)
+{
+    struct raft_load_snapshot *params = &task->load_snapshot;
+    struct ioForwardLoadSnapshot *req;
+    int rv;
+
+    req = raft_malloc(sizeof *req);
+    if (req == NULL) {
+        return RAFT_NOMEM;
+    }
+    req->r = r;
+    req->task = *task;
+    req->get.data = req;
+
+    rv = r->io->snapshot_get(r->io, &req->get, ioForwardLoadSnapshotCb);
+    if (rv != 0) {
+        raft_free(req);
+        ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
+                        params->index);
+        return rv;
+    }
+
+    return 0;
+}
+
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_event *events;
@@ -159,6 +214,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_PERSIST_TERM_AND_VOTE:
                     rv = ioPersistTermAndVote(r, task, &events, &n_events);
+                    break;
+                case RAFT_LOAD_SNAPSHOT:
+                    rv = ioForwardLoadSnapshot(r, task);
                     break;
                 default:
                     rv = RAFT_INVALID;
