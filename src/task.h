@@ -28,4 +28,14 @@ int TaskSendMessage(struct raft *r,
  */
 int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for);
 
+/* Create and enqueue a RAFT_LOAD_SNAPSHOT task to load a single chunk of the
+ * snapshot at the given index starting at the given offset.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The r->tasks array could not be resized to fit the new task.
+ */
+int TaskLoadSnapshot(struct raft *r, raft_index index, size_t offset);
+
 #endif /* RAFT_TASK_H_ */

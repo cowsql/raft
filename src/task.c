@@ -84,3 +84,28 @@ err:
     assert(rv == RAFT_NOMEM);
     return rv;
 }
+
+int TaskLoadSnapshot(struct raft *r, raft_index index, size_t offset)
+{
+    struct raft_task *task;
+    struct raft_load_snapshot *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_LOAD_SNAPSHOT;
+
+    params = &task->load_snapshot;
+    params->index = index;
+    params->offset = offset;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}
