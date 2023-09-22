@@ -636,7 +636,13 @@ static int ioMethodAppend(struct raft_io *raft_io,
 static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
 {
     struct io *io = raft_io->impl;
+    raft_index last_index = io->start_index + io->n;
     size_t n;
+
+    if (index >= last_index + 1) {
+        /* Nothing to truncate */
+        return 0;
+    }
 
     if (ioFaultTick(io)) {
         return RAFT_IOERR;
