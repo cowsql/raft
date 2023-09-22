@@ -50,17 +50,10 @@ bool electionTimerExpired(struct raft *r)
     return now - r->election_timer_start >= state->randomized_election_timeout;
 }
 
-static void sendRequestVoteCb(struct raft_io_send *send, int status)
-{
-    (void)status;
-    RaftHeapFree(send);
-}
-
 /* Send a RequestVote RPC to the given server. */
 static int electionSend(struct raft *r, const struct raft_server *server)
 {
     struct raft_message message;
-    struct raft_io_send *send;
     raft_term term;
     int rv;
     assert(server->id != r->id);
@@ -94,19 +87,9 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     message.request_vote.last_log_term = logTermOf(r->log, r->last_stored);
     message.request_vote.disrupt_leader = r->candidate_state.disrupt_leader;
     message.request_vote.pre_vote = r->candidate_state.in_pre_vote;
-    message.server_id = server->id;
-    message.server_address = server->address;
 
-    send = RaftHeapMalloc(sizeof *send);
-    if (send == NULL) {
-        return RAFT_NOMEM;
-    }
-
-    send->data = r;
-
-    rv = r->io->send(r->io, send, &message, sendRequestVoteCb);
+    rv = TaskSendMessage(r, server->id, server->address, &message);
     if (rv != 0) {
-        RaftHeapFree(send);
         return rv;
     }
 
