@@ -78,6 +78,48 @@ static int ioSendMessage(struct raft *r, struct raft_task *task)
     return 0;
 }
 
+struct ioForwardPersistEntries
+{
+    struct raft_io_append append;
+    struct raft *r;
+    struct raft_task task;
+};
+
+static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
+{
+    struct ioForwardPersistEntries *req = append->data;
+    struct raft *r = req->r;
+    struct raft_task task = req->task;
+    raft_free(req);
+    ioTaskDone(r, &task, status);
+}
+
+static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
+{
+    struct raft_persist_entries *params = &task->persist_entries;
+    struct ioForwardPersistEntries *req;
+    int rv;
+
+    req = raft_malloc(sizeof *req);
+    if (req == NULL) {
+        return RAFT_NOMEM;
+    }
+    req->r = r;
+    req->task = *task;
+    req->append.data = req;
+
+    rv = r->io->append(r->io, &req->append, params->entries, params->n,
+                       ioForwardPersistEntriesCb);
+    if (rv != 0) {
+        raft_free(req);
+        ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries",
+                        params->n);
+        return rv;
+    }
+
+    return 0;
+}
+
 static int ioPersistTermAndVote(struct raft *r,
                                 struct raft_task *task,
                                 struct raft_event *events[],
@@ -211,6 +253,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             switch (task->type) {
                 case RAFT_SEND_MESSAGE:
                     rv = ioSendMessage(r, task);
+                    break;
+                case RAFT_PERSIST_ENTRIES:
+                    rv = ioForwardPersistEntries(r, task);
                     break;
                 case RAFT_PERSIST_TERM_AND_VOTE:
                     rv = ioPersistTermAndVote(r, task, &events, &n_events);

@@ -372,16 +372,6 @@ int replicationHeartbeat(struct raft *r)
     return triggerAll(r);
 }
 
-/* Context for a write log entries request that was submitted by a leader. */
-struct appendLeader
-{
-    struct raft *raft;          /* Instance that has submitted the request */
-    raft_index index;           /* Index of the first entry in the request. */
-    struct raft_entry *entries; /* Entries referenced in the request. */
-    unsigned n;                 /* Length of the entries array. */
-    struct raft_io_append req;
-};
-
 /* Called after a successful append entries I/O request to update the index of
  * the last entry stored on disk. Return how many new entries that are still
  * present in our in-memory log were stored. */
@@ -440,16 +430,16 @@ static struct request *getRequest(struct raft *r,
 }
 
 /* Invoked once a disk write request for new entries has been completed. */
-static void appendLeaderCb(struct raft_io_append *append, int status)
+int replicationPersistEntriesDone(struct raft *r,
+                                  struct raft_persist_entries *params,
+                                  int status)
 {
-    struct appendLeader *request = append->data;
-    struct raft *r = request->raft;
     size_t server_index;
     raft_index index;
     int rv;
 
-    tracef("leader: written %u entries starting at %lld: status %d", request->n,
-           request->index, status);
+    tracef("leader: written %u entries starting at %lld: status %d", params->n,
+           params->index, status);
 
     /* In case of a failed disk write, if we were the leader creating these
      * entries in the first place, truncate our log too (since we have appended
@@ -460,10 +450,11 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
      * caused our write error). */
     if (status != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        for (unsigned i = 0; i < request->n; i++) {
-            const struct request *req = getRequest(r, request->index + i, -1);
+
+        for (unsigned i = 0; i < params->n; i++) {
+            const struct request *req = getRequest(r, params->index + i, -1);
             if (!req) {
-                tracef("no request found at index %llu", request->index + i);
+                tracef("no request found at index %llu", params->index + i);
                 continue;
             }
             switch (req->type) {
@@ -497,7 +488,7 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
         goto out;
     }
 
-    updateLastStored(r, request->index, request->entries, request->n);
+    updateLastStored(r, params->index, params->entries, params->n);
 
     /* If we are not leader anymore, just discard the result. */
     if (r->state != RAFT_LEADER) {
@@ -525,14 +516,13 @@ static void appendLeaderCb(struct raft_io_append *append, int status)
 
     rv = replicationApply(r);
     if (rv != 0) {
-        /* TODO: just log the error? */
+        return rv;
     }
 
 out:
     /* Tell the log that we're done referencing these entries. */
-    logRelease(r->log, request->index, request->entries, request->n);
-    index = request->index;
-    raft_free(request);
+    logRelease(r->log, params->index, params->entries, params->n);
+    index = params->index;
     if (status != 0) {
         if (index <= logLastIndex(r->log)) {
             logTruncate(r->log, index);
@@ -541,6 +531,8 @@ out:
             convertToFollower(r);
         }
     }
+
+    return 0;
 }
 
 /* Submit a disk write for all entries from the given index onward. */
@@ -548,7 +540,6 @@ static int appendLeader(struct raft *r, raft_index index)
 {
     struct raft_entry *entries = NULL;
     unsigned n;
-    struct appendLeader *request;
     int rv;
 
     assert(r->state == RAFT_LEADER);
@@ -571,29 +562,14 @@ static int appendLeader(struct raft *r, raft_index index)
         goto err_after_entries_acquired;
     }
 
-    /* Allocate a new request. */
-    request = raft_malloc(sizeof *request);
-    if (request == NULL) {
-        rv = RAFT_NOMEM;
-        goto err_after_entries_acquired;
-    }
-
-    request->raft = r;
-    request->index = index;
-    request->entries = entries;
-    request->n = n;
-    request->req.data = request;
-
-    rv = r->io->append(r->io, &request->req, entries, n, appendLeaderCb);
+    rv = TaskPersistEntries(r, index, entries, n);
     if (rv != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        goto err_after_request_alloc;
+        goto err_after_entries_acquired;
     }
 
     return 0;
 
-err_after_request_alloc:
-    raft_free(request);
 err_after_entries_acquired:
     logRelease(r->log, index, entries, n);
 err:
