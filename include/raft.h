@@ -643,6 +643,14 @@ struct raft_take_snapshot
 };
 
 /**
+ * Parameters for tasks of type #RAFT_RESTORE_SNAPSHOT.
+ */
+struct raft_restore_snapshot
+{
+    raft_index index;
+};
+
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -657,6 +665,7 @@ struct raft_task
         struct raft_persist_snapshot persist_snapshot;
         struct raft_apply_command apply_command;
         struct raft_take_snapshot take_snapshot;
+        struct raft_restore_snapshot restore_snapshot;
     };
 };
 
