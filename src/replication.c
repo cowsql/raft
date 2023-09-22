@@ -137,7 +137,6 @@ struct sendInstallSnapshot
     struct raft *raft;               /* Instance sending the snapshot. */
     struct raft_io_snapshot_get get; /* Snapshot get request. */
     struct raft_io_send send;        /* Underlying I/O send request. */
-    struct raft_snapshot *snapshot;  /* Snapshot to send. */
     raft_id server_id;               /* Destination server. */
 };
 
@@ -1167,14 +1166,14 @@ err:
 struct recvInstallSnapshot
 {
     struct raft *raft;
-    struct raft_snapshot snapshot;
 };
 
-static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
+int replicationPersistSnapshotDone(struct raft *r,
+                                   struct raft_persist_snapshot *params,
+                                   int status)
 {
-    struct recvInstallSnapshot *request = req->data;
-    struct raft *r = request->raft;
-    struct raft_snapshot *snapshot = &request->snapshot;
+    struct recvInstallSnapshot *request = r->snapshot.put.data;
+    struct raft_snapshot snapshot;
     struct raft_append_entries_result result;
     int rv;
 
@@ -1182,6 +1181,13 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
 
     r->snapshot.put.data = NULL;
+
+    snapshot.index = params->metadata.index;
+    snapshot.term = params->metadata.term;
+    snapshot.configuration = params->metadata.configuration;
+    snapshot.configuration_index = params->metadata.configuration_index;
+    snapshot.bufs = &params->chunk;
+    snapshot.n_bufs = 1;
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
@@ -1195,7 +1201,7 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
     }
 
     if (status != 0) {
-        tracef("save snapshot %llu: %s", snapshot->index,
+        tracef("save snapshot %llu: %s", params->metadata.index,
                raft_strerror(status));
         goto discard;
     }
@@ -1206,24 +1212,23 @@ static void installSnapshotCb(struct raft_io_snapshot_put *req, int status)
      *   8. Reset state machine using snapshot contents (and load lastConfig
      *      as cluster configuration).
      */
-    rv = snapshotRestore(r, snapshot);
+    rv = snapshotRestore(r, &snapshot);
     if (rv != 0) {
-        tracef("restore snapshot %llu: %s", snapshot->index,
+        tracef("restore snapshot %llu: %s", params->metadata.index,
                raft_strerror(status));
         goto discard;
     }
 
-    tracef("restored snapshot with last index %llu", snapshot->index);
+    tracef("restored snapshot with last index %llu", params->metadata.index);
 
     goto respond;
 
 discard:
     /* In case of error we must also free the snapshot data buffer and free the
      * configuration. */
-    result.rejected = snapshot->index;
-    raft_free(snapshot->bufs[0].base);
-    raft_free(snapshot->bufs);
-    raft_configuration_close(&snapshot->configuration);
+    result.rejected = params->metadata.index;
+    raft_free(snapshot.bufs[0].base);
+    raft_configuration_close(&snapshot.configuration);
 
 respond:
     if (r->state == RAFT_FOLLOWER) {
@@ -1232,6 +1237,8 @@ respond:
     }
 
     raft_free(request);
+
+    return 0;
 }
 
 int replicationInstallSnapshot(struct raft *r,
@@ -1240,7 +1247,7 @@ int replicationInstallSnapshot(struct raft *r,
                                bool *async)
 {
     struct recvInstallSnapshot *request;
-    struct raft_snapshot *snapshot;
+    struct raft_snapshot_metadata metadata;
     raft_term local_term;
     int rv;
 
@@ -1287,36 +1294,22 @@ int replicationInstallSnapshot(struct raft *r,
     }
     request->raft = r;
 
-    snapshot = &request->snapshot;
-    snapshot->term = args->last_term;
-    snapshot->index = args->last_index;
-    snapshot->configuration_index = args->conf_index;
-    snapshot->configuration = args->conf;
-
-    snapshot->bufs = raft_malloc(sizeof *snapshot->bufs);
-    if (snapshot->bufs == NULL) {
-        rv = RAFT_NOMEM;
-        goto err_after_request_alloc;
-    }
-    snapshot->bufs[0] = args->data;
-    snapshot->n_bufs = 1;
-
     assert(r->snapshot.put.data == NULL);
+    metadata.index = args->last_index;
+    metadata.term = args->last_term;
+    metadata.configuration = args->conf;
+    metadata.configuration_index = args->conf_index;
     r->snapshot.put.data = request;
-    rv = r->io->snapshot_put(r->io,
-                             0 /* zero trailing means replace everything */,
-                             &r->snapshot.put, snapshot, installSnapshotCb);
+    rv = TaskPersistSnapshot(r, metadata, 0, args->data, true);
     if (rv != 0) {
         tracef("snapshot_put failed %d", rv);
-        goto err_after_bufs_alloc;
+        goto err_after_request_alloc;
     }
 
     return 0;
 
-err_after_bufs_alloc:
-    raft_free(snapshot->bufs);
-    r->snapshot.put.data = NULL;
 err_after_request_alloc:
+    r->snapshot.put.data = NULL;
     raft_free(request);
 err:
     assert(rv != 0);

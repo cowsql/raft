@@ -174,6 +174,9 @@ int raft_start(struct raft *r)
             entryBatchesDestroy(entries, n_entries);
             return rv;
         }
+        /* Don't free the snapshot data buffer, as ownership has been
+         * transferred to the fsm. */
+        raft_free(snapshot->bufs);
         snapshot_index = snapshot->index;
         snapshot_term = snapshot->term;
         raft_free(snapshot);

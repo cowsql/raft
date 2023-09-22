@@ -366,6 +366,21 @@ struct raft_message
 };
 
 /**
+ * Hold metadata associated with a snapshot.
+ */
+struct raft_snapshot_metadata
+{
+    /* Index and term of last entry included in the snapshot. */
+    raft_index index;
+    raft_term term;
+
+    /* Last committed configuration included in the snapshot, along with the
+     * index it was committed at. */
+    struct raft_configuration configuration;
+    raft_index configuration_index;
+};
+
+/**
  * Hold the details of a snapshot.
  * The user-provided raft_buffer structs should provide the user with enough
  * flexibility to adapt/evolve snapshot formats.
@@ -600,6 +615,17 @@ struct raft_load_snapshot
 };
 
 /**
+ * Parameters for tasks of type #RAFT_PERSIST_SNAPSHOT.
+ */
+struct raft_persist_snapshot
+{
+    struct raft_snapshot_metadata metadata;
+    size_t offset;
+    struct raft_buffer chunk;
+    bool last;
+};
+
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -611,6 +637,7 @@ struct raft_task
         struct raft_persist_term_and_vote persist_term_and_vote;
         struct raft_load_snapshot load_snapshot;
         struct raft_persist_entries persist_entries;
+        struct raft_persist_snapshot persist_snapshot;
     };
 };
 

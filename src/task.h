@@ -41,6 +41,20 @@ int TaskPersistEntries(struct raft *r,
  */
 int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for);
 
+/* Create and enqueue a RAFT_PERSIST_SNAPSHOT task to persist a single chunk of
+ * the snapshot with the given metadata, starting at the given offset.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The r->tasks array could not be resized to fit the new task.
+ */
+int TaskPersistSnapshot(struct raft *r,
+                        struct raft_snapshot_metadata metadata,
+                        size_t offset,
+                        struct raft_buffer chunk,
+                        bool last);
+
 /* Create and enqueue a RAFT_LOAD_SNAPSHOT task to load a single chunk of the
  * snapshot at the given index starting at the given offset.
  *
