@@ -66,10 +66,6 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
     r->last_applied = snapshot->index;
     r->last_stored = snapshot->index;
 
-    /* Don't free the snapshot data buffer, as ownership has been transferred to
-     * the fsm. */
-    raft_free(snapshot->bufs);
-
     return 0;
 }
 

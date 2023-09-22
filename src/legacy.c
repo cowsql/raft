@@ -170,6 +170,7 @@ struct ioForwardPersistSnapshot
     struct raft_snapshot snapshot;
     struct raft *r;
     struct raft_task task;
+    struct raft_buffer chunk;
 };
 
 static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
@@ -196,11 +197,16 @@ static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
     req->task = *task;
     req->put.data = req;
 
+    /* Copy the chunk in the request object, so it can be referenced later by
+     * req->snapshot.bufs. We can't reference the chunk directly since it's
+     * allocated on the stack. */
+    req->chunk = params->chunk;
+
     req->snapshot.index = params->metadata.index;
     req->snapshot.term = params->metadata.term;
     req->snapshot.configuration = params->metadata.configuration;
     req->snapshot.configuration_index = params->metadata.configuration_index;
-    req->snapshot.bufs = &params->chunk;
+    req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
 
     rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
