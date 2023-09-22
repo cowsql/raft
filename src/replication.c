@@ -4,6 +4,7 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
+#include "legacy.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
@@ -18,6 +19,7 @@
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -824,18 +826,13 @@ out:
     return 0;
 }
 
-static void sendAppendEntriesResultCb(struct raft_io_send *req, int status)
-{
-    (void)status;
-    RaftHeapFree(req);
-}
-
 static void sendAppendEntriesResult(
     struct raft *r,
     const struct raft_append_entries_result *result)
 {
     struct raft_message message;
-    struct raft_io_send *req;
+    raft_id id = r->follower_state.current_leader.id;
+    const char *address = r->follower_state.current_leader.address;
     int rv;
 
     assert(r->state == RAFT_FOLLOWER);
@@ -857,19 +854,12 @@ static void sendAppendEntriesResult(
     assert(r->follower_state.current_leader.address != NULL);
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
-    message.server_id = r->follower_state.current_leader.id;
-    message.server_address = r->follower_state.current_leader.address;
     message.append_entries_result = *result;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return;
-    }
-    req->data = r;
-
-    rv = r->io->send(r->io, req, &message, sendAppendEntriesResultCb);
+    rv = TaskSendMessage(r, id, address, &message);
     if (rv != 0) {
-        raft_free(req);
+        /* This is not fatal, we'll retry. */
+        (void)rv;
     }
 }
 
@@ -888,6 +878,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
     struct raft *r = request->raft;
     struct raft_append_entries *args = &request->args;
     struct raft_append_entries_result result;
+    struct raft_event event;
     size_t i;
     size_t j;
     int rv;
@@ -980,6 +971,14 @@ out:
                request->args.n_entries);
 
     raft_free(request);
+
+    /* Trigger automatic forwarding of pending messages to the legacy raft_io
+     * interface.
+     *
+     * TODO: This call can be removed once raft_io->append() gets converted as
+     * well to the raft_step(). */
+    event.type = 255; /* Non existing event, just to process pending tasks */
+    LegacyForwardToRaftIo(r, &event);
 }
 
 /* Check the log matching property against an incoming AppendEntries request.
