@@ -4,6 +4,7 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
+#include "legacy.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
@@ -18,6 +19,7 @@
 #include "replication.h"
 #include "request.h"
 #include "snapshot.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -43,24 +45,27 @@ struct sendAppendEntries
 };
 
 /* Callback invoked after request to send an AppendEntries RPC has completed. */
-static void sendAppendEntriesCb(struct raft_io_send *send, const int status)
+int replicationSendAppendEntriesDone(struct raft *r,
+                                     struct raft_send_message *params,
+                                     int status)
 {
-    struct sendAppendEntries *req = send->data;
-    struct raft *r = req->raft;
-    unsigned i = configurationIndexOf(&r->configuration, req->server_id);
+    struct raft_append_entries *args = &params->message.append_entries;
+    unsigned i = configurationIndexOf(&r->configuration, params->id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
         if (status != 0) {
             tracef("failed to send append entries to server %llu: %s",
-                   req->server_id, raft_strerror(status));
+                   params->id, raft_strerror(status));
             /* Go back to probe mode. */
             progressToProbe(r, i);
         }
     }
 
     /* Tell the log that we're done referencing these entries. */
-    logRelease(r->log, req->index, req->entries, req->n);
-    raft_free(req);
+    logRelease(r->log, args->prev_log_index + 1, args->entries,
+               args->n_entries);
+
+    return 0;
 }
 
 /* Send an AppendEntries message to the i'th server, including all log entries
@@ -73,7 +78,6 @@ static int sendAppendEntries(struct raft *r,
     struct raft_server *server = &r->configuration.servers[i];
     struct raft_message message;
     struct raft_append_entries *args = &message.append_entries;
-    struct sendAppendEntries *req;
     raft_index next_index = prev_index + 1;
     int rv;
 
@@ -105,33 +109,20 @@ static int sendAppendEntries(struct raft *r,
     message.server_id = server->id;
     message.server_address = server->address;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        rv = RAFT_NOMEM;
-        goto err_after_entries_acquired;
-    }
-    req->raft = r;
-    req->index = args->prev_log_index + 1;
-    req->entries = args->entries;
-    req->n = args->n_entries;
-    req->server_id = server->id;
-
-    req->send.data = req;
-    rv = r->io->send(r->io, &req->send, &message, sendAppendEntriesCb);
+    rv = TaskSendMessage(r, server->id, server->address, &message);
     if (rv != 0) {
-        goto err_after_req_alloc;
+        goto err_after_entries_acquired;
     }
 
     if (progressState(r, i) == PROGRESS__PIPELINE) {
         /* Optimistically update progress. */
-        progressOptimisticNextIndex(r, i, req->index + req->n);
+        progressOptimisticNextIndex(r, i,
+                                    args->prev_log_index + 1 + args->n_entries);
     }
 
     progressUpdateLastSend(r, i);
     return 0;
 
-err_after_req_alloc:
-    raft_free(req);
 err_after_entries_acquired:
     logRelease(r->log, next_index, args->entries, args->n_entries);
 err:
@@ -824,18 +815,13 @@ out:
     return 0;
 }
 
-static void sendAppendEntriesResultCb(struct raft_io_send *req, int status)
-{
-    (void)status;
-    RaftHeapFree(req);
-}
-
 static void sendAppendEntriesResult(
     struct raft *r,
     const struct raft_append_entries_result *result)
 {
     struct raft_message message;
-    struct raft_io_send *req;
+    raft_id id = r->follower_state.current_leader.id;
+    const char *address = r->follower_state.current_leader.address;
     int rv;
 
     assert(r->state == RAFT_FOLLOWER);
@@ -857,19 +843,12 @@ static void sendAppendEntriesResult(
     assert(r->follower_state.current_leader.address != NULL);
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
-    message.server_id = r->follower_state.current_leader.id;
-    message.server_address = r->follower_state.current_leader.address;
     message.append_entries_result = *result;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return;
-    }
-    req->data = r;
-
-    rv = r->io->send(r->io, req, &message, sendAppendEntriesResultCb);
+    rv = TaskSendMessage(r, id, address, &message);
     if (rv != 0) {
-        raft_free(req);
+        /* This is not fatal, we'll retry. */
+        (void)rv;
     }
 }
 
@@ -888,6 +867,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
     struct raft *r = request->raft;
     struct raft_append_entries *args = &request->args;
     struct raft_append_entries_result result;
+    struct raft_event event;
     size_t i;
     size_t j;
     int rv;
@@ -980,6 +960,14 @@ out:
                request->args.n_entries);
 
     raft_free(request);
+
+    /* Trigger automatic forwarding of pending messages to the legacy raft_io
+     * interface.
+     *
+     * TODO: This call can be removed once raft_io->append() gets converted as
+     * well to the raft_step(). */
+    event.type = 255; /* Non existing event, just to process pending tasks */
+    LegacyForwardToRaftIo(r, &event);
 }
 
 /* Check the log matching property against an incoming AppendEntries request.

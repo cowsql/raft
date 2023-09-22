@@ -6,22 +6,16 @@
 #include "log.h"
 #include "recv.h"
 #include "replication.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
-
-static void installSnapshotSendCb(struct raft_io_send *req, int status)
-{
-    (void)status;
-    raft_free(req);
-}
 
 int recvInstallSnapshot(struct raft *r,
                         const raft_id id,
                         const char *address,
                         struct raft_install_snapshot *args)
 {
-    struct raft_io_send *req;
     struct raft_message message;
     struct raft_append_entries_result *result = &message.append_entries_result;
     int rv;
@@ -88,18 +82,9 @@ reply:
     raft_free(args->data.base);
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
-    message.server_id = id;
-    message.server_address = address;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return RAFT_NOMEM;
-    }
-    req->data = r;
-
-    rv = r->io->send(r->io, req, &message, installSnapshotSendCb);
+    rv = TaskSendMessage(r, id, address, &message);
     if (rv != 0) {
-        raft_free(req);
         return rv;
     }
 
