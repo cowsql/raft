@@ -557,7 +557,7 @@ enum {
 };
 
 /**
- * Parameters of tasks of type #RAFT_SEND_MESSAGE.
+ * Parameters for tasks of type #RAFT_SEND_MESSAGE.
  */
 struct raft_send_message
 {
@@ -567,7 +567,7 @@ struct raft_send_message
 };
 
 /**
- * Parameters of tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
+ * Parameters for tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
  */
 struct raft_persist_term_and_vote
 {
