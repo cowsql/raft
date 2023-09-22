@@ -168,9 +168,18 @@ int raft_start(struct raft *r)
     if (snapshot != NULL) {
         tracef("restore snapshot with last index %llu and last term %llu",
                snapshot->index, snapshot->term);
+
+        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
+        if (rv != 0) {
+            tracef("restore snapshot %llu: %s", snapshot->index,
+                   errCodeToString(rv));
+            snapshotDestroy(snapshot);
+            entryBatchesDestroy(entries, n_entries);
+            return rv;
+        }
+
         rv = snapshotRestore(r, snapshot);
         if (rv != 0) {
-            snapshotDestroy(snapshot);
             entryBatchesDestroy(entries, n_entries);
             return rv;
         }

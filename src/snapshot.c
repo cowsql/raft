@@ -33,13 +33,6 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
 
     assert(snapshot->n_bufs == 1);
 
-    rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
-    if (rv != 0) {
-        tracef("restore snapshot %llu: %s", snapshot->index,
-               errCodeToString(rv));
-        return rv;
-    }
-
     configurationClose(&r->configuration);
     r->configuration = snapshot->configuration;
     r->configuration_committed_index = snapshot->configuration_index;
