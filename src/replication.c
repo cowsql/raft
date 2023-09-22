@@ -141,57 +141,58 @@ struct sendInstallSnapshot
     raft_id server_id;               /* Destination server. */
 };
 
-static void sendInstallSnapshotCb(struct raft_io_send *send, int status)
+int replicationSendInstallSnapshotDone(struct raft *r,
+                                       struct raft_send_message *params,
+                                       int status)
 {
-    struct sendInstallSnapshot *req = send->data;
-    struct raft *r = req->raft;
     const struct raft_server *server;
 
-    server = configurationGet(&r->configuration, req->server_id);
+    server = configurationGet(&r->configuration, params->id);
 
     if (status != 0) {
         tracef("send install snapshot: %s", raft_strerror(status));
         if (r->state == RAFT_LEADER && server != NULL) {
             unsigned i;
-            i = configurationIndexOf(&r->configuration, req->server_id);
+            i = configurationIndexOf(&r->configuration, params->id);
             progressAbortSnapshot(r, i);
         }
     }
 
-    snapshotClose(req->snapshot);
-    raft_free(req->snapshot);
-    raft_free(req);
+    configurationClose(&params->message.install_snapshot.conf);
+    raft_free(params->message.install_snapshot.data.base);
+
+    return 0;
 }
 
-static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
-                              struct raft_snapshot *snapshot,
-                              int status)
+int replicationLoadSnapshotDone(struct raft *r,
+                                struct raft_load_snapshot *params,
+                                int status)
 {
-    struct sendInstallSnapshot *req = get->data;
-    struct raft *r = req->raft;
     struct raft_message message;
     struct raft_install_snapshot *args = &message.install_snapshot;
     const struct raft_server *server = NULL;
     bool progress_state_is_snapshot = false;
-    unsigned i = 0;
-    int rv;
+    unsigned i = r->configuration.n;
+    int rv = 0;
+
+    if (r->state == RAFT_LEADER) {
+        i = progressSnapshotLoaded(r, params->index);
+    }
 
     if (status != 0) {
         tracef("get snapshot %s", raft_strerror(status));
         goto abort;
     }
+
     if (r->state != RAFT_LEADER) {
         goto abort_with_snapshot;
     }
 
-    server = configurationGet(&r->configuration, req->server_id);
-
-    if (server == NULL) {
+    if (i == r->configuration.n) {
         /* Probably the server was removed in the meantime. */
         goto abort_with_snapshot;
     }
 
-    i = configurationIndexOf(&r->configuration, req->server_id);
     progress_state_is_snapshot = progressState(r, i) == PROGRESS__SNAPSHOT;
 
     if (!progress_state_is_snapshot) {
@@ -199,26 +200,26 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
         goto abort_with_snapshot;
     }
 
-    assert(snapshot->n_bufs == 1);
-
     message.type = RAFT_IO_INSTALL_SNAPSHOT;
-    message.server_id = server->id;
-    message.server_address = server->address;
 
     args->term = r->current_term;
-    args->last_index = snapshot->index;
-    args->last_term = snapshot->term;
-    args->conf_index = snapshot->configuration_index;
-    args->conf = snapshot->configuration;
-    args->data = snapshot->bufs[0];
+    args->last_index = params->index;
+    args->last_term = logTermOf(r->log, params->index);
+    args->conf_index = r->configuration_last_snapshot_index;
 
-    req->snapshot = snapshot;
-    req->send.data = req;
+    rv = configurationCopy(&r->configuration_last_snapshot, &args->conf);
+    if (rv != 0) {
+        goto abort_with_snapshot;
+    }
 
-    tracef("sending snapshot with last index %llu to %llu", snapshot->index,
+    args->data = params->chunk;
+
+    server = &r->configuration.servers[i];
+
+    tracef("sending snapshot with last index %llu to %llu", params->index,
            server->id);
 
-    rv = r->io->send(r->io, &req->send, &message, sendInstallSnapshotCb);
+    rv = TaskSendMessage(r, server->id, server->address, &message);
     if (rv != 0) {
         goto abort_with_snapshot;
     }
@@ -226,49 +227,31 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
     goto out;
 
 abort_with_snapshot:
-    snapshotClose(snapshot);
-    raft_free(snapshot);
+    raft_free(params->chunk.base);
 abort:
-    if (r->state == RAFT_LEADER && server != NULL &&
+    if (r->state == RAFT_LEADER && i < r->configuration.n &&
         progress_state_is_snapshot) {
         progressAbortSnapshot(r, i);
     }
-    raft_free(req);
 out:
-    return;
+    return rv;
 }
 
 /* Send the latest snapshot to the i'th server */
 static int sendSnapshot(struct raft *r, const unsigned i)
 {
-    struct raft_server *server = &r->configuration.servers[i];
-    struct sendInstallSnapshot *request;
     int rv;
 
     progressToSnapshot(r, i);
 
-    request = raft_malloc(sizeof *request);
-    if (request == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-    request->raft = r;
-    request->server_id = server->id;
-    request->get.data = request;
-
-    /* TODO: make sure that the I/O implementation really returns the latest
-     * snapshot *at this time* and not any snapshot that might be stored at a
-     * later point. Otherwise the progress snapshot_index would be wrong. */
-    rv = r->io->snapshot_get(r->io, &request->get, sendSnapshotGetCb);
+    rv = TaskLoadSnapshot(r, logSnapshotIndex(r->log), 0);
     if (rv != 0) {
-        goto err_after_req_alloc;
+        goto err;
     }
 
     progressUpdateSnapshotLastSend(r, i);
     return 0;
 
-err_after_req_alloc:
-    raft_free(request);
 err:
     progressAbortSnapshot(r, i);
     assert(rv != 0);

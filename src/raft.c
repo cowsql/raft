@@ -157,12 +157,21 @@ static int sendMessageDone(struct raft *r, struct raft_task *task, int status)
         case RAFT_IO_APPEND_ENTRIES:
             rv = replicationSendAppendEntriesDone(r, params, status);
             break;
+        case RAFT_IO_INSTALL_SNAPSHOT:
+            rv = replicationSendInstallSnapshotDone(r, params, status);
+            break;
         default:
             /* Ignore the status, in case of errors we'll retry. */
             rv = 0;
             break;
     }
     return rv;
+}
+
+static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
+{
+    struct raft_load_snapshot *params = &task->load_snapshot;
+    return replicationLoadSnapshotDone(r, params, status);
 }
 
 /* Handle the completion of a task. */
@@ -182,6 +191,9 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
                 convertToUnavailable(r);
             }
             rv = status;
+            break;
+        case RAFT_LOAD_SNAPSHOT:
+            rv = loadSnapshotDone(r, task, status);
             break;
         default:
             rv = 0;

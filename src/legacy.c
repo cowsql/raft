@@ -128,8 +128,8 @@ static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
 {
     struct ioForwardLoadSnapshot *req = get->data;
     struct raft *r = req->r;
-    struct raft_task *task = &req->task;
-    struct raft_load_snapshot *params = &task->load_snapshot;
+    struct raft_task task = req->task;
+    struct raft_load_snapshot *params = &task.load_snapshot;
 
     if (status == 0) {
         assert(snapshot->index == params->index);
@@ -141,7 +141,7 @@ static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
     }
 
     raft_free(req);
-    ioTaskDone(r, task, status);
+    ioTaskDone(r, &task, status);
 }
 
 static int ioForwardLoadSnapshot(struct raft *r, struct raft_task *task)
