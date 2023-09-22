@@ -17,14 +17,17 @@ enum {
  */
 struct raft_progress
 {
-    unsigned short state;         /* Probe, pipeline or snapshot. */
-    raft_index next_index;        /* Next entry to send. */
-    raft_index match_index;       /* Highest index reported as replicated. */
-    raft_index snapshot_index;    /* Last index of most recent snapshot sent. */
-    raft_time last_send;          /* Timestamp of last AppendEntries RPC. */
-    raft_time snapshot_last_send; /* Timestamp of last InstallSnaphot RPC. */
-    bool recent_recv;    /* A msg was received within election timeout. */
-    raft_flags features; /* What the server is capable of. */
+    unsigned short state;   /* Probe, pipeline or snapshot. */
+    raft_index next_index;  /* Next entry to send. */
+    raft_index match_index; /* Highest index reported as replicated. */
+    raft_time last_send;    /* Timestamp of last AppendEntries RPC. */
+    bool recent_recv;       /* A msg was received within election timeout. */
+    raft_flags features;    /* What the server is capable of. */
+    struct
+    {
+        raft_index index;    /* Last index of most recent snapshot sent. */
+        raft_time last_send; /* Timestamp of last InstallSnaphot RPC. */
+    } snapshot;
 };
 
 /* Create and initialize the array of progress objects used by the leader to
