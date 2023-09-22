@@ -435,6 +435,75 @@ abort:
     return 0;
 }
 
+struct ioForwardRestoreSnapshot
+{
+    struct raft *r;
+    struct raft_task task;
+    struct raft_io_snapshot_get get;
+};
+
+static void ioForwardRestoreSnapshotCb(struct raft_io_snapshot_get *get,
+                                       struct raft_snapshot *snapshot,
+                                       int status)
+{
+    struct ioForwardRestoreSnapshot *req = get->data;
+    struct raft *r = req->r;
+    struct raft_task task = req->task;
+    struct raft_restore_snapshot *params = &task.restore_snapshot;
+    int rv = status;
+
+    if (rv == 0) {
+        assert(snapshot->index == params->index);
+        assert(snapshot->n_bufs == 1);
+        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
+        configurationClose(&snapshot->configuration);
+        raft_free(snapshot->bufs);
+        raft_free(snapshot);
+    }
+
+    raft_free(req);
+    ioTaskDone(r, &task, rv);
+}
+
+static int ioForwardRestoreSnapshot(struct raft *r,
+                                    struct raft_task *task,
+                                    struct raft_event *events[],
+                                    unsigned *n_events)
+{
+    struct ioForwardRestoreSnapshot *req;
+    struct raft_event *event;
+    int rv;
+
+    req = raft_malloc(sizeof *req);
+    if (req == NULL) {
+        rv = RAFT_NOMEM;
+        goto abort;
+    }
+    req->r = r;
+    req->task = *task;
+
+    req->get.data = req;
+
+    rv = r->io->snapshot_get(r->io, &req->get, ioForwardRestoreSnapshotCb);
+    if (rv != 0) {
+        goto abort;
+    }
+    return 0;
+
+abort:
+    event = eventAppend(events, n_events);
+    if (event == NULL) {
+        return RAFT_NOMEM;
+    }
+
+    event->type = RAFT_DONE;
+    event->time = r->io->time(r->io);
+    event->done.task = *task;
+    event->done.status = rv;
+
+    return 0;
+}
+
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_event *events;
@@ -493,6 +562,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_TAKE_SNAPSHOT:
                     rv = ioForwardTakeSnapshot(r, task, &events, &n_events);
+                    break;
+                case RAFT_RESTORE_SNAPSHOT:
+                    rv = ioForwardRestoreSnapshot(r, task, &events, &n_events);
                     break;
                 default:
                     rv = RAFT_INVALID;
