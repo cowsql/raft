@@ -1212,6 +1212,14 @@ int replicationPersistSnapshotDone(struct raft *r,
      *   8. Reset state machine using snapshot contents (and load lastConfig
      *      as cluster configuration).
      */
+    rv = TaskRestoreSnapshot(r, snapshot.index);
+    if (rv != 0) {
+        tracef("restore snapshot %llu: %s", snapshot.index,
+               errCodeToString(rv));
+        goto discard;
+    }
+    raft_free(snapshot.bufs[0].base);
+
     rv = snapshotRestore(r, &snapshot);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", params->metadata.index,

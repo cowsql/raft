@@ -220,3 +220,27 @@ err:
     assert(rv == RAFT_NOMEM);
     return rv;
 }
+
+int TaskRestoreSnapshot(struct raft *r, raft_index index)
+{
+    struct raft_task *task;
+    struct raft_restore_snapshot *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_RESTORE_SNAPSHOT;
+
+    params = &task->restore_snapshot;
+    params->index = index;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}
