@@ -144,6 +144,7 @@ struct io
     struct raft_snapshot *snapshot; /* Latest snapshot */
     struct raft_entry *entries;     /* Array or persisted entries */
     size_t n;                       /* Size of the persisted entries array */
+    raft_index start_index;
 
     /* Parameters passed via raft_io->init and raft_io->start */
     raft_id id;
@@ -311,6 +312,7 @@ static void ioFlushSnapshotPut(struct io *s, struct snapshot_put *r)
     if (r->trailing == 0) {
         rv = s->io->truncate(s->io, 1);
         assert(rv == 0);
+        s->start_index = s->snapshot->index;
     }
 
     if (r->req->cb != NULL) {
@@ -634,7 +636,13 @@ static int ioMethodAppend(struct raft_io *raft_io,
 static int ioMethodTruncate(struct raft_io *raft_io, raft_index index)
 {
     struct io *io = raft_io->impl;
+    raft_index last_index = io->start_index + io->n;
     size_t n;
+
+    if (index >= last_index + 1) {
+        /* Nothing to truncate */
+        return 0;
+    }
 
     if (ioFaultTick(io)) {
         return RAFT_IOERR;
@@ -902,6 +910,7 @@ static int ioInit(struct raft_io *raft_io, unsigned index, raft_time *time)
     io->snapshot = NULL;
     io->entries = NULL;
     io->n = 0;
+    io->start_index = 0;
     QUEUE_INIT(&io->requests);
     io->n_peers = 0;
     io->randomized_election_timeout = ELECTION_TIMEOUT + index * 100;

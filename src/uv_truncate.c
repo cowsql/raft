@@ -164,9 +164,12 @@ int UvTruncate(struct raft_io *io, raft_index index)
     assert(!uv->closing);
 
     /* We should truncate only entries that we were requested to append in the
-     * first place. */
+     * first place. If the truncation index equals the next append index, this
+     * is a no-op. */
     assert(index > 0);
-    assert(index < uv->append_next_index);
+    if (index >= uv->append_next_index) {
+        return 0;
+    }
 
     truncate = RaftHeapMalloc(sizeof *truncate);
     if (truncate == NULL) {
