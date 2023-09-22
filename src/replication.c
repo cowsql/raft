@@ -430,13 +430,14 @@ static struct request *getRequest(struct raft *r,
 }
 
 /* Invoked once a disk write request for new entries has been completed. */
-int replicationPersistEntriesDone(struct raft *r,
-                                  struct raft_persist_entries *params,
-                                  int status)
+static int leaderPersistEntriesDone(struct raft *r,
+                                    struct raft_persist_entries *params,
+                                    int status)
 {
     size_t server_index;
-    raft_index index;
     int rv;
+
+    assert(r->state == RAFT_LEADER);
 
     tracef("leader: written %u entries starting at %lld: status %d", params->n,
            params->index, status);
@@ -485,16 +486,11 @@ int replicationPersistEntriesDone(struct raft *r,
                     break;
             }
         }
+        convertToFollower(r);
         goto out;
     }
 
     updateLastStored(r, params->index, params->entries, params->n);
-
-    /* If we are not leader anymore, just discard the result. */
-    if (r->state != RAFT_LEADER) {
-        tracef("local server is not leader -> ignore write log result");
-        goto out;
-    }
 
     /* Only update the next index if we are part of the current
      * configuration. The only case where this is not true is when we were
@@ -521,15 +517,35 @@ int replicationPersistEntriesDone(struct raft *r,
 
 out:
     /* Tell the log that we're done referencing these entries. */
+/* Invoked once a disk write request for new entries has been completed. */
+int replicationPersistEntriesDone(struct raft *r,
+                                  struct raft_persist_entries *params,
+                                  int status)
+{
+    int rv;
+
+    switch (r->state) {
+        case RAFT_LEADER:
+            rv = leaderPersistEntriesDone(r, params, status);
+            break;
+        default:
+            if (status != 0) {
+                updateLastStored(r, params->index, params->entries, params->n);
+            }
+            rv = 0;
+            break;
+    }
+
     logRelease(r->log, params->index, params->entries, params->n);
-    index = params->index;
+
     if (status != 0) {
-        if (index <= logLastIndex(r->log)) {
-            logTruncate(r->log, index);
+        if (params->index <= logLastIndex(r->log)) {
+            logTruncate(r->log, params->index);
         }
-        if (r->state == RAFT_LEADER) {
-            convertToFollower(r);
-        }
+    }
+
+    if (rv != 0) {
+        return rv;
     }
 
     return 0;
