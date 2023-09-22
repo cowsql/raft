@@ -557,7 +557,7 @@ enum {
 };
 
 /**
- * Parameters of tasks of type #RAFT_SEND_MESSAGE.
+ * Parameters for tasks of type #RAFT_SEND_MESSAGE.
  */
 struct raft_send_message
 {
@@ -567,12 +567,23 @@ struct raft_send_message
 };
 
 /**
- * Parameters of tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
+ * Parameters for tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
  */
 struct raft_persist_term_and_vote
 {
     raft_term term;
     raft_id voted_for;
+};
+
+/**
+ * Parameters for tasks of type #RAFT_LOAD_SNAPSHOT.
+ */
+struct raft_load_snapshot
+{
+    raft_index index;         /* Index of last entry in the snapshot */
+    size_t offset;            /* Load snapshot data starting from this offset */
+    struct raft_buffer chunk; /* Load data into this buffer */
+    bool last;                /* OUTPUT: Whether this was the last chunk */
 };
 
 /**
@@ -585,6 +596,7 @@ struct raft_task
     union {
         struct raft_send_message send_message;
         struct raft_persist_term_and_vote persist_term_and_vote;
+        struct raft_load_snapshot load_snapshot;
     };
 };
 
@@ -744,6 +756,8 @@ struct raft_log;
         struct raft_task *tasks; /* Queue of pending raft_task operations */ \
         unsigned n_tasks;        /* Length of the task queue */              \
         unsigned n_tasks_cap;    /* Capacity of the task queue */            \
+        /* Index of the last snapshot that was taken */                      \
+        raft_index configuration_last_snapshot_index;                        \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);

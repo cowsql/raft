@@ -20,10 +20,11 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
 {
     p->next_index = last_index + 1;
     p->match_index = 0;
-    p->snapshot_index = 0;
     p->last_send = 0;
-    p->snapshot_last_send = 0;
     p->recent_recv = false;
+    p->snapshot.index = 0;
+    p->snapshot.last_send = 0;
+    p->snapshot.loading = false;
     p->state = PROGRESS__PROBE;
     p->features = 0;
 }
@@ -120,7 +121,7 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
     switch (p->state) {
         case PROGRESS__SNAPSHOT:
             /* Snapshot timed out, move to PROBE */
-            if (r->now - p->snapshot_last_send >= r->install_snapshot_timeout) {
+            if (r->now - p->snapshot.last_send >= r->install_snapshot_timeout) {
                 tracef("snapshot timed out for index:%u", i);
                 result = true;
                 progressAbortSnapshot(r, i);
@@ -161,7 +162,7 @@ void progressUpdateLastSend(struct raft *r, unsigned i)
 
 void progressUpdateSnapshotLastSend(struct raft *r, unsigned i)
 {
-    r->leader_state.progress[i].snapshot_last_send = r->now;
+    r->leader_state.progress[i].snapshot.last_send = r->now;
 }
 
 bool progressResetRecentRecv(struct raft *r, const unsigned i)
@@ -197,13 +198,28 @@ void progressToSnapshot(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     p->state = PROGRESS__SNAPSHOT;
-    p->snapshot_index = logSnapshotIndex(r->log);
+    p->snapshot.index = logSnapshotIndex(r->log);
+    p->snapshot.loading = true;
+}
+
+unsigned progressSnapshotLoaded(struct raft *r, raft_index index)
+{
+    unsigned i;
+    for (i = 0; i < r->configuration.n; i++) {
+        struct raft_progress *p = &r->leader_state.progress[i];
+        if (p->state == PROGRESS__SNAPSHOT && p->snapshot.index == index &&
+            p->snapshot.loading) {
+            p->snapshot.loading = false;
+            break;
+        }
+    }
+    return i;
 }
 
 void progressAbortSnapshot(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    p->snapshot_index = 0;
+    p->snapshot.index = 0;
     p->state = PROGRESS__PROBE;
 }
 
@@ -226,7 +242,7 @@ bool progressMaybeDecrement(struct raft *r,
     if (p->state == PROGRESS__SNAPSHOT) {
         /* The rejection must be stale or spurious if the rejected index does
          * not match the last snapshot index. */
-        if (rejected != p->snapshot_index) {
+        if (rejected != p->snapshot.index) {
             return false;
         }
         progressAbortSnapshot(r, i);
@@ -290,9 +306,9 @@ void progressToProbe(struct raft *r, const unsigned i)
      * been sent to this peer successfully, so we probe from snapshot_index +
      * 1.*/
     if (p->state == PROGRESS__SNAPSHOT) {
-        assert(p->snapshot_index > 0);
-        p->next_index = max(p->match_index + 1, p->snapshot_index);
-        p->snapshot_index = 0;
+        assert(p->snapshot.index > 0);
+        p->next_index = max(p->match_index + 1, p->snapshot.index);
+        p->snapshot.index = 0;
     } else {
         p->next_index = p->match_index + 1;
     }
@@ -309,7 +325,7 @@ bool progressSnapshotDone(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     assert(p->state == PROGRESS__SNAPSHOT);
-    return p->match_index >= p->snapshot_index;
+    return p->match_index >= p->snapshot.index;
 }
 
 #undef tracef

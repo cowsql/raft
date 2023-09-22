@@ -80,6 +80,7 @@ int raft_init(struct raft *r,
     raft_configuration_init(&r->configuration_last_snapshot);
     r->configuration_committed_index = 0;
     r->configuration_uncommitted_index = 0;
+    r->configuration_last_snapshot_index = 0;
     r->election_timeout = DEFAULT_ELECTION_TIMEOUT;
     r->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
@@ -156,12 +157,21 @@ static int sendMessageDone(struct raft *r, struct raft_task *task, int status)
         case RAFT_IO_APPEND_ENTRIES:
             rv = replicationSendAppendEntriesDone(r, params, status);
             break;
+        case RAFT_IO_INSTALL_SNAPSHOT:
+            rv = replicationSendInstallSnapshotDone(r, params, status);
+            break;
         default:
             /* Ignore the status, in case of errors we'll retry. */
             rv = 0;
             break;
     }
     return rv;
+}
+
+static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
+{
+    struct raft_load_snapshot *params = &task->load_snapshot;
+    return replicationLoadSnapshotDone(r, params, status);
 }
 
 /* Handle the completion of a task. */
@@ -181,6 +191,9 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
                 convertToUnavailable(r);
             }
             rv = status;
+            break;
+        case RAFT_LOAD_SNAPSHOT:
+            rv = loadSnapshotDone(r, task, status);
             break;
         default:
             rv = 0;
