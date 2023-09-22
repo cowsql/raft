@@ -4,9 +4,11 @@
 #include "convert.h"
 #include "entry.h"
 #include "err.h"
+#include "legacy.h"
 #include "log.h"
 #include "recv.h"
 #include "snapshot.h"
+#include "task.h"
 #include "tick.h"
 #include "tracing.h"
 
@@ -166,10 +168,12 @@ int raft_start(struct raft *r)
 
     /* If we have a snapshot, let's restore it. */
     if (snapshot != NULL) {
+        struct raft_event event;
+
         tracef("restore snapshot with last index %llu and last term %llu",
                snapshot->index, snapshot->term);
 
-        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
+        rv = TaskRestoreSnapshot(r, snapshot->index);
         if (rv != 0) {
             tracef("restore snapshot %llu: %s", snapshot->index,
                    errCodeToString(rv));
@@ -183,12 +187,19 @@ int raft_start(struct raft *r)
             entryBatchesDestroy(entries, n_entries);
             return rv;
         }
-        /* Don't free the snapshot data buffer, as ownership has been
-         * transferred to the fsm. */
+        raft_free(snapshot->bufs[0].base);
         raft_free(snapshot->bufs);
         snapshot_index = snapshot->index;
         snapshot_term = snapshot->term;
         raft_free(snapshot);
+
+        /* Use a dummy event to trigger handling of the RAFT_RESTORE_SNAPSHOT
+         * task.
+         *
+         * TODO: use the start event instead. */
+        event.type = 255;
+        event.time = r->now;
+        LegacyForwardToRaftIo(r, &event);
     } else if (n_entries > 0) {
         /* If we don't have a snapshot and the on-disk log is not empty, then
          * the first entry must be a configuration entry. */
