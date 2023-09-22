@@ -1316,25 +1316,38 @@ err:
     return rv;
 }
 
+int replicationApplyCommandDone(struct raft *r,
+                                struct raft_apply_command *io,
+                                int status)
+{
+    struct raft_apply *req;
+
+    if (status != 0) {
+        return status;
+    }
+
+    req = (struct raft_apply *)getRequest(r, io->index, RAFT_COMMAND);
+    if (req != NULL && req->cb != NULL) {
+        req->cb(req, 0, NULL);
+    }
+
+    return 0;
+}
+
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
                         const raft_index index,
                         const struct raft_buffer *buf)
 {
-    struct raft_apply *req;
-    void *result;
     int rv;
-    rv = r->fsm->apply(r->fsm, buf, &result);
+
+    rv = TaskApplyCommand(r, index, buf);
     if (rv != 0) {
         return rv;
     }
 
     r->last_applied = index;
 
-    req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-    if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0, result);
-    }
     return 0;
 }
 
