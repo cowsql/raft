@@ -127,4 +127,9 @@ int replicationApplyCommandDone(struct raft *r,
                                 struct raft_apply_command *params,
                                 int status);
 
+/* Called when a RAFT_TAKE_SNAPSHOT task has been completed. */
+int replicationTakeSnapshotDone(struct raft *r,
+                                struct raft_take_snapshot *params,
+                                int status);
+
 #endif /* REPLICATION_H_ */
