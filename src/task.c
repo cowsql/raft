@@ -60,6 +60,35 @@ err:
     return rv;
 }
 
+int TaskPersistEntries(struct raft *r,
+                       raft_index index,
+                       struct raft_entry entries[],
+                       unsigned n)
+{
+    struct raft_task *task;
+    struct raft_persist_entries *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_PERSIST_ENTRIES;
+
+    params = &task->persist_entries;
+    params->index = index;
+    params->entries = entries;
+    params->n = n;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}
+
 int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for)
 {
     struct raft_task *task;

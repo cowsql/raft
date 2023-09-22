@@ -18,6 +18,19 @@ int TaskSendMessage(struct raft *r,
                     const char *address,
                     struct raft_message *message);
 
+/* Create and enqueue a RAFT_PERSIST_ENTRIES task to persist the given entries
+ * starting at the given index.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The r->tasks array could not be resized to fit the new task.
+ */
+int TaskPersistEntries(struct raft *r,
+                       raft_index first_index,
+                       struct raft_entry entries[],
+                       unsigned n);
+
 /* Create and enqueue a RAFT_PERSIST_TERM_AND_VOTE task to persist the given
  * term and vote.
  *

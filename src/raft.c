@@ -174,6 +174,14 @@ static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
     return replicationLoadSnapshotDone(r, params, status);
 }
 
+static int persistEntriesDone(struct raft *r,
+                              struct raft_task *task,
+                              int status)
+{
+    struct raft_persist_entries *params = &task->persist_entries;
+    return replicationPersistEntriesDone(r, params, status);
+}
+
 /* Handle the completion of a task. */
 static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
@@ -184,6 +192,9 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
     switch (task->type) {
         case RAFT_SEND_MESSAGE:
             rv = sendMessageDone(r, task, status);
+            break;
+        case RAFT_PERSIST_ENTRIES:
+            rv = persistEntriesDone(r, task, status);
             break;
         case RAFT_PERSIST_TERM_AND_VOTE:
             /* TODO: reason more about what todo upon errors */

@@ -567,6 +567,19 @@ struct raft_send_message
 };
 
 /**
+ * Parameters for tasks of type #RAFT_PERSIST_ENTRIES.
+ *
+ * Note that when writing an entry index at i, any previously-persisted entries
+ * with index >= i must be discarded.
+ */
+struct raft_persist_entries
+{
+    raft_index index;
+    struct raft_entry *entries;
+    unsigned n;
+};
+
+/**
  * Parameters for tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
  */
 struct raft_persist_term_and_vote
@@ -597,6 +610,7 @@ struct raft_task
         struct raft_send_message send_message;
         struct raft_persist_term_and_vote persist_term_and_vote;
         struct raft_load_snapshot load_snapshot;
+        struct raft_persist_entries persist_entries;
     };
 };
 
