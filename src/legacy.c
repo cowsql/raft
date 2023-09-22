@@ -155,7 +155,7 @@ static int ioPersistTermAndVote(struct raft *r,
     }
     event->type = RAFT_DONE;
     event->time = r->io->time(r->io);
-    event->done.task.type = RAFT_PERSIST_TERM_AND_VOTE;
+    event->done.task = *task;
     event->done.status = 0;
 
     return 0;
