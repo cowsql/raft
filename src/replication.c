@@ -45,24 +45,27 @@ struct sendAppendEntries
 };
 
 /* Callback invoked after request to send an AppendEntries RPC has completed. */
-static void sendAppendEntriesCb(struct raft_io_send *send, const int status)
+int replicationSendAppendEntriesDone(struct raft *r,
+                                     struct raft_send_message *params,
+                                     int status)
 {
-    struct sendAppendEntries *req = send->data;
-    struct raft *r = req->raft;
-    unsigned i = configurationIndexOf(&r->configuration, req->server_id);
+    struct raft_append_entries *args = &params->message.append_entries;
+    unsigned i = configurationIndexOf(&r->configuration, params->id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
         if (status != 0) {
             tracef("failed to send append entries to server %llu: %s",
-                   req->server_id, raft_strerror(status));
+                   params->id, raft_strerror(status));
             /* Go back to probe mode. */
             progressToProbe(r, i);
         }
     }
 
     /* Tell the log that we're done referencing these entries. */
-    logRelease(r->log, req->index, req->entries, req->n);
-    raft_free(req);
+    logRelease(r->log, args->prev_log_index + 1, args->entries,
+               args->n_entries);
+
+    return 0;
 }
 
 /* Send an AppendEntries message to the i'th server, including all log entries
@@ -75,7 +78,6 @@ static int sendAppendEntries(struct raft *r,
     struct raft_server *server = &r->configuration.servers[i];
     struct raft_message message;
     struct raft_append_entries *args = &message.append_entries;
-    struct sendAppendEntries *req;
     raft_index next_index = prev_index + 1;
     int rv;
 
@@ -107,33 +109,20 @@ static int sendAppendEntries(struct raft *r,
     message.server_id = server->id;
     message.server_address = server->address;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        rv = RAFT_NOMEM;
-        goto err_after_entries_acquired;
-    }
-    req->raft = r;
-    req->index = args->prev_log_index + 1;
-    req->entries = args->entries;
-    req->n = args->n_entries;
-    req->server_id = server->id;
-
-    req->send.data = req;
-    rv = r->io->send(r->io, &req->send, &message, sendAppendEntriesCb);
+    rv = TaskSendMessage(r, server->id, server->address, &message);
     if (rv != 0) {
-        goto err_after_req_alloc;
+        goto err_after_entries_acquired;
     }
 
     if (progressState(r, i) == PROGRESS__PIPELINE) {
         /* Optimistically update progress. */
-        progressOptimisticNextIndex(r, i, req->index + req->n);
+        progressOptimisticNextIndex(r, i,
+                                    args->prev_log_index + 1 + args->n_entries);
     }
 
     progressUpdateLastSend(r, i);
     return 0;
 
-err_after_req_alloc:
-    raft_free(req);
 err_after_entries_acquired:
     logRelease(r->log, next_index, args->entries, args->n_entries);
 err:

@@ -95,4 +95,10 @@ int replicationApply(struct raft *r);
  *   matchIndex[i] >= N, and log[N].term == currentTerm: set commitIndex = N */
 void replicationQuorum(struct raft *r, const raft_index index);
 
+/* Called when a task for sending an AppendEntries message has been
+ * completed. */
+int replicationSendAppendEntriesDone(struct raft *r,
+                                     struct raft_send_message *params,
+                                     int status);
+
 #endif /* REPLICATION_H_ */

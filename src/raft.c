@@ -14,6 +14,7 @@
 #include "log.h"
 #include "membership.h"
 #include "recv.h"
+#include "replication.h"
 #include "tracing.h"
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -147,26 +148,46 @@ void raft_seed(struct raft *r, unsigned random)
     r->random = random;
 }
 
+static int sendMessageDone(struct raft *r, struct raft_task *task, int status)
+{
+    struct raft_send_message *params = &task->send_message;
+    int rv;
+    switch (params->message.type) {
+        case RAFT_IO_APPEND_ENTRIES:
+            rv = replicationSendAppendEntriesDone(r, params, status);
+            break;
+        default:
+            /* Ignore the status, in case of errors we'll retry. */
+            rv = 0;
+            break;
+    }
+    return rv;
+}
+
 /* Handle the completion of a task. */
 static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
+    int rv;
+
     assert(task != NULL);
 
     switch (task->type) {
         case RAFT_SEND_MESSAGE:
-            /* Ignore the status, in case of errors we'll retry. */
+            rv = sendMessageDone(r, task, status);
             break;
         case RAFT_PERSIST_TERM_AND_VOTE:
             /* TODO: reason more about what todo upon errors */
             if (status != 0 && r->state != RAFT_UNAVAILABLE) {
                 convertToUnavailable(r);
             }
+            rv = status;
             break;
         default:
+            rv = 0;
             break;
     }
 
-    return 0;
+    return rv;
 }
 
 /* Handle new messages. */
