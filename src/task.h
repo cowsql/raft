@@ -87,4 +87,14 @@ int TaskApplyCommand(struct raft *r,
  */
 int TaskTakeSnapshot(struct raft *r, struct raft_snapshot_metadata metadata);
 
+/* Create and enqueue a RAFT_TAKE_SNAPSHOT task to reset the state of the
+ * application FSM using the snapshot at the given index.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The r->tasks array could not be resized to fit the new task.
+ */
+int TaskRestoreSnapshot(struct raft *r, raft_index index);
+
 #endif /* RAFT_TASK_H_ */
