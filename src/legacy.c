@@ -164,6 +164,60 @@ err:
     return rv;
 }
 
+struct ioForwardPersistSnapshot
+{
+    struct raft_io_snapshot_put put;
+    struct raft_snapshot snapshot;
+    struct raft *r;
+    struct raft_task task;
+};
+
+static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
+                                       int status)
+{
+    struct ioForwardPersistSnapshot *req = put->data;
+    struct raft *r = req->r;
+    struct raft_task task = req->task;
+    raft_free(req);
+    ioTaskDone(r, &task, status);
+}
+
+static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
+{
+    struct raft_persist_snapshot *params = &task->persist_snapshot;
+    struct ioForwardPersistSnapshot *req;
+    int rv;
+
+    req = raft_malloc(sizeof *req);
+    if (req == NULL) {
+        return RAFT_NOMEM;
+    }
+    req->r = r;
+    req->task = *task;
+    req->put.data = req;
+
+    req->snapshot.index = params->metadata.index;
+    req->snapshot.term = params->metadata.term;
+    req->snapshot.configuration = params->metadata.configuration;
+    req->snapshot.configuration_index = params->metadata.configuration_index;
+    req->snapshot.bufs = &params->chunk;
+    req->snapshot.n_bufs = 1;
+
+    rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
+                             ioForwardPersistSnapshotCb);
+    if (rv != 0) {
+        goto err;
+    }
+
+    return 0;
+
+err:
+    raft_free(req);
+    ErrMsgTransferf(r->io->errmsg, r->errmsg, "put snapshot at %llu",
+                    params->metadata.index);
+    return rv;
+}
+
 struct ioForwardLoadSnapshot
 {
     struct raft_io_snapshot_get get;
@@ -266,6 +320,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_PERSIST_TERM_AND_VOTE:
                     rv = ioPersistTermAndVote(r, task, &events, &n_events);
+                    break;
+                case RAFT_PERSIST_SNAPSHOT:
+                    rv = ioForwardPersistSnapshot(r, task);
                     break;
                 case RAFT_LOAD_SNAPSHOT:
                     rv = ioForwardLoadSnapshot(r, task);
