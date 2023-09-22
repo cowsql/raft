@@ -55,6 +55,10 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
         return rv;
     }
 
+    /* Make also a copy of the index of the configuration contained in the
+     * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
+    r->configuration_last_snapshot_index = snapshot->configuration_index;
+
     configurationTrace(r, &r->configuration,
                        "configuration restore from snapshot");
 

@@ -1543,6 +1543,11 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
          * configuration change. */
         tracef("failed to backup last committed configuration.");
     }
+
+    /* Make also a copy of the index of the configuration contained in the
+     * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
+    r->configuration_last_snapshot_index = snapshot->configuration_index;
+
     logSnapshot(r->log, snapshot->index, r->snapshot.trailing);
 out:
     takeSnapshotClose(r, snapshot);

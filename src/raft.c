@@ -80,6 +80,7 @@ int raft_init(struct raft *r,
     raft_configuration_init(&r->configuration_last_snapshot);
     r->configuration_committed_index = 0;
     r->configuration_uncommitted_index = 0;
+    r->configuration_last_snapshot_index = 0;
     r->election_timeout = DEFAULT_ELECTION_TIMEOUT;
     r->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
