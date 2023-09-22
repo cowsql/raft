@@ -1,5 +1,32 @@
 #include "../../include/raft.h"
+#include "../lib/heap.h"
 #include "../lib/runner.h"
+
+/******************************************************************************
+ *
+ * Fixture holding an unitialized raft object.
+ *
+ *****************************************************************************/
+
+struct fixture
+{
+    FIXTURE_HEAP;
+    struct raft raft;
+};
+
+static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
+{
+    struct fixture *f = munit_malloc(sizeof *f);
+    SET_UP_HEAP;
+    return f;
+}
+
+static void tearDown(void *data)
+{
+    struct fixture *f = data;
+    TEAR_DOWN_HEAP;
+    free(f);
+}
 
 /******************************************************************************
  *
@@ -36,5 +63,16 @@ TEST(raft_init, fsmVersionNotSet, NULL, NULL, 0, NULL)
     rc = raft_init(&r, &io, &fsm, 1, "1");
     munit_assert_int(rc, ==, -1);
     munit_assert_string_equal(r.errmsg, "fsm->version must be set");
+    return MUNIT_OK;
+}
+
+/* The io and fsm objects can be set to NULL */
+TEST(raft_init, nullFsmAndIo, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    int rv;
+    rv = raft_init(&f->raft, NULL, NULL, 1, "1");
+    munit_assert_int(rv, ==, 0);
+    raft_close(&f->raft, NULL);
     return MUNIT_OK;
 }

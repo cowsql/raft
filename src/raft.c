@@ -54,7 +54,6 @@ int raft_init(struct raft *r,
     }
 
     r->io = io;
-    r->io->data = r;
     r->fsm = fsm;
 
     r->tracer = &StderrTracer;
@@ -99,13 +98,16 @@ int raft_init(struct raft *r,
     r->max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS;
     r->max_catch_up_round_duration = DEFAULT_MAX_CATCH_UP_ROUND_DURATION;
     r->now = 0;
-    rv = r->io->init(r->io, r->id, r->address);
-    if (rv != 0) {
-        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        goto err_after_address_alloc;
+    if (io != NULL) {
+        r->io->data = r;
+        rv = r->io->init(r->io, r->id, r->address);
+        if (rv != 0) {
+            ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
+            goto err_after_address_alloc;
+        }
+        r->now = r->io->time(r->io);
+        raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
     }
-    r->now = r->io->time(r->io);
-    raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
@@ -120,10 +122,8 @@ err:
     return rv;
 }
 
-static void ioCloseCb(struct raft_io *io)
+static void finalClose(struct raft *r)
 {
-    struct raft *r = io->data;
-    tracef("io close cb");
     raft_free(r->address);
     logClose(r->log);
     raft_configuration_close(&r->configuration);
@@ -131,6 +131,12 @@ static void ioCloseCb(struct raft_io *io)
     if (r->tasks != NULL) {
         raft_free(r->tasks);
     }
+}
+
+static void ioCloseCb(struct raft_io *io)
+{
+    struct raft *r = io->data;
+    finalClose(r);
     if (r->close_cb != NULL) {
         r->close_cb(r);
     }
@@ -143,7 +149,11 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
         convertToUnavailable(r);
     }
     r->close_cb = cb;
-    r->io->close(r->io, ioCloseCb);
+    if (r->io != NULL) {
+        r->io->close(r->io, ioCloseCb);
+    } else {
+        finalClose(r);
+    }
 }
 
 void raft_seed(struct raft *r, unsigned random)
@@ -423,6 +433,10 @@ static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
                              struct raft_fsm *fsm)
 {
+    if (io == NULL && fsm == NULL) {
+        return 0;
+    }
+
     if (io->version == 0) {
         ErrMsgPrintf(r->errmsg, "io->version must be set");
         return -1;
