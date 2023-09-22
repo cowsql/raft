@@ -169,3 +169,30 @@ err:
     assert(rv == RAFT_NOMEM);
     return rv;
 }
+
+int TaskApplyCommand(struct raft *r,
+                     raft_index index,
+                     const struct raft_buffer *command)
+{
+    struct raft_task *task;
+    struct raft_apply_command *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_APPLY_COMMAND;
+
+    params = &task->apply_command;
+    params->index = index;
+    params->command = command;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}
