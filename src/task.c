@@ -196,3 +196,27 @@ err:
     assert(rv == RAFT_NOMEM);
     return rv;
 }
+
+int TaskTakeSnapshot(struct raft *r, struct raft_snapshot_metadata metadata)
+{
+    struct raft_task *task;
+    struct raft_take_snapshot *params;
+    int rv;
+
+    task = taskAppend(r);
+    if (task == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    task->type = RAFT_TAKE_SNAPSHOT;
+
+    params = &task->take_snapshot;
+    params->metadata = metadata;
+
+    return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
+}

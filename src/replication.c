@@ -1434,34 +1434,13 @@ static bool shouldTakeSnapshot(struct raft *r)
     return true;
 }
 
-/*
- * When taking a snapshot, ownership of the snapshot data is with raft if
- * `snapshot_finalize` is NULL.
- */
-static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
+int replicationTakeSnapshotDone(struct raft *r,
+                                struct raft_take_snapshot *params,
+                                int status)
 {
-    if (r->fsm->version == 1 ||
-        (r->fsm->version > 1 && r->fsm->snapshot_finalize == NULL)) {
-        snapshotClose(s);
-        return;
-    }
-
-    configurationClose(&s->configuration);
-    r->fsm->snapshot_finalize(r->fsm, &s->bufs, &s->n_bufs);
-}
-
-static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
-{
-    struct raft *r = req->data;
-    struct raft_snapshot *snapshot;
     int rv;
 
-    r->snapshot.put.data = NULL;
-    snapshot = &r->snapshot.pending;
-
     if (status != 0) {
-        tracef("snapshot %lld at term %lld: %s", snapshot->index,
-               snapshot->term, raft_strerror(status));
         goto out;
     }
 
@@ -1470,7 +1449,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
      * changes will not be purged from the log by this snapshot. However
      * we still cache the configuration for consistency. */
     configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&snapshot->configuration,
+    rv = configurationCopy(&params->metadata.configuration,
                            &r->configuration_last_snapshot);
     if (rv != 0) {
         /* TODO: make this a hard fault, because if we have no backup and the
@@ -1481,35 +1460,18 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *req, int status)
 
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
-    r->configuration_last_snapshot_index = snapshot->configuration_index;
+    r->configuration_last_snapshot_index = params->metadata.configuration_index;
 
-    logSnapshot(r->log, snapshot->index, r->snapshot.trailing);
+    logSnapshot(r->log, params->metadata.index, r->snapshot.trailing);
+
 out:
-    takeSnapshotClose(r, snapshot);
-    r->snapshot.pending.term = 0;
-}
-
-static int putSnapshot(struct raft *r,
-                       struct raft_snapshot *snapshot,
-                       raft_io_snapshot_put_cb cb)
-{
-    int rv;
-    assert(r->snapshot.put.data == NULL);
-    r->snapshot.put.data = r;
-    rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &r->snapshot.put,
-                             snapshot, cb);
-    if (rv != 0) {
-        takeSnapshotClose(r, snapshot);
-        r->snapshot.pending.term = 0;
-        r->snapshot.put.data = NULL;
-    }
-
-    return rv;
+    configurationClose(&params->metadata.configuration);
+    return 0;
 }
 
 static int takeSnapshot(struct raft *r)
 {
-    struct raft_snapshot *snapshot;
+    struct raft_snapshot_metadata metadata;
     int rv;
 
     /* We currently support only synchronous FSMs, where entries are applied
@@ -1519,33 +1481,25 @@ static int takeSnapshot(struct raft *r)
 
     tracef("take snapshot at %lld", r->commit_index);
 
-    snapshot = &r->snapshot.pending;
-    snapshot->index = r->commit_index;
-    snapshot->term = logTermOf(r->log, r->commit_index);
-    snapshot->bufs = NULL;
-    snapshot->n_bufs = 0;
+    metadata.index = r->commit_index;
+    metadata.term = logTermOf(r->log, r->commit_index);
 
-    rv = membershipFetchLastCommittedConfiguration(r, &snapshot->configuration);
+    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
     if (rv != 0) {
         goto abort;
     }
-    snapshot->configuration_index = r->configuration_committed_index;
+    metadata.configuration_index = r->configuration_committed_index;
 
-    rv = r->fsm->snapshot(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
+    rv = TaskTakeSnapshot(r, metadata);
     if (rv != 0) {
-        /* Ignore transient errors. We'll retry next time. */
-        if (rv == RAFT_BUSY) {
-            rv = 0;
-        }
-        raft_configuration_close(&snapshot->configuration);
-        goto abort;
+        goto abort_after_conf_fetched;
     }
 
-    /* putSnapshot will clean up config and buffers in case of error */
-    return putSnapshot(r, snapshot, takeSnapshotCb);
+    return 0;
 
+abort_after_conf_fetched:
+    configurationClose(&metadata.configuration);
 abort:
-    r->snapshot.pending.term = 0;
     return rv;
 }
 
