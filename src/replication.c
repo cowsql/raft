@@ -885,19 +885,10 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
         }
     }
 
-    /* From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (args->leader_commit > r->commit_index &&
-        r->last_stored >= r->commit_index) {
-        r->commit_index = min(args->leader_commit, r->last_stored);
-        rv = replicationApply(r);
-        if (rv != 0) {
-            goto out;
-        }
+    /* Apply to the FSM any newly stored entry that is also committed. */
+    rv = replicationApply(r);
+    if (rv != 0) {
+        goto out;
     }
 
     /* If our state or term number has changed since receiving these entries,
@@ -1082,22 +1073,24 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
-    /* If this is an empty AppendEntries, there's nothing to write. However we
-     * still want to check if we can commit some entry. However, don't commit
-     * anything while a snapshot install is busy, r->last_stored will be 0 in
-     * that case.
-     *
-     * From Figure 3.1:
+    /* From Figure 3.1:
      *
      *   AppendEntries RPC: Receiver implementation: If leaderCommit >
      *   commitIndex, set commitIndex = min(leaderCommit, index of last new
      *   entry).
      */
+    if (args->leader_commit > r->commit_index &&
+        r->last_stored >= r->commit_index) {
+        r->commit_index = min(args->leader_commit, r->last_stored);
+    }
+
+    /* If this is an empty AppendEntries, there's nothing to write. However we
+     * still want to check if we can commit some entry. However, don't commit
+     * anything while a snapshot install is busy, r->last_stored will be 0 in
+     * that case.
+     */
     if (n == 0) {
-        if ((args->leader_commit > r->commit_index) &&
-            r->last_stored >= r->commit_index &&
-            !replicationInstallSnapshotBusy(r)) {
-            r->commit_index = min(args->leader_commit, r->last_stored);
+        if (!replicationInstallSnapshotBusy(r)) {
             rv = replicationApply(r);
             if (rv != 0) {
                 return rv;
