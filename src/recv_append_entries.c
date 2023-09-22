@@ -8,22 +8,16 @@
 #include "log.h"
 #include "recv.h"
 #include "replication.h"
+#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
-
-static void recvSendAppendEntriesResultCb(struct raft_io_send *req, int status)
-{
-    (void)status;
-    RaftHeapFree(req);
-}
 
 int recvAppendEntries(struct raft *r,
                       raft_id id,
                       const char *address,
                       const struct raft_append_entries *args)
 {
-    struct raft_io_send *req;
     struct raft_message message;
     struct raft_append_entries_result *result = &message.append_entries_result;
     int match;
@@ -146,18 +140,9 @@ reply:
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
-    message.server_id = id;
-    message.server_address = address;
 
-    req = RaftHeapMalloc(sizeof *req);
-    if (req == NULL) {
-        return RAFT_NOMEM;
-    }
-    req->data = r;
-
-    rv = r->io->send(r->io, req, &message, recvSendAppendEntriesResultCb);
+    rv = TaskSendMessage(r, id, address, &message);
     if (rv != 0) {
-        raft_free(req);
         return rv;
     }
 
