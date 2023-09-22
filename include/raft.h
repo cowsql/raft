@@ -626,6 +626,14 @@ struct raft_persist_snapshot
 };
 
 /**
+ * Parameters fork tasks of type #RAFT_APPLY_COMMAND.
+ */
+struct raft_apply_command
+{
+    raft_index index;
+    const struct raft_buffer *command;
+};
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -638,6 +646,7 @@ struct raft_task
         struct raft_load_snapshot load_snapshot;
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
+        struct raft_apply_command apply_command;
     };
 };
 
