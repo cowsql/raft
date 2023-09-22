@@ -576,6 +576,17 @@ struct raft_persist_term_and_vote
 };
 
 /**
+ * Parameters for tasks of type #RAFT_LOAD_SNAPSHOT.
+ */
+struct raft_load_snapshot
+{
+    raft_index index;         /* Index of last entry in the snapshot */
+    size_t offset;            /* Load snapshot data starting from this offset */
+    struct raft_buffer chunk; /* Load data into this buffer */
+    bool last;                /* OUTPUT: Whether this was the last chunk */
+};
+
+/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -585,6 +596,7 @@ struct raft_task
     union {
         struct raft_send_message send_message;
         struct raft_persist_term_and_vote persist_term_and_vote;
+        struct raft_load_snapshot load_snapshot;
     };
 };
 
