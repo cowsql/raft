@@ -512,11 +512,17 @@ static int leaderPersistEntriesDone(struct raft *r,
 
     rv = replicationApply(r);
     if (rv != 0) {
-        return rv;
+        /* TODO: just log the error? */
     }
 
 out:
-    /* Tell the log that we're done referencing these entries. */
+    return 0;
+}
+
+static int followerPersistEntriesDone(struct raft *r,
+                                      struct raft_persist_entries *io,
+                                      int status);
+
 /* Invoked once a disk write request for new entries has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
                                   struct raft_persist_entries *params,
@@ -527,6 +533,9 @@ int replicationPersistEntriesDone(struct raft *r,
     switch (r->state) {
         case RAFT_LEADER:
             rv = leaderPersistEntriesDone(r, params, status);
+            break;
+        case RAFT_FOLLOWER:
+            rv = followerPersistEntriesDone(r, params, status);
             break;
         default:
             if (status != 0) {
@@ -811,11 +820,15 @@ static void sendAppendEntriesResult(
      * In the first case we can't reach this function because no entries have
      * been received.
      *
-     * In the second case we don't call this function because we don't send
-     * AppendEntries result when completing a raft_io->append() request
-     * initiated by a leader.
+     * In the second case we might call this function as part of the raft_step()
+     * logic, namely when a raft_persist_entries task originally created by a
+     * leader gets completed after the leader has stepped down and has now
+     * become a follower. In this circumstance current_leader.address will be
+     * NULL and we don't send any message.
      */
-    assert(r->follower_state.current_leader.address != NULL);
+    if (r->follower_state.current_leader.address == NULL) {
+        return;
+    }
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.append_entries_result = *result;
@@ -827,56 +840,37 @@ static void sendAppendEntriesResult(
     }
 }
 
-/* Context for a write log entries request that was submitted by a follower. */
-struct appendFollower
+static int followerPersistEntriesDone(struct raft *r,
+                                      struct raft_persist_entries *params,
+                                      int status)
 {
-    struct raft *raft; /* Instance that has submitted the request */
-    raft_index index;  /* Index of the first entry in the request. */
-    struct raft_append_entries args;
-    struct raft_io_append req;
-};
-
-static void appendFollowerCb(struct raft_io_append *req, int status)
-{
-    struct appendFollower *request = req->data;
-    struct raft *r = request->raft;
-    struct raft_append_entries *args = &request->args;
     struct raft_append_entries_result result;
-    struct raft_event event;
     size_t i;
     size_t j;
     int rv;
 
+    assert(r->state == RAFT_FOLLOWER);
+
     tracef("I/O completed on follower: status %d", status);
 
-    assert(args->entries != NULL);
-    assert(args->n_entries > 0);
+    assert(params->entries != NULL);
+    assert(params->n > 0);
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result.features = RAFT_DEFAULT_FEATURE_FLAGS;
     if (status != 0) {
-        if (r->state != RAFT_FOLLOWER) {
-            tracef("local server is not follower -> ignore I/O failure");
-            goto out;
-        }
-        result.rejected = args->prev_log_index + 1;
+        result.rejected = params->index;
         goto respond;
     }
 
-    /* If we're shutting down or have errored, ignore the result. */
-    if (r->state == RAFT_UNAVAILABLE) {
-        tracef("local server is unavailable -> ignore I/O result");
-        goto out;
-    }
+    i = updateLastStored(r, params->index, params->entries, params->n);
 
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
     if (replicationInstallSnapshotBusy(r)) {
         goto out;
     }
-
-    i = updateLastStored(r, request->index, args->entries, args->n_entries);
 
     /* If none of the entries that we persisted is present anymore in our
      * in-memory log, there's nothing to report or to do. We just discard
@@ -887,8 +881,8 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
 
     /* Possibly apply configuration changes as uncommitted. */
     for (j = 0; j < i; j++) {
-        struct raft_entry *entry = &args->entries[j];
-        raft_index index = request->index + j;
+        struct raft_entry *entry = &params->entries[j];
+        raft_index index = params->index + j;
         raft_term local_term = logTermOf(r->log, index);
 
         assert(local_term != 0 && local_term == entry->term);
@@ -896,7 +890,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
         if (entry->type == RAFT_CHANGE) {
             rv = membershipUncommittedChange(r, index, entry);
             if (rv != 0) {
-                goto out;
+                return rv;
             }
         }
     }
@@ -904,14 +898,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
     /* Apply to the FSM any newly stored entry that is also committed. */
     rv = replicationApply(r);
     if (rv != 0) {
-        goto out;
-    }
-
-    /* If our state or term number has changed since receiving these entries,
-     * our current_leader may have changed as well, so don't send a response
-     * to that server. */
-    if (r->state != RAFT_FOLLOWER || r->current_term != args->term) {
-        tracef("new role or term since receiving entries -> don't respond");
+        /* TODO: just log the error? */
         goto out;
     }
 
@@ -922,18 +909,7 @@ respond:
     sendAppendEntriesResult(r, &result);
 
 out:
-    logRelease(r->log, request->index, request->args.entries,
-               request->args.n_entries);
-
-    raft_free(request);
-
-    /* Trigger automatic forwarding of pending messages to the legacy raft_io
-     * interface.
-     *
-     * TODO: This call can be removed once raft_io->append() gets converted as
-     * well to the raft_step(). */
-    event.type = 255; /* Non existing event, just to process pending tasks */
-    LegacyForwardToRaftIo(r, &event);
+    return 0;
 }
 
 /* Check the log matching property against an incoming AppendEntries request.
@@ -1055,7 +1031,9 @@ int replicationAppend(struct raft *r,
                       raft_index *rejected,
                       bool *async)
 {
-    struct appendFollower *request;
+    raft_index index;
+    struct raft_entry *entries;
+    unsigned n_entries;
     int match;
     size_t n;
     size_t i;
@@ -1118,16 +1096,8 @@ int replicationAppend(struct raft *r,
 
     *async = true;
 
-    request = raft_malloc(sizeof *request);
-    if (request == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-
-    request->raft = r;
-    request->args = *args;
     /* Index of first new entry */
-    request->index = args->prev_log_index + 1 + i;
+    index = args->prev_log_index + 1 + i;
 
     /* Update our in-memory log to reflect that we received these entries. We'll
      * notify the leader of a successful append once the write entries request
@@ -1142,20 +1112,19 @@ int replicationAppend(struct raft *r,
         struct raft_entry copy = {0};
         rv = entryCopy(entry, &copy);
         if (rv != 0) {
-            goto err_after_request_alloc;
+            goto err;
         }
 
         rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
         if (rv != 0) {
-            goto err_after_request_alloc;
+            goto err;
         }
     }
 
     /* Acquire the relevant entries from the log. */
-    rv = logAcquire(r->log, request->index, &request->args.entries,
-                    &request->args.n_entries);
+    rv = logAcquire(r->log, index, &entries, &n_entries);
     if (rv != 0) {
-        goto err_after_request_alloc;
+        goto err_after_log_append;
     }
 
     /* The number of entries we just acquired must be exactly n, which is the
@@ -1163,14 +1132,12 @@ int replicationAppend(struct raft *r,
      * entries that we don't have yet in our in-memory log).  That's because we
      * call logAppend above exactly n times, once for each new log entry, so
      * logAcquire will return exactly n entries. */
-    assert(request->args.n_entries == n);
+    assert(n_entries == n);
 
     /* The n == 0 case is handled above. */
-    assert(request->args.n_entries > 0);
+    assert(n_entries > 0);
 
-    request->req.data = request;
-    rv = r->io->append(r->io, &request->req, request->args.entries,
-                       request->args.n_entries, appendFollowerCb);
+    rv = TaskPersistEntries(r, index, entries, n_entries);
     if (rv != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
         goto err_after_acquire_entries;
@@ -1181,18 +1148,16 @@ int replicationAppend(struct raft *r,
 
 err_after_acquire_entries:
     /* Release the entries related to the IO request */
-    logRelease(r->log, request->index, request->args.entries,
-               request->args.n_entries);
+    logRelease(r->log, index, entries, n_entries);
 
-err_after_request_alloc:
+err_after_log_append:
     /* Release all entries added to the in-memory log, making
      * sure the in-memory log and disk don't diverge, leading
      * to future log entries not being persisted to disk.
      */
     if (j != 0) {
-        logTruncate(r->log, request->index);
+        logTruncate(r->log, index);
     }
-    raft_free(request);
 
 err:
     assert(rv != 0);
