@@ -1020,10 +1020,6 @@ static int deleteConflictingEntries(struct raft *r,
 
             /* Delete all entries from this index on because they don't
              * match. */
-            rv = r->io->truncate(r->io, entry_index);
-            if (rv != 0) {
-                return rv;
-            }
             logTruncate(r->log, entry_index);
 
             /* Drop information about previously stored entries that have just

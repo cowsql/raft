@@ -108,16 +108,23 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
     req->task = *task;
     req->append.data = req;
 
+    rv = r->io->truncate(r->io, params->index);
+    if (rv != 0) {
+        goto err;
+    }
+
     rv = r->io->append(r->io, &req->append, params->entries, params->n,
                        ioForwardPersistEntriesCb);
     if (rv != 0) {
-        raft_free(req);
-        ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries",
-                        params->n);
-        return rv;
+        goto err;
     }
 
     return 0;
+
+err:
+    raft_free(req);
+    ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", params->n);
+    return rv;
 }
 
 static int ioPersistTermAndVote(struct raft *r,
