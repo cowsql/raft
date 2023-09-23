@@ -321,6 +321,7 @@ struct legacyTakeSnapshot
 {
     struct raft *r;
     struct raft_snapshot_metadata metadata;
+    struct raft_snapshot snapshot;
 };
 
 /*
@@ -329,7 +330,7 @@ struct legacyTakeSnapshot
  */
 static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 {
-    r->snapshot.pending.term = 0;
+    r->snapshot.taking = false;
 
     if (r->fsm->version == 1 ||
         (r->fsm->version > 1 && r->fsm->snapshot_finalize == NULL)) {
@@ -348,8 +349,8 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
 {
     struct legacyTakeSnapshot *req = put->data;
     struct raft *r = req->r;
-    struct raft_snapshot *snapshot = &r->snapshot.pending;
     struct raft_snapshot_metadata metadata = req->metadata;
+    struct raft_snapshot *snapshot = &req->snapshot;
     struct raft_event event;
 
     r->snapshot.put.data = NULL;
@@ -375,7 +376,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
 static int putSnapshot(struct legacyTakeSnapshot *req)
 {
     struct raft *r = req->r;
-    struct raft_snapshot *snapshot = &r->snapshot.pending;
+    struct raft_snapshot *snapshot = &req->snapshot;
     int rv;
     assert(r->snapshot.put.data == NULL);
     r->snapshot.put.data = req;
@@ -404,7 +405,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
 
     /* If a snapshot is already in progress or we're installing a snapshot, we
      * don't want to start another one. */
-    if (r->snapshot.pending.term != 0 || r->snapshot.put.data != NULL) {
+    if (r->snapshot.taking || r->snapshot.put.data != NULL) {
         return false;
     };
 
@@ -419,7 +420,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
 static void legacyTakeSnapshot(struct raft *r)
 {
     struct raft_snapshot_metadata metadata;
-    struct raft_snapshot *snapshot = &r->snapshot.pending;
+    struct raft_snapshot *snapshot;
     struct legacyTakeSnapshot *req;
     int rv;
 
@@ -447,6 +448,7 @@ static void legacyTakeSnapshot(struct raft *r)
 
     req->metadata = metadata;
 
+    snapshot = &req->snapshot;
     snapshot->index = metadata.index;
     snapshot->term = metadata.term;
     snapshot->configuration = metadata.configuration;
@@ -469,6 +471,8 @@ static void legacyTakeSnapshot(struct raft *r)
     if (rv != 0) {
         goto abort_after_snapshot;
     }
+
+    r->snapshot.taking = true;
 
     return;
 

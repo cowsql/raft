@@ -90,9 +90,9 @@ int raft_init(struct raft *r,
     r->last_stored = 0;
     r->state = RAFT_UNAVAILABLE;
     r->transfer = NULL;
-    r->snapshot.pending.term = 0;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
+    r->snapshot.taking = false;
     r->snapshot.put.data = NULL;
     r->close_cb = NULL;
     memset(r->errmsg, 0, sizeof r->errmsg);
