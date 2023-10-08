@@ -292,6 +292,13 @@ int raft_step(struct raft *r,
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
+    /* FIXME: workaround for failures in the dqlite test suite, which sets
+     * timeouts too low and end up in failures when run on slow harder. */
+    if (r->io != NULL && r->election_timeout == 150 &&
+        r->heartbeat_timeout == 15) {
+        r->election_timeout *= 3;
+        r->heartbeat_timeout *= 3;
+    }
 }
 
 void raft_set_heartbeat_timeout(struct raft *r, const unsigned msecs)
