@@ -108,6 +108,15 @@ int logAppendConfiguration(struct raft_log *l,
                            const raft_term term,
                            const struct raft_configuration *configuration);
 
+/* Acquire at most @max entries from the given index onwards.
+ *
+ * If @max is 0, no limit is applied. */
+int logAcquireAtMost(struct raft_log *l,
+                     raft_index index,
+                     unsigned max,
+                     struct raft_entry *entries[],
+                     unsigned *n);
+
 /* Acquire an array of entries from the given index onwards.
  *
  * The payload memory referenced by the @buf attribute of the returned entries
