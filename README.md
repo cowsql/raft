@@ -1,30 +1,19 @@
 [![tests](https://github.com/cowsql/raft/actions/workflows/tests.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/main/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest) [![Coverity](https://scan.coverity.com/projects/28929/badge.svg)](https://scan.coverity.com/projects/cowsql-raft)
 
-[English](./README.md)|[简体中文](./README_CH.md)
-
 Fully asynchronous C implementation of the Raft consensus protocol.
 
-The library has modular design: its core part implements only the core Raft
-algorithm logic, in a fully platform independent way. On top of that, a
-pluggable interface defines the I/O implementation for networking (send/receive
-RPC messages) and disk persistence (store log entries and snapshots).
+See [readthedocs](https://raft.readthedocs.io/) for the full documentation.
 
-A stock implementation of the I/O interface is provided when building the
-library with default options. It is based on [libuv](http://libuv.org) and
-should fit the vast majority of use cases. The only catch is that it currently
-requires Linux, since it uses the Linux
-[AIO](http://man7.org/linux/man-pages/man2/io_submit.2.html) API for disk
-I/O. Patches are welcome to add support for more platforms.
-
-See [raft.h](./include/raft.h) for full documentation.
-
-Fork of Canonical's raft library
---------------------------------
+Compatible fork of Canonical's raft library
+-------------------------------------------
 
 This library is a fork of [Canonical's](https://github.com/canonical/raft) Raft
 implementation, which was originally written by this library's author
 [himself](https://github.com/canonical/raft/commits?author=freeekanayaka) while
 working at Canonical.
+
+It is a **fully compatible drop-in replacement** of Canonical's version, at
+least up to v0.18.0.
 
 License
 -------
