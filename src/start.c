@@ -144,6 +144,7 @@ int raft_start(struct raft *r)
     raft_index start_index;
     struct raft_entry *entries;
     size_t n_entries;
+    struct raft_event event;
     int rv;
 
     assert(r != NULL);
@@ -168,8 +169,6 @@ int raft_start(struct raft *r)
 
     /* If we have a snapshot, let's restore it. */
     if (snapshot != NULL) {
-        struct raft_event event;
-
         tracef("restore snapshot with last index %llu and last term %llu",
                snapshot->index, snapshot->term);
 
@@ -241,6 +240,14 @@ int raft_start(struct raft *r)
     if (rv != 0) {
         return rv;
     }
+
+    /* Use a dummy event to trigger handling of possible RAFT_APPLY_COMMAND
+     * tasks.
+     *
+     * TODO: use the start event instead. */
+    event.type = 255;
+    event.time = r->now;
+    LegacyForwardToRaftIo(r, &event);
 
     return 0;
 }
