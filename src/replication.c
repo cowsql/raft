@@ -32,6 +32,12 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+/* Maximum number of entries that will be included in an AppendEntries
+ * message.
+ *
+ * TODO: Make this number configurable. */
+#define MAX_APPEND_ENTRIES 128
+
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
  * raft_io_>send(). */
 struct sendAppendEntries
@@ -85,8 +91,10 @@ static int sendAppendEntries(struct raft *r,
     args->prev_log_index = prev_index;
     args->prev_log_term = prev_term;
 
-    /* TODO: implement a limit to the total size of the entries being sent */
-    rv = logAcquire(r->log, next_index, &args->entries, &args->n_entries);
+    /* TODO: implement a limit to the total *size* of the entries being sent,
+     * not only the number. Also, make the number and the size configurable. */
+    rv = logAcquireAtMost(r->log, next_index, MAX_APPEND_ENTRIES,
+                          &args->entries, &args->n_entries);
     if (rv != 0) {
         goto err;
     }
