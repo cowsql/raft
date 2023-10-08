@@ -785,6 +785,10 @@ struct raft_fsm
     int (*snapshot_finalize)(struct raft_fsm *fsm,
                              struct raft_buffer *bufs[],
                              unsigned *n_bufs);
+    /* Fields below added since version 3. */
+    int (*snapshot_async)(struct raft_fsm *fsm,
+                          struct raft_buffer *bufs[],
+                          unsigned *n_bufs);
 };
 
 /**

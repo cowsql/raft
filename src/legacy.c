@@ -403,6 +403,9 @@ static int ioForwardTakeSnapshot(struct raft *r,
     req->task = *task;
 
     rv = r->fsm->snapshot(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
+    if (rv == 0 && r->fsm->version >= 3 && r->fsm->snapshot_async != NULL) {
+        rv = r->fsm->snapshot_async(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
+    }
     if (rv != 0) {
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
                         params->metadata.index);
