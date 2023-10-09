@@ -29,7 +29,8 @@ int TaskSendMessage(struct raft *r,
 int TaskPersistEntries(struct raft *r,
                        raft_index first_index,
                        struct raft_entry entries[],
-                       unsigned n);
+                       unsigned n,
+                       raft_index leader_commit);
 
 /* Create and enqueue a RAFT_PERSIST_TERM_AND_VOTE task to persist the given
  * term and vote.
