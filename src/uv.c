@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -609,20 +608,19 @@ static int uvRandom(struct raft_io *io, int min, int max)
 
 static void uvSeedRand(struct uv *uv)
 {
-    ssize_t sz = -1;
-    unsigned seed = 0; /* fed to srand() */
+    struct timeval time = {0};
+    unsigned seed = 0;
 
-    sz = getrandom(&seed, sizeof seed, GRND_NONBLOCK);
-    if (sz == -1 || sz < ((ssize_t)sizeof seed)) {
-        /* Fall back to an inferior random seed when `getrandom` would have
-         * blocked or when not enough randomness was returned. */
-        seed ^= (unsigned)uv->id;
-        seed ^= (unsigned)uv_now(uv->loop);
-        struct timeval time = {0};
-        /* Ignore errors. */
-        gettimeofday(&time, NULL);
-        seed ^= (unsigned)((time.tv_sec * 1000) + (time.tv_usec / 1000));
-    }
+    /* Create a seed by combining the node ID and the current time.
+     *
+     * Given that we use rand() only to generate the randomized election timeout
+     * and not to, say, perform some secure-sensitive cryptographic task, it's
+     * ok to not use more sophisticated methods to create the seed (for
+     * example. getrandom()). */
+    seed ^= (unsigned)uv->id;
+    seed ^= (unsigned)uv_now(uv->loop);
+    gettimeofday(&time, NULL);
+    seed ^= (unsigned)((time.tv_sec * 1000) + (time.tv_usec / 1000));
 
     srand(seed);
 }
