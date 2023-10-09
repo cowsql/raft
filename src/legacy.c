@@ -240,7 +240,13 @@ static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
     struct raft_load_snapshot *params = &task.load_snapshot;
 
     if (status == 0) {
-        assert(snapshot->index == params->index);
+        /* The old raft_io interface makes no guarantee about the index of the
+         * loaded snapshot. */
+        if (snapshot->index != params->index) {
+            assert(snapshot->index > params->index);
+            params->index = snapshot->index;
+        }
+
         assert(snapshot->n_bufs == 1);
         params->chunk = snapshot->bufs[0];
         configurationClose(&snapshot->configuration);
