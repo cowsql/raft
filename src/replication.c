@@ -1187,6 +1187,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
+    assert(request == r->snapshot.put.data);
 
     r->snapshot.put.data = NULL;
 
@@ -1310,13 +1311,14 @@ int replicationInstallSnapshot(struct raft *r,
     }
     request->raft = r;
 
-    assert(r->snapshot.put.data == NULL);
-    metadata.index = args->last_index;
     metadata.term = args->last_term;
-    metadata.configuration = args->conf;
+    metadata.index = args->last_index;
     metadata.configuration_index = args->conf_index;
+    metadata.configuration = args->conf;
+
+    assert(r->snapshot.put.data == NULL);
     r->snapshot.put.data = request;
-    rv = TaskPersistSnapshot(r, metadata, 0, args->data, true);
+    rv = TaskPersistSnapshot(r, metadata, 0, args->data, true /* last */);
     if (rv != 0) {
         tracef("snapshot_put failed %d", rv);
         goto err_after_request_alloc;
