@@ -1340,7 +1340,7 @@ err:
 }
 
 int replicationApplyCommandDone(struct raft *r,
-                                struct raft_apply_command *io,
+                                struct raft_apply_command *params,
                                 int status)
 {
     struct raft_apply *req;
@@ -1349,9 +1349,9 @@ int replicationApplyCommandDone(struct raft *r,
         return status;
     }
 
-    req = (struct raft_apply *)getRequest(r, io->index, RAFT_COMMAND);
+    req = (struct raft_apply *)getRequest(r, params->index, RAFT_COMMAND);
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0, NULL);
+        req->cb(req, 0, params->result);
     }
 
     return 0;
