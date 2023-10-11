@@ -882,7 +882,7 @@ static int followerPersistEntriesDone(struct raft *r,
     /* If none of the entries that we persisted is present anymore in our
      * in-memory log, there's nothing to report or to do. We just discard
      * them. */
-    if (i == 0 || r->state != RAFT_FOLLOWER) {
+    if (i == 0) {
         goto out;
     }
 
@@ -1227,13 +1227,12 @@ int replicationPersistSnapshotDone(struct raft *r,
      *   8. Reset state machine using snapshot contents (and load lastConfig
      *      as cluster configuration).
      */
-    rv = TaskRestoreSnapshot(r, snapshot.index);
+    rv = r->fsm->restore(r->fsm, &snapshot.bufs[0]);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", snapshot.index,
                errCodeToString(rv));
         goto discard;
     }
-    raft_free(snapshot.bufs[0].base);
 
     rv = snapshotRestore(r, &snapshot);
     if (rv != 0) {
@@ -1341,7 +1340,7 @@ err:
 }
 
 int replicationApplyCommandDone(struct raft *r,
-                                struct raft_apply_command *io,
+                                struct raft_apply_command *params,
                                 int status)
 {
     struct raft_apply *req;
@@ -1350,9 +1349,9 @@ int replicationApplyCommandDone(struct raft *r,
         return status;
     }
 
-    req = (struct raft_apply *)getRequest(r, io->index, RAFT_COMMAND);
+    req = (struct raft_apply *)getRequest(r, params->index, RAFT_COMMAND);
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0, NULL);
+        req->cb(req, 0, params->result);
     }
 
     return 0;
@@ -1363,15 +1362,20 @@ static int applyCommand(struct raft *r,
                         const raft_index index,
                         const struct raft_buffer *buf)
 {
+    struct raft_apply *req;
+    void *result;
     int rv;
-
-    rv = TaskApplyCommand(r, index, buf);
+    rv = r->fsm->apply(r->fsm, buf, &result);
     if (rv != 0) {
         return rv;
     }
 
     r->last_applied = index;
 
+    req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
+    if (req != NULL && req->cb != NULL) {
+        req->cb(req, 0, result);
+    }
     return 0;
 }
 

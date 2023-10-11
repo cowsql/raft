@@ -126,6 +126,9 @@ static void ioCloseCb(struct raft_io *io)
     logClose(r->log);
     raft_configuration_close(&r->configuration);
     raft_configuration_close(&r->configuration_last_snapshot);
+    if (r->tasks != NULL) {
+        raft_free(r->tasks);
+    }
     if (r->close_cb != NULL) {
         r->close_cb(r);
     }
@@ -136,9 +139,6 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     assert(r->close_cb == NULL);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
-    }
-    if (r->tasks != NULL) {
-        raft_free(r->tasks);
     }
     r->close_cb = cb;
     r->io->close(r->io, ioCloseCb);
