@@ -882,7 +882,7 @@ static int followerPersistEntriesDone(struct raft *r,
     /* If none of the entries that we persisted is present anymore in our
      * in-memory log, there's nothing to report or to do. We just discard
      * them. */
-    if (i == 0 || r->state != RAFT_FOLLOWER) {
+    if (i == 0) {
         goto out;
     }
 
