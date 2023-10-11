@@ -1362,15 +1362,20 @@ static int applyCommand(struct raft *r,
                         const raft_index index,
                         const struct raft_buffer *buf)
 {
+    struct raft_apply *req;
+    void *result;
     int rv;
-
-    rv = TaskApplyCommand(r, index, buf);
+    rv = r->fsm->apply(r->fsm, buf, &result);
     if (rv != 0) {
         return rv;
     }
 
     r->last_applied = index;
 
+    req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
+    if (req != NULL && req->cb != NULL) {
+        req->cb(req, 0, result);
+    }
     return 0;
 }
 
