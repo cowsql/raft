@@ -545,6 +545,12 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         for (j = 0; j < n_tasks; j++) {
             struct raft_task *task = &tasks[j];
 
+            /* Don't execute any further task if we're shutting down. */
+            if (r->close_cb != NULL) {
+                ioTaskDone(r, task, RAFT_CANCELED);
+                continue;
+            }
+
             switch (task->type) {
                 case RAFT_SEND_MESSAGE:
                     rv = ioSendMessage(r, task);
