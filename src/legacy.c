@@ -290,9 +290,8 @@ static int ioForwardApplyCommand(struct raft *r,
 {
     struct raft_apply_command *params = &task->apply_command;
     struct raft_event *event;
-    void *result;
     int rv;
-    rv = r->fsm->apply(r->fsm, params->command, &result);
+    rv = r->fsm->apply(r->fsm, params->command, &params->result);
     if (rv != 0) {
         return rv;
     }

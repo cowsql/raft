@@ -633,6 +633,7 @@ struct raft_apply_command
 {
     raft_index index;
     const struct raft_buffer *command;
+    void *result; /* TODO: drop this field */
 };
 
 /**
