@@ -256,7 +256,15 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
     char service[NI_MAXSERV];
     int rv;
 
-    r->handshake.base = NULL;
+    rv = uvIpAddrSplit(address, hostname, sizeof(hostname), service,
+                       sizeof(service));
+    if (rv) {
+        ErrMsgPrintf(t->transport->errmsg,
+                     "uv_tcp_connect(): Cannot split %s into host and service",
+                     address);
+        rv = RAFT_NOCONNECTION;
+        goto err;
+    }
 
     /* Initialize the handshake buffer. */
     rv = uvTcpEncodeHandshake(t->id, t->address, &r->handshake);
@@ -270,22 +278,13 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
     if (r->tcp == NULL) {
         ErrMsgOom(t->transport->errmsg);
         rv = RAFT_NOMEM;
-        goto err;
+        goto err_after_encode_handshake;
     }
 
     rv = uv_tcp_init(r->t->loop, r->tcp);
     assert(rv == 0);
     r->tcp->data = r;
 
-    rv = uvIpAddrSplit(address, hostname, sizeof(hostname), service,
-                       sizeof(service));
-    if (rv) {
-        ErrMsgPrintf(t->transport->errmsg,
-                     "uv_tcp_connect(): Cannot split %s into host and service",
-                     address);
-        rv = RAFT_NOCONNECTION;
-        goto err_after_tcp_init;
-    }
     rv = uv_getaddrinfo(r->t->loop, &r->getaddrinfo, &uvTcpConnectGetAddrInfoCb,
                         hostname, service, &hints);
     if (rv) {
@@ -301,10 +300,9 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 
 err_after_tcp_init:
     uv_close((uv_handle_t *)r->tcp, (uv_close_cb)RaftHeapFree);
-
-err:
+err_after_encode_handshake:
     RaftHeapFree(r->handshake.base);
-
+err:
     return rv;
 }
 
