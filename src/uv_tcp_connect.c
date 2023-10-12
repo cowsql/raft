@@ -11,7 +11,7 @@
  *
  * - Create a TCP handle and submit a TCP connect request.
  * - Initiate an asynchronous dns resolve request
- * - Once the name lookup was successfull connect to the first given IP
+ * - Once the name lookup was successfull connect to the first resolved IP
  * - Once connected over TCP, submit a write request for the handshake.
  * - Once the write completes, fire the connection request callback.
  *
@@ -24,8 +24,8 @@
  * - The name resolve for the hostname is not sucessfull, close the TCP handle
  *   and fire the request callback.
  *
- * - The transport get closed, close the TCP handle and and fire the request
- *   callback with RAFT_CANCELED.
+ * - The raft_uv_transport object gets closed, close the TCP handle and and fire
+ *   the request callback with RAFT_CANCELED.
  *
  * - Either the TCP connect or the write request fails: close the TCP handle and
  *   fire the request callback with RAFT_NOCONNECTION.
@@ -103,13 +103,8 @@ static void uvTcpConnectAbort(struct uvTcpConnect *connect)
     QUEUE_REMOVE(&connect->queue);
     QUEUE_PUSH(&connect->t->aborting, &connect->queue);
     uv_cancel((struct uv_req_s *)&connect->getaddrinfo);
-    /* Call uv_close on the tcp handle, if there is no getaddrinfo request
-     * in flight and the handle is not currently closed due to next IP
-     * connect attempt.
-     * Data structures may only be freed after the uvGetAddrInfoCb was
-     * triggered. Tcp handle will be closed in the uvGetAddrInfoCb in this case.
-     * uvTcpConnectUvCloseCb will be invoked from uvTcpTryNextConnectCb
-     * in case a next IP connect should be started. */
+    /* If there is no getaddrinfo request in flight, close the TCP handle now
+     * (otherwise it will be closed after the getaddrinfo request completes). */
     if (!connect->resolving && !connect->retry) {
         uv_close((struct uv_handle_s *)connect->tcp, uvTcpConnectUvCloseCb);
     }
