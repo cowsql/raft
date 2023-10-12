@@ -11,7 +11,7 @@
  *
  * - Create a TCP handle and submit a TCP connect request.
  * - Initiate an asynchronous dns resolve request
- * - Once the name lookup was successfull connect to the first given IP
+ * - Once the name lookup was successfull connect to the first resolved IP
  * - Once connected over TCP, submit a write request for the handshake.
  * - Once the write completes, fire the connection request callback.
  *
@@ -24,8 +24,8 @@
  * - The name resolve for the hostname is not sucessfull, close the TCP handle
  *   and fire the request callback.
  *
- * - The transport get closed, close the TCP handle and and fire the request
- *   callback with RAFT_CANCELED.
+ * - The raft_uv_transport object gets closed, close the TCP handle and and fire
+ *   the request callback with RAFT_CANCELED.
  *
  * - Either the TCP connect or the write request fails: close the TCP handle and
  *   fire the request callback with RAFT_NOCONNECTION.
@@ -103,13 +103,8 @@ static void uvTcpConnectAbort(struct uvTcpConnect *connect)
     QUEUE_REMOVE(&connect->queue);
     QUEUE_PUSH(&connect->t->aborting, &connect->queue);
     uv_cancel((struct uv_req_s *)&connect->getaddrinfo);
-    /* Call uv_close on the tcp handle, if there is no getaddrinfo request
-     * in flight and the handle is not currently closed due to next IP
-     * connect attempt.
-     * Data structures may only be freed after the uvGetAddrInfoCb was
-     * triggered. Tcp handle will be closed in the uvGetAddrInfoCb in this case.
-     * uvTcpConnectUvCloseCb will be invoked from uvTcpTryNextConnectCb
-     * in case a next IP connect should be started. */
+    /* If there is no getaddrinfo request in flight, close the TCP handle now
+     * (otherwise it will be closed after the getaddrinfo request completes). */
     if (!connect->resolving && !connect->retry) {
         uv_close((struct uv_handle_s *)connect->tcp, uvTcpConnectUvCloseCb);
     }
@@ -220,9 +215,9 @@ static void uvTcpAsyncConnect(struct uvTcpConnect *connect)
 }
 
 /* The hostname resolve is finished */
-static void uvGetAddrInfoCb(uv_getaddrinfo_t *req,
-                            int status,
-                            struct addrinfo *res)
+static void uvTcpConnectGetAddrInfoCb(uv_getaddrinfo_t *req,
+                                      int status,
+                                      struct addrinfo *res)
 {
     struct uvTcpConnect *connect = req->data;
     struct UvTcp *t = connect->t;
@@ -248,19 +243,28 @@ static void uvGetAddrInfoCb(uv_getaddrinfo_t *req,
     connect->ai_current = res;
     uvTcpAsyncConnect(connect);
 }
+
 /* Create a new TCP handle and submit a connection request to the event loop. */
 static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 {
-    static struct addrinfo hints = {.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG,
-                                    .ai_family = AF_INET,
-                                    .ai_socktype = SOCK_STREAM,
-                                    .ai_protocol = 0};
     struct UvTcp *t = r->t;
+    static struct addrinfo hints = {.ai_family = AF_INET,
+                                    .ai_socktype = SOCK_STREAM,
+                                    .ai_protocol = 0,
+                                    .ai_flags = 0};
     char hostname[NI_MAXHOST];
     char service[NI_MAXSERV];
     int rv;
 
-    r->handshake.base = NULL;
+    rv = uvIpAddrSplit(address, hostname, sizeof(hostname), service,
+                       sizeof(service));
+    if (rv) {
+        ErrMsgPrintf(t->transport->errmsg,
+                     "uv_tcp_connect(): Cannot split %s into host and service",
+                     address);
+        rv = RAFT_NOCONNECTION;
+        goto err;
+    }
 
     /* Initialize the handshake buffer. */
     rv = uvTcpEncodeHandshake(t->id, t->address, &r->handshake);
@@ -274,24 +278,15 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
     if (r->tcp == NULL) {
         ErrMsgOom(t->transport->errmsg);
         rv = RAFT_NOMEM;
-        goto err;
+        goto err_after_encode_handshake;
     }
 
     rv = uv_tcp_init(r->t->loop, r->tcp);
     assert(rv == 0);
     r->tcp->data = r;
 
-    rv = uvIpAddrSplit(address, hostname, sizeof(hostname), service,
-                       sizeof(service));
-    if (rv) {
-        ErrMsgPrintf(t->transport->errmsg,
-                     "uv_tcp_connect(): Cannot split %s into host and service",
-                     address);
-        rv = RAFT_NOCONNECTION;
-        goto err_after_tcp_init;
-    }
-    rv = uv_getaddrinfo(r->t->loop, &r->getaddrinfo, &uvGetAddrInfoCb, hostname,
-                        service, &hints);
+    rv = uv_getaddrinfo(r->t->loop, &r->getaddrinfo, &uvTcpConnectGetAddrInfoCb,
+                        hostname, service, &hints);
     if (rv) {
         ErrMsgPrintf(t->transport->errmsg,
                      "uv_tcp_connect(): Cannot initiate getaddrinfo %s",
@@ -305,10 +300,9 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 
 err_after_tcp_init:
     uv_close((uv_handle_t *)r->tcp, (uv_close_cb)RaftHeapFree);
-
-err:
+err_after_encode_handshake:
     RaftHeapFree(r->handshake.base);
-
+err:
     return rv;
 }
 

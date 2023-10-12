@@ -56,11 +56,10 @@ int uvIpAddrSplit(const char *address,
 /* Synchronoues resolve hostname to IP address */
 int uvIpResolveBindAddresses(const char *address, struct addrinfo **ai_result)
 {
-    static struct addrinfo hints = {
-        .ai_flags = AI_ADDRCONFIG | AI_PASSIVE | AI_NUMERICSERV,
-        .ai_family = AF_INET,
-        .ai_socktype = SOCK_STREAM,
-        .ai_protocol = 0};
+    static struct addrinfo hints = {.ai_flags = AI_PASSIVE | AI_NUMERICSERV,
+                                    .ai_family = AF_INET,
+                                    .ai_socktype = SOCK_STREAM,
+                                    .ai_protocol = 0};
     char hostname[NI_MAXHOST];
     char service[NI_MAXSERV];
     int rv;
