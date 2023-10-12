@@ -243,14 +243,15 @@ static void uvTcpConnectGetAddrInfoCb(uv_getaddrinfo_t *req,
     connect->ai_current = res;
     uvTcpAsyncConnect(connect);
 }
+
 /* Create a new TCP handle and submit a connection request to the event loop. */
 static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
 {
-    static struct addrinfo hints = {.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG,
-                                    .ai_family = AF_INET,
-                                    .ai_socktype = SOCK_STREAM,
-                                    .ai_protocol = 0};
     struct UvTcp *t = r->t;
+    static struct addrinfo hints = {.ai_family = AF_INET,
+                                    .ai_socktype = SOCK_STREAM,
+                                    .ai_protocol = 0,
+                                    .ai_flags = 0};
     char hostname[NI_MAXHOST];
     char service[NI_MAXSERV];
     int rv;
