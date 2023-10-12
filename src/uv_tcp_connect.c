@@ -215,9 +215,9 @@ static void uvTcpAsyncConnect(struct uvTcpConnect *connect)
 }
 
 /* The hostname resolve is finished */
-static void uvGetAddrInfoCb(uv_getaddrinfo_t *req,
-                            int status,
-                            struct addrinfo *res)
+static void uvTcpConnectGetAddrInfoCb(uv_getaddrinfo_t *req,
+                                      int status,
+                                      struct addrinfo *res)
 {
     struct uvTcpConnect *connect = req->data;
     struct UvTcp *t = connect->t;
@@ -285,8 +285,8 @@ static int uvTcpConnectStart(struct uvTcpConnect *r, const char *address)
         rv = RAFT_NOCONNECTION;
         goto err_after_tcp_init;
     }
-    rv = uv_getaddrinfo(r->t->loop, &r->getaddrinfo, &uvGetAddrInfoCb, hostname,
-                        service, &hints);
+    rv = uv_getaddrinfo(r->t->loop, &r->getaddrinfo, &uvTcpConnectGetAddrInfoCb,
+                        hostname, service, &hints);
     if (rv) {
         ErrMsgPrintf(t->transport->errmsg,
                      "uv_tcp_connect(): Cannot initiate getaddrinfo %s",
