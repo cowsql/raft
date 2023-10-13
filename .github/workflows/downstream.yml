@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: cowsql/go-cowsql
-          path: go-dqlite
+          path: go-cowsql
 
       - name: Test go-cowsql
         env:
