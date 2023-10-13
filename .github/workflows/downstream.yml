@@ -26,7 +26,6 @@ jobs:
           autoreconf -i
           ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) install
-          sudo ldconfig
 
       - name: Check out cowsql
         uses: actions/checkout@v3
@@ -41,7 +40,6 @@ jobs:
           ./configure --enable-debug --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) check || (cat ./test-suite.log && false)
           sudo make install
-          sudo ldconfig
 
       - name: Install Go
         uses: actions/setup-go@v4
@@ -96,7 +94,6 @@ jobs:
           autoreconf -i
           ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) install
-          sudo ldconfig
 
       - name: Check out dqlite
         uses: actions/checkout@v3
@@ -112,7 +109,6 @@ jobs:
           ./configure --enable-debug --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) check || (cat ./test-suite.log && false)
           sudo make install
-          sudo ldconfig
 
       - name: Install Go
         uses: actions/setup-go@v4
