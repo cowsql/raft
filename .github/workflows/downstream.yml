@@ -118,6 +118,168 @@ jobs:
           VERBOSE=1 ASAN=-asan ./test/roles.sh
           VERBOSE=1 ASAN=-asan ./test/recover.sh
 
+  incus:
+    if: contains(github.event.pull_request.labels.*.name, 'downstream')
+    runs-on: ubuntu-22.04
+    env:
+      CGO_LDFLAGS_ALLOW: "(-Wl,-wrap,pthread_create)|(-Wl,-z,now)"
+      INCUS_SHIFTFS_DISABLE: "true"
+      INCUS_VERBOSE: "1"
+      INCUS_OFFLINE: "1"
+      INCUS_TMPFS: "1"
+      INCUS_REQUIRED_TESTS: "test_storage_buckets"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: lxc/incus
+
+      - name: Install Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.20.x
+
+      - name: Install dependencies
+        run: |
+          set -x
+          sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
+          sudo add-apt-repository ppa:cowsql/${{ inputs.cowsql-ppa || 'stable' }} -y --no-update
+          sudo apt-get update
+
+          sudo snap remove lxd --purge
+          sudo snap remove core20 --purge || true
+          sudo apt-get autopurge moby-containerd docker uidmap -y
+          sudo ip link delete docker0
+          sudo nft flush ruleset
+
+          sudo systemctl mask lxc.service
+          sudo systemctl mask lxc-net.service
+
+          sudo apt-get install --no-install-recommends -y \
+            curl \
+            git \
+            libacl1-dev \
+            libcap-dev \
+            libdbus-1-dev \
+            libcowsql-dev \
+            liblxc-dev \
+            libseccomp-dev \
+            libselinux-dev \
+            libsqlite3-dev \
+            libtool \
+            libudev-dev \
+            make \
+            pkg-config\
+            acl \
+            attr \
+            bind9-dnsutils \
+            btrfs-progs \
+            busybox-static \
+            dnsmasq-base \
+            easy-rsa \
+            gettext \
+            jq \
+            lxc-utils \
+            lvm2 \
+            nftables \
+            quota \
+            rsync \
+            s3cmd \
+            socat \
+            sqlite3 \
+            squashfs-tools \
+            tar \
+            tcl \
+            thin-provisioning-tools \
+            uuid-runtime \
+            xfsprogs \
+            xz-utils \
+            zfsutils-linux
+
+          # reclaim some space
+          sudo apt-get clean
+
+          mkdir -p "$(go env GOPATH)/bin"
+          curl -sSfL https://dl.min.io/server/minio/release/linux-amd64/minio --output "$(go env GOPATH)/bin/minio"
+          chmod +x "$(go env GOPATH)/bin/minio"
+
+      - name: Install dependencies
+        run: |
+          set -x
+          sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
+          sudo add-apt-repository ppa:cowsql/main -y --no-update
+          sudo apt-get update
+
+          sudo snap remove lxd --purge
+          sudo snap remove core20 --purge || true
+          sudo nft flush ruleset
+
+          sudo systemctl mask lxc.service
+          sudo systemctl mask lxc-net.service
+
+          sudo apt-get install --no-install-recommends -y \
+            curl \
+            git \
+            libacl1-dev \
+            libcap-dev \
+            libdbus-1-dev \
+            libcowsql-dev \
+            liblxc-dev \
+            libseccomp-dev \
+            libselinux-dev \
+            libsqlite3-dev \
+            libtool \
+            libudev-dev \
+            make \
+            pkg-config\
+            acl \
+            attr \
+            bind9-dnsutils \
+            btrfs-progs \
+            busybox-static \
+            dnsmasq-base \
+            easy-rsa \
+            gettext \
+            jq \
+            lxc-utils \
+            lvm2 \
+            nftables \
+            quota \
+            rsync \
+            s3cmd \
+            socat \
+            sqlite3 \
+            squashfs-tools \
+            tar \
+            tcl \
+            thin-provisioning-tools \
+            uuid-runtime \
+            xfsprogs \
+            xz-utils \
+            zfsutils-linux
+
+          # reclaim some space
+          sudo apt-get clean
+
+          mkdir -p "$(go env GOPATH)/bin"
+          curl -sSfL https://dl.min.io/server/minio/release/linux-amd64/minio --output "$(go env GOPATH)/bin/minio"
+          chmod +x "$(go env GOPATH)/bin/minio"
+
+      - name: Download go dependencies
+        run: |
+          go mod download
+
+      - name: Run Incus build
+        run: |
+          make
+
+      - name: "Run system tests"
+        run: |
+          chmod +x ~
+          echo "root:1000000:1000000000" | sudo tee /etc/subuid /etc/subgid
+          cd test
+          sudo --preserve-env=PATH,GOPATH,GITHUB_ACTIONS,INCUS_VERBOSE,INCUS_BACKEND,INCUS_OFFLINE,INCUS_SKIP_TESTS,INCUS_REQUIRED_TESTS,INCUS_SHIFTFS_DISABLE INCUS_BACKEND=dir ./main.sh all
+
   jepsen:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
     uses: cowsql/jepsen.cowsql/.github/workflows/test-build-run.yml@main
