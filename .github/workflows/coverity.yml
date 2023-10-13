@@ -5,48 +5,11 @@ on:
       - main
 
 jobs:
-  test:
+  coverity:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Download Coverity Build Tool
-        run: |
-          wget -q https://scan.coverity.com/download/cxx/linux64 --post-data "token=$TOKEN&project=cowsql/raft" -O cov-analysis-linux64.tar.gz
-          mkdir cov-analysis-linux64
-          tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
-        env:
-          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq lcov linux-libc-dev libuv1-dev btrfs-progs xfsprogs zfsutils-linux
-
-      - name: Run coverity
-        run: |
-          export PATH="$(pwd)/cov-analysis-linux64/bin:${PATH}"
-
-          # Configure
-          autoreconf -i
-          mkdir build
-          cd build
-          ../configure
-
-          # Build
-          cov-build --dir cov-int make -j4
-          tar czvf raft.tgz cov-int
-
-          # Submit the results
-          curl \
-            --form project=cowsql/raft \
-            --form token=${TOKEN} \
-            --form email=free@ekanayaka.io \
-            --form file=@raft.tgz \
-            --form version=main \
-            --form description="${GITHUB_SHA}" \
-            https://scan.coverity.com/builds?project=cowsql/raft
-        env:
-          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
-
+      - uses: actions/checkout@v3
+      - uses: vapier/coverity-scan-action@v1
+        with:
+          email: free@ekanayaka.io
+          token: ${{ secrets.COVERITY_SCAN_TOKEN }}
