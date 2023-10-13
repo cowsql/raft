@@ -108,6 +108,7 @@ jobs:
           autoreconf -i
           ./configure --prefix=/usr --enable-debug --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) check || (cat ./test-suite.log && false)
+          sudo make install
 
       - name: Install Go
         uses: actions/setup-go@v4
