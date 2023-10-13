@@ -24,7 +24,7 @@ jobs:
         run: |
           cd raft
           autoreconf -i
-          ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
+          ./configure --prefix=/usr --enable-debug --enable-uv --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) install
 
       - name: Check out cowsql
@@ -37,7 +37,7 @@ jobs:
         run: |
           cd cowsql
           autoreconf -i
-          ./configure --enable-debug --enable-sanitize --enable-backtrace
+          ./configure --prefix=/usr --enable-debug --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) check || (cat ./test-suite.log && false)
           sudo make install
 
@@ -92,7 +92,7 @@ jobs:
         run: |
           cd raft
           autoreconf -i
-          ./configure --enable-debug --enable-uv --enable-sanitize --enable-backtrace
+          ./configure --prefix=/usr --enable-debug --enable-uv --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) install
 
       - name: Check out dqlite
@@ -106,9 +106,8 @@ jobs:
         run: |
           cd dqlite
           autoreconf -i
-          ./configure --enable-debug --enable-sanitize --enable-backtrace
+          ./configure --prefix=/usr --enable-debug --enable-sanitize --enable-backtrace
           sudo make -j$(nproc) check || (cat ./test-suite.log && false)
-          sudo make install
 
       - name: Install Go
         uses: actions/setup-go@v4
