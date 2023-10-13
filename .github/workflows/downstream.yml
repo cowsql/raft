@@ -88,5 +88,3 @@ jobs:
         ['none', 'partition', 'kill', 'stop', 'disk', 'member',
          'partition,stop', 'partition,kill', 'partition,member',
          'packet,stop', 'pause']
-      disk: >
-        ['0']
