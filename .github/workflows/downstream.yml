@@ -14,20 +14,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -qq automake libtool gcc make libuv1-dev libsqlite3-dev
 
-      - name: Check out libbacktrace
-        uses: actions/checkout@v3
-        with:
-          repository: ianlancetaylor/libbacktrace
-          path: libbacktrace
-
-      - name: Install libbacktrace
-        run: |
-          cd libbacktrace
-          autoreconf -i
-          ./configure
-          sudo make -j$(nproc) install
-          sudo ldconfig
-
       - name: Check out raft
         uses: actions/checkout@v3
         with:
@@ -97,20 +83,6 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -qq automake libtool gcc make libuv1-dev libsqlite3-dev
-
-      - name: Check out libbacktrace
-        uses: actions/checkout@v3
-        with:
-          repository: ianlancetaylor/libbacktrace
-          path: libbacktrace
-
-      - name: Install libbacktrace
-        run: |
-          cd libbacktrace
-          autoreconf -i
-          ./configure
-          sudo make -j$(nproc) install
-          sudo ldconfig
 
       - name: Check out raft
         uses: actions/checkout@v3
