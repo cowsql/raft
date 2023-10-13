@@ -17,7 +17,7 @@ jobs:
       - name: Check out raft
         uses: actions/checkout@v3
         with:
-          ref: refs/pull/${{ github.event.issue.number }}/head
+          ref: refs/pull/${{ github.event.number }}/head
           path: raft
 
       - name: Install raft
@@ -61,18 +61,6 @@ jobs:
           VERBOSE=1 ASAN=-asan ./test/roles.sh
           VERBOSE=1 ASAN=-asan ./test/recover.sh
 
-  jepsen:
-    if: contains(github.event.pull_request.labels.*.name, 'downstream')
-    uses: cowsql/jepsen.cowsql/.github/workflows/test-build-run.yml@main
-    with:
-      raft-ref: refs/pull/${{ github.event.issue.number }}/head
-      workloads: >
-        ['append', 'bank', 'set']
-      nemeses: >
-        ['none', 'partition', 'kill', 'stop', 'disk', 'member',
-         'partition,stop', 'partition,kill', 'partition,member',
-         'packet,stop', 'pause']
-
   dqlite:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
     runs-on: ubuntu-22.04
@@ -85,7 +73,7 @@ jobs:
       - name: Check out raft
         uses: actions/checkout@v3
         with:
-          ref: refs/pull/${{ github.event.issue.number }}/head
+          ref: refs/pull/${{ github.event.number }}/head
           path: raft
 
       - name: Install raft
@@ -129,3 +117,15 @@ jobs:
           VERBOSE=1 ASAN=-asan ./test/dqlite-demo.sh
           VERBOSE=1 ASAN=-asan ./test/roles.sh
           VERBOSE=1 ASAN=-asan ./test/recover.sh
+
+  jepsen:
+    if: contains(github.event.pull_request.labels.*.name, 'downstream')
+    uses: cowsql/jepsen.cowsql/.github/workflows/test-build-run.yml@main
+    with:
+      raft-ref: refs/pull/${{ github.event.number }}/head
+      workloads: >
+        ['append', 'bank', 'set']
+      nemeses: >
+        ['none', 'partition', 'kill', 'stop', 'disk', 'member',
+         'partition,stop', 'partition,kill', 'partition,member',
+         'packet,stop', 'pause']
