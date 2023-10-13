@@ -1,12 +1,12 @@
 name: Downstream checks
 
 on:
-  issue_comment:
-    types: [created, edited]
+  pull_request:
+    types: [ labeled, opened, synchronize, reopened ]
 
 jobs:
   cowsql:
-    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
+    if: contains(github.event.pull_request.labels.*.name, 'downstream')
     runs-on: ubuntu-22.04
     steps:
       - name: Install apt deps
@@ -62,7 +62,7 @@ jobs:
           VERBOSE=1 ASAN=-asan ./test/recover.sh
 
   jepsen:
-    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
+    if: contains(github.event.pull_request.labels.*.name, 'downstream')
     uses: cowsql/jepsen.cowsql/.github/workflows/test-build-run.yml@main
     with:
       raft-ref: refs/pull/${{ github.event.issue.number }}/head
@@ -74,7 +74,7 @@ jobs:
          'packet,stop', 'pause']
 
   dqlite:
-    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, 'please test downstream') }}
+    if: contains(github.event.pull_request.labels.*.name, 'downstream')
     runs-on: ubuntu-22.04
     steps:
       - name: Install apt deps
