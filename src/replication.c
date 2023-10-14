@@ -594,7 +594,7 @@ static int appendLeader(struct raft *r, raft_index index)
         goto err_after_entries_acquired;
     }
 
-    rv = TaskPersistEntries(r, index, entries, n, 0);
+    rv = TaskPersistEntries(r, index, entries, n);
     if (rv != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
         goto err_after_entries_acquired;
@@ -902,19 +902,10 @@ static int followerPersistEntriesDone(struct raft *r,
         }
     }
 
-    /* From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (params->leader_commit > r->commit_index &&
-        r->last_stored >= r->commit_index) {
-        r->commit_index = min(params->leader_commit, r->last_stored);
-        rv = replicationApply(r);
-        if (rv != 0) {
-            goto out;
-        }
+    /* Apply to the FSM any newly stored entry that is also committed. */
+    rv = replicationApply(r);
+    if (rv != 0) {
+        goto out;
     }
 
     result.rejected = 0;
@@ -1082,6 +1073,17 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
+    /* From Figure 3.1:
+     *
+     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
+     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
+     *   entry).
+     */
+    if (args->leader_commit > r->commit_index &&
+        r->last_stored >= r->commit_index) {
+        r->commit_index = min(args->leader_commit, r->last_stored);
+    }
+
     /* If this is an empty AppendEntries, there's nothing to write. However we
      * still want to check if we can commit some entry. However, don't commit
      * anything while a snapshot install is busy, r->last_stored will be 0 in
@@ -1094,16 +1096,12 @@ int replicationAppend(struct raft *r,
      *   entry).
      */
     if (n == 0) {
-        if ((args->leader_commit > r->commit_index) &&
-            r->last_stored >= r->commit_index &&
-            !replicationInstallSnapshotBusy(r)) {
-            r->commit_index = min(args->leader_commit, r->last_stored);
+        if (!replicationInstallSnapshotBusy(r)) {
             rv = replicationApply(r);
             if (rv != 0) {
                 return rv;
             }
         }
-
         return 0;
     }
 
@@ -1150,7 +1148,7 @@ int replicationAppend(struct raft *r,
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
 
-    rv = TaskPersistEntries(r, index, entries, n_entries, args->leader_commit);
+    rv = TaskPersistEntries(r, index, entries, n_entries);
     if (rv != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
         goto err_after_acquire_entries;
