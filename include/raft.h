@@ -592,7 +592,6 @@ struct raft_persist_entries
     raft_index index;
     struct raft_entry *entries;
     unsigned n;
-    raft_index leader_commit;
 };
 
 /**

@@ -63,8 +63,7 @@ err:
 int TaskPersistEntries(struct raft *r,
                        raft_index index,
                        struct raft_entry entries[],
-                       unsigned n,
-                       raft_index leader_commit)
+                       unsigned n)
 {
     struct raft_task *task;
     struct raft_persist_entries *params;
@@ -82,7 +81,6 @@ int TaskPersistEntries(struct raft *r,
     params->index = index;
     params->entries = entries;
     params->n = n;
-    params->leader_commit = leader_commit;
 
     return 0;
 
