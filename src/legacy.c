@@ -439,62 +439,22 @@ abort:
     return 0;
 }
 
-struct ioForwardRestoreSnapshot
-{
-    struct raft *r;
-    struct raft_task task;
-    struct raft_io_snapshot_get get;
-};
-
-static void ioForwardRestoreSnapshotCb(struct raft_io_snapshot_get *get,
-                                       struct raft_snapshot *snapshot,
-                                       int status)
-{
-    struct ioForwardRestoreSnapshot *req = get->data;
-    struct raft *r = req->r;
-    struct raft_task task = req->task;
-    struct raft_restore_snapshot *params = &task.restore_snapshot;
-    int rv = status;
-
-    if (rv == 0) {
-        assert(snapshot->index == params->index);
-        assert(snapshot->n_bufs == 1);
-        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
-        configurationClose(&snapshot->configuration);
-        raft_free(snapshot->bufs);
-        raft_free(snapshot);
-    }
-
-    raft_free(req);
-    ioTaskDone(r, &task, rv);
-}
-
 static int ioForwardRestoreSnapshot(struct raft *r,
                                     struct raft_task *task,
                                     struct raft_event *events[],
                                     unsigned *n_events)
 {
-    struct ioForwardRestoreSnapshot *req;
     struct raft_event *event;
     int rv;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        rv = RAFT_NOMEM;
-        goto abort;
-    }
-    req->r = r;
-    req->task = *task;
+    assert(r->io_snapshot_restore.base != NULL);
+    assert(r->io_snapshot_restore.len > 0);
 
-    req->get.data = req;
+    rv = r->fsm->restore(r->fsm, &r->io_snapshot_restore);
 
-    rv = r->io->snapshot_get(r->io, &req->get, ioForwardRestoreSnapshotCb);
-    if (rv != 0) {
-        goto abort;
-    }
-    return 0;
+    r->io_snapshot_restore.base = NULL;
+    r->io_snapshot_restore.len = 0;
 
-abort:
     event = eventAppend(events, n_events);
     if (event == NULL) {
         return RAFT_NOMEM;
