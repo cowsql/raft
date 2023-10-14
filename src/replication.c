@@ -36,7 +36,7 @@
  * message.
  *
  * TODO: Make this number configurable. */
-#define MAX_APPEND_ENTRIES 128
+#define MAX_APPEND_ENTRIES 32
 
 /* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
  * raft_io_>send(). */
