@@ -1,6 +1,9 @@
 name: Downstream
 
 on:
+  push:
+    tags:
+      - '**'
   pull_request:
     types: [ labeled, opened, synchronize, reopened ]
 
