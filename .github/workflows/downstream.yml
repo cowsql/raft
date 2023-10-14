@@ -128,6 +128,10 @@ jobs:
       INCUS_OFFLINE: "1"
       INCUS_TMPFS: "1"
       INCUS_REQUIRED_TESTS: "test_storage_buckets"
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ["cluster", "standalone"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -278,7 +282,7 @@ jobs:
           chmod +x ~
           echo "root:1000000:1000000000" | sudo tee /etc/subuid /etc/subgid
           cd test
-          sudo --preserve-env=PATH,GOPATH,GITHUB_ACTIONS,INCUS_VERBOSE,INCUS_BACKEND,INCUS_OFFLINE,INCUS_SKIP_TESTS,INCUS_REQUIRED_TESTS,INCUS_SHIFTFS_DISABLE INCUS_BACKEND=dir ./main.sh all
+          sudo --preserve-env=PATH,GOPATH,GITHUB_ACTIONS,INCUS_VERBOSE,INCUS_BACKEND,INCUS_OFFLINE,INCUS_SKIP_TESTS,INCUS_REQUIRED_TESTS,INCUS_SHIFTFS_DISABLE INCUS_BACKEND=dir ./main.sh ${{ matrix.suite }}
 
   jepsen:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
