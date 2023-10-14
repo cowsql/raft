@@ -140,14 +140,11 @@ jobs:
 
       - name: Install Go
         uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.x
 
       - name: Install dependencies
         run: |
           set -x
           sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
-          sudo add-apt-repository ppa:cowsql/${{ inputs.cowsql-ppa || 'stable' }} -y --no-update
           sudo apt-get update
 
           sudo snap remove lxd --purge
@@ -165,13 +162,14 @@ jobs:
             libacl1-dev \
             libcap-dev \
             libdbus-1-dev \
-            libcowsql-dev \
             liblxc-dev \
             libseccomp-dev \
             libselinux-dev \
             libsqlite3-dev \
             libtool \
             libudev-dev \
+            libuv1-dev \
+            automake \
             make \
             pkg-config\
             acl \
@@ -207,67 +205,32 @@ jobs:
           curl -sSfL https://dl.min.io/server/minio/release/linux-amd64/minio --output "$(go env GOPATH)/bin/minio"
           chmod +x "$(go env GOPATH)/bin/minio"
 
-      - name: Install dependencies
+      - name: Check out raft
+        uses: actions/checkout@v3
+        with:
+          ref: refs/pull/${{ github.event.number }}/head
+          path: raft
+
+      - name: Install raft
         run: |
-          set -x
-          sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
-          sudo add-apt-repository ppa:cowsql/main -y --no-update
-          sudo apt-get update
+          cd raft
+          autoreconf -i
+          ./configure --prefix=/usr --enable-debug
+          sudo make -j$(nproc) install
 
-          sudo snap remove lxd --purge
-          sudo snap remove core20 --purge || true
-          sudo nft flush ruleset
+      - name: Check out cowsql
+        uses: actions/checkout@v3
+        with:
+          repository: cowsql/cowsql
+          path: cowsql
 
-          sudo systemctl mask lxc.service
-          sudo systemctl mask lxc-net.service
+      - name: Install cowsql
+        run: |
+          cd cowsql
+          autoreconf -i
+          ./configure --prefix=/usr --enable-debug
+          sudo make -j$(nproc) install
 
-          sudo apt-get install --no-install-recommends -y \
-            curl \
-            git \
-            libacl1-dev \
-            libcap-dev \
-            libdbus-1-dev \
-            libcowsql-dev \
-            liblxc-dev \
-            libseccomp-dev \
-            libselinux-dev \
-            libsqlite3-dev \
-            libtool \
-            libudev-dev \
-            make \
-            pkg-config\
-            acl \
-            attr \
-            bind9-dnsutils \
-            btrfs-progs \
-            busybox-static \
-            dnsmasq-base \
-            easy-rsa \
-            gettext \
-            jq \
-            lxc-utils \
-            lvm2 \
-            nftables \
-            quota \
-            rsync \
-            s3cmd \
-            socat \
-            sqlite3 \
-            squashfs-tools \
-            tar \
-            tcl \
-            thin-provisioning-tools \
-            uuid-runtime \
-            xfsprogs \
-            xz-utils \
-            zfsutils-linux
-
-          # reclaim some space
-          sudo apt-get clean
-
-          mkdir -p "$(go env GOPATH)/bin"
-          curl -sSfL https://dl.min.io/server/minio/release/linux-amd64/minio --output "$(go env GOPATH)/bin/minio"
-          chmod +x "$(go env GOPATH)/bin/minio"
 
       - name: Download go dependencies
         run: |
