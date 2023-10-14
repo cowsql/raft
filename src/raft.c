@@ -109,6 +109,8 @@ int raft_init(struct raft *r,
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
+    r->io_snapshot_restore.base = NULL;
+    r->io_snapshot_restore.len = 0;
     return 0;
 
 err_after_address_alloc:
