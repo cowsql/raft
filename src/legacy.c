@@ -350,6 +350,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     struct raft *r = req->r;
     struct raft_task task = req->task;
     struct raft_snapshot *snapshot = &r->snapshot.pending;
+    struct raft_event event;
 
     r->snapshot.put.data = NULL;
 
@@ -363,7 +364,11 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
         return;
     }
 
-    replicationSnapshot(r, &task.take_snapshot.metadata, 0 /* trailing */);
+    event.type = RAFT_SNAPSHOT;
+    event.time = r->io->time(r->io);
+    event.snapshot.metadata = task.take_snapshot.metadata;
+    event.snapshot.trailing = 0;
+    LegacyForwardToRaftIo(r, &event);
 }
 
 static int putSnapshot(struct ioForwardTakeSnapshot *req)

@@ -264,6 +264,10 @@ int raft_step(struct raft *r,
             rv = stepReceive(r, event->receive.id, event->receive.address,
                              event->receive.message);
             break;
+        case RAFT_SNAPSHOT:
+            rv = replicationSnapshot(r, &event->snapshot.metadata,
+                                     event->snapshot.trailing);
+            break;
         default:
             rv = 0;
             break;
