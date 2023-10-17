@@ -1442,48 +1442,20 @@ static void applyChange(struct raft *r, const raft_index index)
     }
 }
 
-static bool shouldTakeSnapshot(struct raft *r)
-{
-    /* We currently support only synchronous FSMs, where entries are applied
-     * synchronously as soon as we advance the commit index, so the two
-     * values always match when we get here. */
-    assert(r->last_applied == r->commit_index);
-
-    /* If we are shutting down, let's not do anything. */
-    if (r->state == RAFT_UNAVAILABLE) {
-        return false;
-    }
-
-    /* If a snapshot is already in progress or we're installing a snapshot, we
-     * don't want to start another one. */
-    if (r->snapshot.pending.term != 0 || r->snapshot.put.data != NULL) {
-        return false;
-    };
-
-    /* If we didn't reach the threshold yet, do nothing. */
-    if (r->commit_index - r->log->snapshot.last_index < r->snapshot.threshold) {
-        return false;
-    }
-
-    return true;
-}
-
-int replicationTakeSnapshotDone(struct raft *r,
-                                struct raft_take_snapshot *params,
-                                int status)
+int replicationSnapshot(struct raft *r,
+                        struct raft_snapshot_metadata *metadata,
+                        unsigned trailing)
 {
     int rv;
 
-    if (status != 0) {
-        goto out;
-    }
+    (void)trailing;
 
     /* Cache the configuration contained in the snapshot. While the snapshot was
      * written, new configuration changes could have been committed, these
      * changes will not be purged from the log by this snapshot. However
      * we still cache the configuration for consistency. */
     configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&params->metadata.configuration,
+    rv = configurationCopy(&metadata->configuration,
                            &r->configuration_last_snapshot);
     if (rv != 0) {
         /* TODO: make this a hard fault, because if we have no backup and the
@@ -1494,47 +1466,13 @@ int replicationTakeSnapshotDone(struct raft *r,
 
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
-    r->configuration_last_snapshot_index = params->metadata.configuration_index;
+    r->configuration_last_snapshot_index = metadata->configuration_index;
 
-    logSnapshot(r->log, params->metadata.index, r->snapshot.trailing);
+    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
 
-out:
-    configurationClose(&params->metadata.configuration);
-    return 0;
-}
-
-static int takeSnapshot(struct raft *r)
-{
-    struct raft_snapshot_metadata metadata;
-    int rv;
-
-    /* We currently support only synchronous FSMs, where entries are applied
-     * synchronously as soon as we advance the commit index, so the two
-     * values always match when we get here. */
-    assert(r->last_applied == r->commit_index);
-
-    tracef("take snapshot at %lld", r->commit_index);
-
-    metadata.index = r->commit_index;
-    metadata.term = logTermOf(r->log, r->commit_index);
-
-    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
-    if (rv != 0) {
-        goto abort;
-    }
-    metadata.configuration_index = r->configuration_committed_index;
-
-    rv = TaskTakeSnapshot(r, metadata);
-    if (rv != 0) {
-        goto abort_after_conf_fetched;
-    }
+    configurationClose(&metadata->configuration);
 
     return 0;
-
-abort_after_conf_fetched:
-    configurationClose(&metadata.configuration);
-abort:
-    return rv;
 }
 
 int replicationApply(struct raft *r)
@@ -1581,10 +1519,6 @@ int replicationApply(struct raft *r)
         if (rv != 0) {
             break;
         }
-    }
-
-    if (shouldTakeSnapshot(r)) {
-        rv = takeSnapshot(r);
     }
 
     return rv;

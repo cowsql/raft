@@ -198,12 +198,6 @@ static int applyCommandDone(struct raft *r, struct raft_task *task, int status)
     return replicationApplyCommandDone(r, params, status);
 }
 
-static int takeSnapshotDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_take_snapshot *params = &task->take_snapshot;
-    return replicationTakeSnapshotDone(r, params, status);
-}
-
 /* Handle the completion of a task. */
 static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
@@ -234,9 +228,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
         case RAFT_APPLY_COMMAND:
             rv = applyCommandDone(r, task, status);
             break;
-        case RAFT_TAKE_SNAPSHOT:
-            rv = takeSnapshotDone(r, task, status);
-            break;
         default:
             rv = 0;
             break;
@@ -256,6 +247,7 @@ static int stepReceive(struct raft *r,
 
 int raft_step(struct raft *r,
               struct raft_event *event,
+              raft_index *commit_index,
               raft_time *timeout,
               struct raft_task **tasks,
               unsigned *n_tasks)
@@ -272,6 +264,10 @@ int raft_step(struct raft *r,
             rv = stepReceive(r, event->receive.id, event->receive.address,
                              event->receive.message);
             break;
+        case RAFT_SNAPSHOT:
+            rv = replicationSnapshot(r, &event->snapshot.metadata,
+                                     event->snapshot.trailing);
+            break;
         default:
             rv = 0;
             break;
@@ -280,6 +276,8 @@ int raft_step(struct raft *r,
     if (rv != 0) {
         return rv;
     }
+
+    *commit_index = r->commit_index;
 
     (void)timeout;
 

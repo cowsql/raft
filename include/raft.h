@@ -567,7 +567,6 @@ enum {
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
     RAFT_APPLY_COMMAND,
-    RAFT_TAKE_SNAPSHOT,
     RAFT_RESTORE_SNAPSHOT
 };
 
@@ -636,14 +635,6 @@ struct raft_apply_command
 };
 
 /**
- * Parameters for tasks of type #RAFT_TAKE_SNAPSHOT.
- */
-struct raft_take_snapshot
-{
-    struct raft_snapshot_metadata metadata;
-};
-
-/**
  * Parameters for tasks of type #RAFT_RESTORE_SNAPSHOT.
  */
 struct raft_restore_snapshot
@@ -665,7 +656,6 @@ struct raft_task
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
         struct raft_apply_command apply_command;
-        struct raft_take_snapshot take_snapshot;
         struct raft_restore_snapshot restore_snapshot;
     };
 };
@@ -676,6 +666,7 @@ struct raft_task
 enum {
     RAFT_DONE = 1, /* A task has been completed. */
     RAFT_RECEIVE,  /* A message has been received. */
+    RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
     RAFT_SUBMIT,   /* New entries have been submitted. */
     RAFT_TRANSFER, /* Submission of leadership trasfer request */
@@ -702,6 +693,11 @@ struct raft_event
             const char *address;
             struct raft_message *message;
         } receive;
+        struct
+        {
+            struct raft_snapshot_metadata metadata; /* Snapshot metadata */
+            unsigned trailing;                      /* Trailing entries kept */
+        } snapshot;
     };
 };
 
@@ -1079,6 +1075,9 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
 /**
  * Notify the raft engine of the given @event.
  *
+ * The @commit_index output parameter will be filled with the index of the most
+ * recent entry known to be committed.
+ *
  * The @timeout output parameter will be filled with the time at which the next
  * timeout event should be fired. Any previously scheduled timeout that has not
  * yet been fired should be cancelled.
@@ -1094,6 +1093,7 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
+                       raft_index *commit_index,
                        raft_time *timeout,
                        struct raft_task **tasks,
                        unsigned *n_tasks);
