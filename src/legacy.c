@@ -365,6 +365,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     }
 
     event.type = RAFT_SNAPSHOT;
+    memset(&event.reserved, 0, sizeof event.reserved);
     event.time = r->io->time(r->io);
     event.snapshot.metadata = metadata;
     event.snapshot.trailing = 0;
@@ -415,7 +416,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
     return true;
 }
 
-static int legacyTakeSnapshot(struct raft *r)
+static void legacyTakeSnapshot(struct raft *r)
 {
     struct raft_snapshot_metadata metadata;
     struct raft_snapshot *snapshot = &r->snapshot.pending;
@@ -434,7 +435,6 @@ static int legacyTakeSnapshot(struct raft *r)
 
     req = raft_malloc(sizeof *req);
     if (req == NULL) {
-        rv = RAFT_NOMEM;
         goto abort;
     }
     req->r = r;
@@ -470,7 +470,7 @@ static int legacyTakeSnapshot(struct raft *r)
         goto abort_after_snapshot;
     }
 
-    return 0;
+    return;
 
 abort_after_snapshot:
     takeSnapshotClose(r, snapshot);
@@ -479,7 +479,7 @@ abort_after_conf_fetched:
 abort_after_req_alloc:
     raft_free(req);
 abort:
-    return rv;
+    return;
 }
 
 static int ioForwardRestoreSnapshot(struct raft *r,
@@ -547,7 +547,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
 
         if (legacyShouldTakeSnapshot(r)) {
-            rv = legacyTakeSnapshot(r);
+            legacyTakeSnapshot(r);
         }
 
         for (j = 0; j < n_tasks; j++) {
