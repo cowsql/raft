@@ -2,6 +2,9 @@
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
+#include "log.h"
+#include "membership.h"
+#include "replication.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -358,7 +361,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
 
     raft_free(req);
-    ioTaskDone(r, &task, status);
+    replicationTakeSnapshotDone(r, &task.take_snapshot, status);
 }
 
 static int putSnapshot(struct ioForwardTakeSnapshot *req)
@@ -374,6 +377,102 @@ static int putSnapshot(struct ioForwardTakeSnapshot *req)
         r->snapshot.put.data = NULL;
     }
 
+    return rv;
+}
+
+static bool legacyShouldTakeSnapshot(struct raft *r)
+{
+    /* We currently support only synchronous FSMs, where entries are applied
+     * synchronously as soon as we advance the commit index, so the two
+     * values always match when we get here. */
+    if (r->last_applied < r->commit_index) {
+        return false;
+    }
+
+    /* If we are shutting down, let's not do anything. */
+    if (r->state == RAFT_UNAVAILABLE) {
+        return false;
+    }
+
+    /* If a snapshot is already in progress or we're installing a snapshot, we
+     * don't want to start another one. */
+    if (r->snapshot.pending.term != 0 || r->snapshot.put.data != NULL) {
+        return false;
+    };
+
+    /* If we didn't reach the threshold yet, do nothing. */
+    if (r->commit_index - r->log->snapshot.last_index < r->snapshot.threshold) {
+        return false;
+    }
+
+    return true;
+}
+
+static int legacyTakeSnapshot(struct raft *r)
+{
+    struct raft_snapshot_metadata metadata;
+    struct raft_snapshot *snapshot = &r->snapshot.pending;
+    struct ioForwardTakeSnapshot *req;
+    int rv;
+
+    /* We currently support only synchronous FSMs, where entries are applied
+     * synchronously as soon as we advance the commit index, so the two
+     * values always match when we get here. */
+    assert(r->last_applied == r->commit_index);
+
+    tracef("take snapshot at %lld", r->commit_index);
+
+    metadata.index = r->commit_index;
+    metadata.term = logTermOf(r->log, r->commit_index);
+
+    req = raft_malloc(sizeof *req);
+    if (req == NULL) {
+        rv = RAFT_NOMEM;
+        goto abort;
+    }
+    req->r = r;
+
+    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
+    if (rv != 0) {
+        goto abort_after_req_alloc;
+    }
+    metadata.configuration_index = r->configuration_committed_index;
+
+    req->task.type = RAFT_TAKE_SNAPSHOT;
+    req->task.take_snapshot.metadata = metadata;
+
+    snapshot->index = metadata.index;
+    snapshot->term = metadata.term;
+    snapshot->configuration = metadata.configuration;
+    snapshot->configuration_index = metadata.configuration_index;
+    snapshot->bufs = NULL;
+    snapshot->n_bufs = 0;
+
+    rv = r->fsm->snapshot(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
+    if (rv == 0 && r->fsm->version >= 3 && r->fsm->snapshot_async != NULL) {
+        rv = r->fsm->snapshot_async(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
+    }
+    if (rv != 0) {
+        ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
+                        metadata.index);
+        goto abort_after_conf_fetched;
+    }
+
+    /* putSnapshot will clean up config and buffers in case of error */
+    rv = putSnapshot(req);
+    if (rv != 0) {
+        goto abort_after_snapshot;
+    }
+
+    return 0;
+
+abort_after_snapshot:
+    takeSnapshotClose(r, snapshot);
+abort_after_conf_fetched:
+    configurationClose(&metadata.configuration);
+abort_after_req_alloc:
+    raft_free(req);
+abort:
     return rv;
 }
 
@@ -501,6 +600,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         rv = raft_step(r, event, &commit_index, &timeout, &tasks, &n_tasks);
         if (rv != 0) {
             goto err;
+        }
+
+        if (legacyShouldTakeSnapshot(r)) {
+            rv = legacyTakeSnapshot(r);
         }
 
         for (j = 0; j < n_tasks; j++) {

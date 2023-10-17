@@ -1442,32 +1442,6 @@ static void applyChange(struct raft *r, const raft_index index)
     }
 }
 
-static bool shouldTakeSnapshot(struct raft *r)
-{
-    /* We currently support only synchronous FSMs, where entries are applied
-     * synchronously as soon as we advance the commit index, so the two
-     * values always match when we get here. */
-    assert(r->last_applied == r->commit_index);
-
-    /* If we are shutting down, let's not do anything. */
-    if (r->state == RAFT_UNAVAILABLE) {
-        return false;
-    }
-
-    /* If a snapshot is already in progress or we're installing a snapshot, we
-     * don't want to start another one. */
-    if (r->snapshot.pending.term != 0 || r->snapshot.put.data != NULL) {
-        return false;
-    };
-
-    /* If we didn't reach the threshold yet, do nothing. */
-    if (r->commit_index - r->log->snapshot.last_index < r->snapshot.threshold) {
-        return false;
-    }
-
-    return true;
-}
-
 int replicationTakeSnapshotDone(struct raft *r,
                                 struct raft_take_snapshot *params,
                                 int status)
@@ -1501,40 +1475,6 @@ int replicationTakeSnapshotDone(struct raft *r,
 out:
     configurationClose(&params->metadata.configuration);
     return 0;
-}
-
-static int takeSnapshot(struct raft *r)
-{
-    struct raft_snapshot_metadata metadata;
-    int rv;
-
-    /* We currently support only synchronous FSMs, where entries are applied
-     * synchronously as soon as we advance the commit index, so the two
-     * values always match when we get here. */
-    assert(r->last_applied == r->commit_index);
-
-    tracef("take snapshot at %lld", r->commit_index);
-
-    metadata.index = r->commit_index;
-    metadata.term = logTermOf(r->log, r->commit_index);
-
-    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
-    if (rv != 0) {
-        goto abort;
-    }
-    metadata.configuration_index = r->configuration_committed_index;
-
-    rv = TaskTakeSnapshot(r, metadata);
-    if (rv != 0) {
-        goto abort_after_conf_fetched;
-    }
-
-    return 0;
-
-abort_after_conf_fetched:
-    configurationClose(&metadata.configuration);
-abort:
-    return rv;
 }
 
 int replicationApply(struct raft *r)
@@ -1581,10 +1521,6 @@ int replicationApply(struct raft *r)
         if (rv != 0) {
             break;
         }
-    }
-
-    if (shouldTakeSnapshot(r)) {
-        rv = takeSnapshot(r);
     }
 
     return rv;
