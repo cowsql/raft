@@ -1079,6 +1079,9 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
 /**
  * Notify the raft engine of the given @event.
  *
+ * The @commit_index output parameter will be filled with the index of the most
+ * recent entry known to be committed.
+ *
  * The @timeout output parameter will be filled with the time at which the next
  * timeout event should be fired. Any previously scheduled timeout that has not
  * yet been fired should be cancelled.
@@ -1094,6 +1097,7 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
+                       raft_index *commit_index,
                        raft_time *timeout,
                        struct raft_task **tasks,
                        unsigned *n_tasks);

@@ -256,6 +256,7 @@ static int stepReceive(struct raft *r,
 
 int raft_step(struct raft *r,
               struct raft_event *event,
+              raft_index *commit_index,
               raft_time *timeout,
               struct raft_task **tasks,
               unsigned *n_tasks)
@@ -280,6 +281,8 @@ int raft_step(struct raft *r,
     if (rv != 0) {
         return rv;
     }
+
+    *commit_index = r->commit_index;
 
     (void)timeout;
 
