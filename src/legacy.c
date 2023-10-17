@@ -353,15 +353,17 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
 
     r->snapshot.put.data = NULL;
 
+    takeSnapshotClose(r, snapshot);
+    raft_free(req);
+
     if (status != 0) {
         tracef("snapshot %lld at term %lld: %s", snapshot->index,
                snapshot->term, raft_strerror(status));
+        configurationClose(&task.take_snapshot.metadata.configuration);
+        return;
     }
 
-    takeSnapshotClose(r, snapshot);
-
-    raft_free(req);
-    replicationTakeSnapshotDone(r, &task.take_snapshot, status);
+    replicationSnapshot(r, &task.take_snapshot.metadata, 0 /* trailing */);
 }
 
 static int putSnapshot(struct ioForwardTakeSnapshot *req)

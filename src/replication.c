@@ -1442,22 +1442,20 @@ static void applyChange(struct raft *r, const raft_index index)
     }
 }
 
-int replicationTakeSnapshotDone(struct raft *r,
-                                struct raft_take_snapshot *params,
-                                int status)
+int replicationSnapshot(struct raft *r,
+                        struct raft_snapshot_metadata *metadata,
+                        unsigned trailing)
 {
     int rv;
 
-    if (status != 0) {
-        goto out;
-    }
+    (void)trailing;
 
     /* Cache the configuration contained in the snapshot. While the snapshot was
      * written, new configuration changes could have been committed, these
      * changes will not be purged from the log by this snapshot. However
      * we still cache the configuration for consistency. */
     configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&params->metadata.configuration,
+    rv = configurationCopy(&metadata->configuration,
                            &r->configuration_last_snapshot);
     if (rv != 0) {
         /* TODO: make this a hard fault, because if we have no backup and the
@@ -1468,12 +1466,12 @@ int replicationTakeSnapshotDone(struct raft *r,
 
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
-    r->configuration_last_snapshot_index = params->metadata.configuration_index;
+    r->configuration_last_snapshot_index = metadata->configuration_index;
 
-    logSnapshot(r->log, params->metadata.index, r->snapshot.trailing);
+    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
 
-out:
-    configurationClose(&params->metadata.configuration);
+    configurationClose(&metadata->configuration);
+
     return 0;
 }
 
