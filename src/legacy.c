@@ -317,10 +317,10 @@ err:
     return rv;
 }
 
-struct ioForwardTakeSnapshot
+struct legacyTakeSnapshot
 {
     struct raft *r;
-    struct raft_task task;
+    struct raft_snapshot_metadata metadata;
 };
 
 /*
@@ -346,10 +346,10 @@ static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 
 static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
 {
-    struct ioForwardTakeSnapshot *req = put->data;
+    struct legacyTakeSnapshot *req = put->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
     struct raft_snapshot *snapshot = &r->snapshot.pending;
+    struct raft_snapshot_metadata metadata = req->metadata;
     struct raft_event event;
 
     r->snapshot.put.data = NULL;
@@ -360,18 +360,18 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     if (status != 0) {
         tracef("snapshot %lld at term %lld: %s", snapshot->index,
                snapshot->term, raft_strerror(status));
-        configurationClose(&task.take_snapshot.metadata.configuration);
+        configurationClose(&metadata.configuration);
         return;
     }
 
     event.type = RAFT_SNAPSHOT;
     event.time = r->io->time(r->io);
-    event.snapshot.metadata = task.take_snapshot.metadata;
+    event.snapshot.metadata = metadata;
     event.snapshot.trailing = 0;
     LegacyForwardToRaftIo(r, &event);
 }
 
-static int putSnapshot(struct ioForwardTakeSnapshot *req)
+static int putSnapshot(struct legacyTakeSnapshot *req)
 {
     struct raft *r = req->r;
     struct raft_snapshot *snapshot = &r->snapshot.pending;
@@ -419,7 +419,7 @@ static int legacyTakeSnapshot(struct raft *r)
 {
     struct raft_snapshot_metadata metadata;
     struct raft_snapshot *snapshot = &r->snapshot.pending;
-    struct ioForwardTakeSnapshot *req;
+    struct legacyTakeSnapshot *req;
     int rv;
 
     /* We currently support only synchronous FSMs, where entries are applied
@@ -445,8 +445,7 @@ static int legacyTakeSnapshot(struct raft *r)
     }
     metadata.configuration_index = r->configuration_committed_index;
 
-    req->task.type = RAFT_TAKE_SNAPSHOT;
-    req->task.take_snapshot.metadata = metadata;
+    req->metadata = metadata;
 
     snapshot->index = metadata.index;
     snapshot->term = metadata.term;
@@ -481,68 +480,6 @@ abort_after_req_alloc:
     raft_free(req);
 abort:
     return rv;
-}
-
-static int ioForwardTakeSnapshot(struct raft *r,
-                                 struct raft_task *task,
-                                 struct raft_event *events[],
-                                 unsigned *n_events)
-{
-    struct raft_take_snapshot *params = &task->take_snapshot;
-    struct raft_snapshot *snapshot = &r->snapshot.pending;
-    struct ioForwardTakeSnapshot *req;
-    struct raft_event *event;
-    int rv;
-
-    snapshot->index = params->metadata.index;
-    snapshot->term = params->metadata.term;
-    snapshot->configuration = params->metadata.configuration;
-    snapshot->configuration_index = params->metadata.configuration_index;
-    snapshot->bufs = NULL;
-    snapshot->n_bufs = 0;
-
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        rv = RAFT_NOMEM;
-        goto abort;
-    }
-    req->r = r;
-    req->task = *task;
-
-    rv = r->fsm->snapshot(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
-    if (rv == 0 && r->fsm->version >= 3 && r->fsm->snapshot_async != NULL) {
-        rv = r->fsm->snapshot_async(r->fsm, &snapshot->bufs, &snapshot->n_bufs);
-    }
-    if (rv != 0) {
-        ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
-                        params->metadata.index);
-        goto abort_after_req_alloc;
-    }
-
-    /* putSnapshot will clean up config and buffers in case of error */
-    rv = putSnapshot(req);
-    if (rv != 0) {
-        goto abort_after_snapshot;
-    }
-
-    return 0;
-
-abort_after_snapshot:
-    takeSnapshotClose(r, snapshot);
-abort_after_req_alloc:
-    raft_free(req);
-abort:
-    event = eventAppend(events, n_events);
-    if (event == NULL) {
-        return RAFT_NOMEM;
-    }
-
-    event->type = RAFT_DONE;
-    event->time = r->io->time(r->io);
-    event->done.task = *task;
-    event->done.status = rv;
-
-    return 0;
 }
 
 static int ioForwardRestoreSnapshot(struct raft *r,
@@ -640,9 +577,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_APPLY_COMMAND:
                     rv = ioForwardApplyCommand(r, task, &events, &n_events);
-                    break;
-                case RAFT_TAKE_SNAPSHOT:
-                    rv = ioForwardTakeSnapshot(r, task, &events, &n_events);
                     break;
                 case RAFT_RESTORE_SNAPSHOT:
                     rv = ioForwardRestoreSnapshot(r, task, &events, &n_events);
