@@ -435,16 +435,12 @@ static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
                              struct raft_fsm *fsm)
 {
-    if (io == NULL && fsm == NULL) {
-        return 0;
-    }
-
-    if (io->version == 0) {
+    if (io != NULL && io->version == 0) {
         ErrMsgPrintf(r->errmsg, "io->version must be set");
         return -1;
     }
 
-    if (fsm->version == 0) {
+    if (fsm != NULL && fsm->version == 0) {
         ErrMsgPrintf(r->errmsg, "fsm->version must be set");
         return -1;
     }
