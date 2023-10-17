@@ -567,7 +567,6 @@ enum {
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
     RAFT_APPLY_COMMAND,
-    RAFT_TAKE_SNAPSHOT,
     RAFT_RESTORE_SNAPSHOT
 };
 
@@ -636,14 +635,6 @@ struct raft_apply_command
 };
 
 /**
- * Parameters for tasks of type #RAFT_TAKE_SNAPSHOT.
- */
-struct raft_take_snapshot
-{
-    struct raft_snapshot_metadata metadata;
-};
-
-/**
  * Parameters for tasks of type #RAFT_RESTORE_SNAPSHOT.
  */
 struct raft_restore_snapshot
@@ -665,7 +656,6 @@ struct raft_task
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
         struct raft_apply_command apply_command;
-        struct raft_take_snapshot take_snapshot;
         struct raft_restore_snapshot restore_snapshot;
     };
 };
