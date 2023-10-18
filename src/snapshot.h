@@ -11,13 +11,12 @@ void snapshotDestroy(struct raft_snapshot *s);
 
 /* Restore a snapshot.
  *
- * This will reset the current state of the server as if the last entry
- * contained in the snapshot had just been persisted, committed and applied.
+ * This will reset the current state of the raft object as if the last entry
+ * contained in the snapshot with the given metadata had just been persisted,
+ * committed and applied.
  *
- * The in-memory log must be empty when calling this function.
- *
- * If no error occurs, the memory of the snapshot object gets released. */
-int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot);
+ * The in-memory log must be empty when calling this function. */
+int snapshotRestore(struct raft *r, struct raft_snapshot_metadata *metadata);
 
 /* Make a full deep copy of a snapshot object.
  *

@@ -1179,7 +1179,6 @@ int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_persist_snapshot *params,
                                    int status)
 {
-    struct raft_snapshot snapshot;
     struct raft_append_entries_result result;
     int rv;
 
@@ -1187,13 +1186,6 @@ int replicationPersistSnapshotDone(struct raft *r,
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
 
     r->snapshot.persisting = false;
-
-    snapshot.index = params->metadata.index;
-    snapshot.term = params->metadata.term;
-    snapshot.configuration = params->metadata.configuration;
-    snapshot.configuration_index = params->metadata.configuration_index;
-    snapshot.bufs = &params->chunk;
-    snapshot.n_bufs = 1;
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
@@ -1217,7 +1209,7 @@ int replicationPersistSnapshotDone(struct raft *r,
          * code to avoid loading the snapshot asynchronously. */
         assert(r->io_snapshot_restore.base == NULL);
         assert(r->io_snapshot_restore.len == 0);
-        r->io_snapshot_restore = snapshot.bufs[0];
+        r->io_snapshot_restore = params->chunk;
     }
 
     /* From Figure 5.3:
@@ -1226,14 +1218,14 @@ int replicationPersistSnapshotDone(struct raft *r,
      *   8. Reset state machine using snapshot contents (and load lastConfig
      *      as cluster configuration).
      */
-    rv = TaskRestoreSnapshot(r, snapshot.index);
+    rv = TaskRestoreSnapshot(r, params->metadata.index);
     if (rv != 0) {
-        tracef("restore snapshot %llu: %s", snapshot.index,
+        tracef("restore snapshot %llu: %s", params->metadata.index,
                errCodeToString(rv));
         goto discard;
     }
 
-    rv = snapshotRestore(r, &snapshot);
+    rv = snapshotRestore(r, &params->metadata);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", params->metadata.index,
                raft_strerror(status));
@@ -1248,8 +1240,8 @@ discard:
     /* In case of error we must also free the snapshot data buffer and free the
      * configuration. */
     result.rejected = params->metadata.index;
-    raft_free(snapshot.bufs[0].base);
-    raft_configuration_close(&snapshot.configuration);
+    raft_free(params->chunk.base);
+    raft_configuration_close(&params->metadata.configuration);
 
 respond:
     if (r->state == RAFT_FOLLOWER) {
