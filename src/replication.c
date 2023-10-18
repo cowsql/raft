@@ -1312,24 +1312,6 @@ err:
     return rv;
 }
 
-int replicationApplyCommandDone(struct raft *r,
-                                struct raft_apply_command *params,
-                                int status)
-{
-    struct raft_apply *req;
-
-    if (status != 0) {
-        return status;
-    }
-
-    req = (struct raft_apply *)getRequest(r, params->index, RAFT_COMMAND);
-    if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0, params->result);
-    }
-
-    return 0;
-}
-
 /* Apply a RAFT_COMMAND entry that has been committed. */
 static int applyCommand(struct raft *r,
                         const raft_index index,

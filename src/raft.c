@@ -202,12 +202,6 @@ static int persistSnapshotDone(struct raft *r,
     return replicationPersistSnapshotDone(r, params, status);
 }
 
-static int applyCommandDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_apply_command *params = &task->apply_command;
-    return replicationApplyCommandDone(r, params, status);
-}
-
 /* Handle the completion of a task. */
 static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
@@ -234,9 +228,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
             break;
         case RAFT_LOAD_SNAPSHOT:
             rv = loadSnapshotDone(r, task, status);
-            break;
-        case RAFT_APPLY_COMMAND:
-            rv = applyCommandDone(r, task, status);
             break;
         default:
             rv = RAFT_INVALID;

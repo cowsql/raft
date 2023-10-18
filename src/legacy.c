@@ -286,37 +286,6 @@ static int ioForwardLoadSnapshot(struct raft *r, struct raft_task *task)
     return 0;
 }
 
-static int ioForwardApplyCommand(struct raft *r,
-                                 struct raft_task *task,
-                                 struct raft_event *events[],
-                                 unsigned *n_events)
-{
-    struct raft_apply_command *params = &task->apply_command;
-    struct raft_event *event;
-    int rv;
-    rv = r->fsm->apply(r->fsm, params->command, &params->result);
-    if (rv != 0) {
-        return rv;
-    }
-
-    /* Add a completion event immediately, since fsm->apply() is required to be
-     * synchronous */
-    event = eventAppend(events, n_events);
-    if (event == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-
-    event->type = RAFT_DONE;
-    event->time = r->io->time(r->io);
-    event->done.task = *task;
-    event->done.status = 0;
-
-    return 0;
-err:
-    return rv;
-}
-
 struct legacyTakeSnapshot
 {
     struct raft *r;
@@ -550,9 +519,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_LOAD_SNAPSHOT:
                     rv = ioForwardLoadSnapshot(r, task);
-                    break;
-                case RAFT_APPLY_COMMAND:
-                    rv = ioForwardApplyCommand(r, task, &events, &n_events);
                     break;
                 default:
                     rv = RAFT_INVALID;
