@@ -37,9 +37,9 @@ libraft_la_SOURCES = \
   src/recv_request_vote_result.c \
   src/recv_install_snapshot.c \
   src/recv_timeout_now.c \
+  src/restore.c \
   src/replication.c \
   src/snapshot.c \
-  src/start.c \
   src/state.c \
   src/syscall.c \
   src/task.c \

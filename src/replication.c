@@ -18,7 +18,7 @@
 #include "queue.h"
 #include "replication.h"
 #include "request.h"
-#include "snapshot.h"
+#include "restore.h"
 #include "task.h"
 #include "tracing.h"
 
@@ -1225,7 +1225,7 @@ int replicationPersistSnapshotDone(struct raft *r,
         goto discard;
     }
 
-    rv = snapshotRestore(r, &params->metadata);
+    rv = RestoreSnapshot(r, &params->metadata);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", params->metadata.index,
                raft_strerror(status));

@@ -47,10 +47,7 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
     return 0;
 }
 
-/* Restore the entries that were loaded from persistent storage. The most recent
- * configuration entry will be restored as well, if any.
- *
- * Note that if the last configuration entry in the log has index greater than
+/* Note that if the last configuration entry in the log has index greater than
  * one we cannot know if it is committed or not. Therefore we also need to track
  * the second-to-last configuration entry. This second-to-last entry is
  * committed by default as raft doesn't allow multiple uncommitted configuration
@@ -59,16 +56,16 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
  * that the log was truncated after a snapshot and second-to-last configuration
  * is available in r->configuration_last_snapshot, which we popolated earlier
  * when the snapshot was restored. */
-static int restoreEntries(struct raft *r,
-                          raft_index snapshot_index,
-                          raft_term snapshot_term,
-                          raft_index start_index,
-                          struct raft_entry *entries,
-                          size_t n)
+int RestoreEntries(struct raft *r,
+                   raft_index snapshot_index,
+                   raft_term snapshot_term,
+                   raft_index start_index,
+                   struct raft_entry *entries,
+                   unsigned n)
 {
     struct raft_entry *conf = NULL;
     raft_index conf_index = 0;
-    size_t i;
+    unsigned i;
     int rv;
     logStart(r->log, snapshot_index, snapshot_term, start_index);
     r->last_stored = start_index - 1;
@@ -112,6 +109,39 @@ err:
         logDiscard(r->log, r->log->offset + 1);
     }
     return rv;
+}
+
+int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
+{
+    int rv;
+
+    configurationClose(&r->configuration);
+    r->configuration = metadata->configuration;
+    r->configuration_committed_index = metadata->configuration_index;
+    r->configuration_uncommitted_index = 0;
+
+    /* Make a copy of the configuration contained in the snapshot, in case
+     * r->configuration gets overriden with an uncommitted configuration and we
+     * then need to rollback, but the log does not contain anymore the entry at
+     * r->configuration_committed_index because it was truncated. */
+    configurationClose(&r->configuration_last_snapshot);
+    rv = configurationCopy(&r->configuration, &r->configuration_last_snapshot);
+    if (rv != 0) {
+        return rv;
+    }
+
+    /* Make also a copy of the index of the configuration contained in the
+     * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
+    r->configuration_last_snapshot_index = metadata->configuration_index;
+
+    configurationTrace(r, &r->configuration,
+                       "configuration restore from snapshot");
+
+    r->commit_index = metadata->index;
+    r->last_applied = metadata->index;
+    r->last_stored = metadata->index;
+
+    return 0;
 }
 
 /* If we're the only voting server in the configuration, automatically
@@ -192,7 +222,7 @@ int raft_start(struct raft *r)
         metadata.term = snapshot->term;
         metadata.configuration = snapshot->configuration;
         metadata.configuration_index = snapshot->configuration_index;
-        rv = snapshotRestore(r, &metadata);
+        rv = RestoreSnapshot(r, &metadata);
         if (rv != 0) {
             entryBatchesDestroy(entries, n_entries);
             return rv;
@@ -225,8 +255,8 @@ int raft_start(struct raft *r)
     /* Append the entries to the log, possibly restoring the last
      * configuration. */
     tracef("restore %zu entries starting at %llu", n_entries, start_index);
-    rv = restoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
-                        n_entries);
+    rv = RestoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
+                        (unsigned)n_entries);
     if (rv != 0) {
         entryBatchesDestroy(entries, n_entries);
         return rv;
