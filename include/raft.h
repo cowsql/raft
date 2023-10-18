@@ -567,7 +567,6 @@ enum {
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
     RAFT_APPLY_COMMAND,
-    RAFT_RESTORE_SNAPSHOT
 };
 
 /**
@@ -635,14 +634,6 @@ struct raft_apply_command
 };
 
 /**
- * Parameters for tasks of type #RAFT_RESTORE_SNAPSHOT.
- */
-struct raft_restore_snapshot
-{
-    raft_index index;
-};
-
-/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -656,7 +647,6 @@ struct raft_task
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
         struct raft_apply_command apply_command;
-        struct raft_restore_snapshot restore_snapshot;
     };
 };
 
