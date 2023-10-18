@@ -837,6 +837,22 @@ struct raft_log;
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
 
+#define RAFT__SNAPSHOT_FIELDS_V0          \
+    struct                                \
+    {                                     \
+        struct raft_snapshot _pending;    \
+        struct raft_io_snapshot_put _put; \
+    }
+
+#define RAFT__SNAPSHOT_FIELDS_V1                                           \
+    struct                                                                 \
+    {                                                                      \
+        bool taking;     /* A RAFT_TAKE_SNAPSHOT request is in flight */   \
+        bool persisting; /* A RAFT_PERSIT_SNAPSHOT request is in flight */ \
+    }
+
+RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
+
 /**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
@@ -1020,11 +1036,13 @@ struct raft
      */
     struct
     {
-        unsigned threshold;              /* N. of entries before snapshot */
-        unsigned trailing;               /* N. of trailing entries to retain */
-        struct raft_snapshot pending;    /* In progress snapshot */
-        struct raft_io_snapshot_put put; /* Store snapshot request */
-        uint64_t reserved[8];            /* Future use */
+        unsigned threshold; /* N. of entries before snapshot */
+        unsigned trailing;  /* N. of trailing entries to retain */
+        union {
+            RAFT__SNAPSHOT_FIELDS_V0;
+            RAFT__SNAPSHOT_FIELDS_V1;
+        };
+        uint64_t reserved[8]; /* Future use */
     } snapshot;
 
     /*
@@ -1056,6 +1074,9 @@ struct raft
 
 #undef RAFT__RESERVED
 #undef RAFT__EXTENSIONS
+
+#undef RAFT__SNAPSHOT_FIELDS_V1
+#undef RAFT__SNAPSHOT_FIELDS_V2
 
 RAFT_API int raft_init(struct raft *r,
                        struct raft_io *io,

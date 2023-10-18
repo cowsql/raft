@@ -434,21 +434,21 @@ static bool server_installing_snapshot(struct raft_fixture *f, void *data)
 {
     (void)f;
     const struct raft *r = data;
-    return r->snapshot.put.data != NULL && r->last_stored == 0;
+    return r->snapshot.persisting && r->last_stored == 0;
 }
 
 static bool server_taking_snapshot(struct raft_fixture *f, void *data)
 {
     (void)f;
     const struct raft *r = data;
-    return r->snapshot.put.data != NULL && r->last_stored != 0;
+    return r->snapshot.persisting && r->last_stored != 0;
 }
 
 static bool server_snapshot_done(struct raft_fixture *f, void *data)
 {
     (void)f;
     const struct raft *r = data;
-    return r->snapshot.put.data == NULL;
+    return !r->snapshot.persisting;
 }
 
 /* Follower receives HeartBeats during the installation of a snapshot */
@@ -699,7 +699,7 @@ TEST(snapshot, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
     /* Disconnect the servers again so that heartbeats, etc. won't arrive */
     CLUSTER_SATURATE_BOTHWAYS(0, 2);
     munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
-    munit_assert_ptr(CLUSTER_RAFT(2)->snapshot.put.data, !=, NULL);
+    munit_assert_true(CLUSTER_RAFT(2)->snapshot.persisting);
     CLUSTER_STEP_UNTIL_ELAPSED(4000);
     munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
     return MUNIT_OK;

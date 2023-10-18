@@ -1175,25 +1175,18 @@ err:
     return rv;
 }
 
-struct recvInstallSnapshot
-{
-    struct raft *raft;
-};
-
 int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_persist_snapshot *params,
                                    int status)
 {
-    struct recvInstallSnapshot *request = r->snapshot.put.data;
     struct raft_snapshot snapshot;
     struct raft_append_entries_result result;
     int rv;
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
-    assert(request == r->snapshot.put.data);
 
-    r->snapshot.put.data = NULL;
+    r->snapshot.persisting = false;
 
     snapshot.index = params->metadata.index;
     snapshot.term = params->metadata.term;
@@ -1264,8 +1257,6 @@ respond:
         sendAppendEntriesResult(r, &result);
     }
 
-    raft_free(request);
-
     return 0;
 }
 
@@ -1274,7 +1265,6 @@ int replicationInstallSnapshot(struct raft *r,
                                raft_index *rejected,
                                bool *async)
 {
-    struct recvInstallSnapshot *request;
     struct raft_snapshot_metadata metadata;
     raft_term local_term;
     int rv;
@@ -1287,7 +1277,7 @@ int replicationInstallSnapshot(struct raft *r,
     /* If we are taking a snapshot ourselves or installing a snapshot, ignore
      * the request, the leader will eventually retry. TODO: we should do
      * something smarter. */
-    if (r->snapshot.pending.term != 0 || r->snapshot.put.data != NULL) {
+    if (r->snapshot.taking || r->snapshot.persisting) {
         *async = true;
         tracef("already taking or installing snapshot");
         return RAFT_BUSY;
@@ -1315,32 +1305,25 @@ int replicationInstallSnapshot(struct raft *r,
 
     r->last_stored = 0;
 
-    request = raft_malloc(sizeof *request);
-    if (request == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-    request->raft = r;
+    assert(!r->snapshot.persisting);
+    r->snapshot.persisting = true;
 
+    metadata.index = args->last_index;
     metadata.term = args->last_term;
     metadata.index = args->last_index;
     metadata.configuration_index = args->conf_index;
     metadata.configuration = args->conf;
 
-    assert(r->snapshot.put.data == NULL);
-    r->snapshot.put.data = request;
     rv = TaskPersistSnapshot(r, metadata, 0, args->data, true /* last */);
     if (rv != 0) {
         tracef("snapshot_put failed %d", rv);
-        goto err_after_request_alloc;
+        goto err;
     }
 
     return 0;
 
-err_after_request_alloc:
-    r->snapshot.put.data = NULL;
-    raft_free(request);
 err:
+    r->snapshot.persisting = false;
     assert(rv != 0);
     return rv;
 }
@@ -1571,7 +1554,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
 inline bool replicationInstallSnapshotBusy(struct raft *r)
 {
-    return r->last_stored == 0 && r->snapshot.put.data != NULL;
+    return r->last_stored == 0 && r->snapshot.persisting;
 }
 
 #undef tracef
