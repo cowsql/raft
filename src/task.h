@@ -65,26 +65,4 @@ int TaskPersistSnapshot(struct raft *r,
  */
 int TaskLoadSnapshot(struct raft *r, raft_index index, size_t offset);
 
-/* Create and enqueue a RAFT_APPLY_COMMAND task to apply to the application FSM
- * the given command, contained in the entry at the given index.
- *
- * Errors:
- *
- * RAFT_NOMEM
- *     The r->tasks array could not be resized to fit the new task.
- */
-int TaskApplyCommand(struct raft *r,
-                     raft_index index,
-                     const struct raft_buffer *command);
-
-/* Create and enqueue a RAFT_TAKE_SNAPSHOT task to reset the state of the
- * application FSM using the snapshot at the given index.
- *
- * Errors:
- *
- * RAFT_NOMEM
- *     The r->tasks array could not be resized to fit the new task.
- */
-int TaskRestoreSnapshot(struct raft *r, raft_index index);
-
 #endif /* RAFT_TASK_H_ */

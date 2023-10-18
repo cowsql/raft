@@ -566,8 +566,6 @@ enum {
     RAFT_PERSIST_TERM_AND_VOTE,
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
-    RAFT_APPLY_COMMAND,
-    RAFT_RESTORE_SNAPSHOT
 };
 
 /**
@@ -625,24 +623,6 @@ struct raft_persist_snapshot
 };
 
 /**
- * Parameters fork tasks of type #RAFT_APPLY_COMMAND.
- */
-struct raft_apply_command
-{
-    raft_index index;
-    const struct raft_buffer *command;
-    void *result; /* TODO: drop this field */
-};
-
-/**
- * Parameters for tasks of type #RAFT_RESTORE_SNAPSHOT.
- */
-struct raft_restore_snapshot
-{
-    raft_index index;
-};
-
-/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -655,8 +635,6 @@ struct raft_task
         struct raft_load_snapshot load_snapshot;
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
-        struct raft_apply_command apply_command;
-        struct raft_restore_snapshot restore_snapshot;
     };
 };
 
@@ -818,21 +796,16 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                       \
-    struct                                                                     \
-    {                                                                          \
-        raft_time now;           /* Current time, updated via raft_step() */   \
-        unsigned random;         /* Pseudo-random number generator state */    \
-        struct raft_task *tasks; /* Queue of pending raft_task operations */   \
-        unsigned n_tasks;        /* Length of the task queue */                \
-        unsigned n_tasks_cap;    /* Capacity of the task queue */              \
-        /* Index of the last snapshot that was taken */                        \
-        raft_index configuration_last_snapshot_index;                          \
-        /* Cache of the data of last snapshot that was persisted or loaded     \
-         * from disk at startup. This is necessary in order to execute         \
-         * TaskRestoreSnapshot tasks synchronously, since legacy raft_io-based \
-         * expects that. */                                                    \
-        struct raft_buffer io_snapshot_restore;                                \
+#define RAFT__EXTENSIONS                                                     \
+    struct                                                                   \
+    {                                                                        \
+        raft_time now;           /* Current time, updated via raft_step() */ \
+        unsigned random;         /* Pseudo-random number generator state */  \
+        struct raft_task *tasks; /* Queue of pending raft_task operations */ \
+        unsigned n_tasks;        /* Length of the task queue */              \
+        unsigned n_tasks_cap;    /* Capacity of the task queue */            \
+        /* Index of the last snapshot that was taken */                      \
+        raft_index configuration_last_snapshot_index;                        \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);

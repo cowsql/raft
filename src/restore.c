@@ -205,11 +205,7 @@ int raft_start(struct raft *r)
 
         /* Save the snapshot data in the cache, it will be used by legacy compat
          * code to avoid loading the snapshot asynchronously. */
-        assert(r->io_snapshot_restore.base == NULL);
-        assert(r->io_snapshot_restore.len == 0);
-        r->io_snapshot_restore = snapshot->bufs[0];
-
-        rv = TaskRestoreSnapshot(r, snapshot->index);
+        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
         if (rv != 0) {
             tracef("restore snapshot %llu: %s", snapshot->index,
                    errCodeToString(rv));

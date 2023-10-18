@@ -113,8 +113,6 @@ int raft_init(struct raft *r,
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
-    r->io_snapshot_restore.base = NULL;
-    r->io_snapshot_restore.len = 0;
     return 0;
 
 err_after_address_alloc:
@@ -204,12 +202,6 @@ static int persistSnapshotDone(struct raft *r,
     return replicationPersistSnapshotDone(r, params, status);
 }
 
-static int applyCommandDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_apply_command *params = &task->apply_command;
-    return replicationApplyCommandDone(r, params, status);
-}
-
 /* Handle the completion of a task. */
 static int stepDone(struct raft *r, struct raft_task *task, int status)
 {
@@ -236,9 +228,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
             break;
         case RAFT_LOAD_SNAPSHOT:
             rv = loadSnapshotDone(r, task, status);
-            break;
-        case RAFT_APPLY_COMMAND:
-            rv = applyCommandDone(r, task, status);
             break;
         default:
             rv = RAFT_INVALID;
