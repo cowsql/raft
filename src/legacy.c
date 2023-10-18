@@ -487,35 +487,6 @@ abort:
     return;
 }
 
-static int ioForwardRestoreSnapshot(struct raft *r,
-                                    struct raft_task *task,
-                                    struct raft_event *events[],
-                                    unsigned *n_events)
-{
-    struct raft_event *event;
-    int rv;
-
-    assert(r->io_snapshot_restore.base != NULL);
-    assert(r->io_snapshot_restore.len > 0);
-
-    rv = r->fsm->restore(r->fsm, &r->io_snapshot_restore);
-
-    r->io_snapshot_restore.base = NULL;
-    r->io_snapshot_restore.len = 0;
-
-    event = eventAppend(events, n_events);
-    if (event == NULL) {
-        return RAFT_NOMEM;
-    }
-
-    event->type = RAFT_DONE;
-    event->time = r->io->time(r->io);
-    event->done.task = *task;
-    event->done.status = rv;
-
-    return 0;
-}
-
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_event *events;
@@ -582,9 +553,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     break;
                 case RAFT_APPLY_COMMAND:
                     rv = ioForwardApplyCommand(r, task, &events, &n_events);
-                    break;
-                case RAFT_RESTORE_SNAPSHOT:
-                    rv = ioForwardRestoreSnapshot(r, task, &events, &n_events);
                     break;
                 default:
                     rv = RAFT_INVALID;

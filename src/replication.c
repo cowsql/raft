@@ -1204,21 +1204,13 @@ int replicationPersistSnapshotDone(struct raft *r,
         goto discard;
     }
 
-    if (r->io != NULL) {
-        /* Save the snapshot data in the cache, it will be used by legacy compat
-         * code to avoid loading the snapshot asynchronously. */
-        assert(r->io_snapshot_restore.base == NULL);
-        assert(r->io_snapshot_restore.len == 0);
-        r->io_snapshot_restore = params->chunk;
-    }
-
     /* From Figure 5.3:
      *
      *   7. Discard the entire log
      *   8. Reset state machine using snapshot contents (and load lastConfig
      *      as cluster configuration).
      */
-    rv = TaskRestoreSnapshot(r, params->metadata.index);
+    rv = r->fsm->restore(r->fsm, &params->chunk);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", params->metadata.index,
                errCodeToString(rv));
