@@ -109,6 +109,7 @@ int raft_init(struct raft *r,
         }
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
+        r->legacy.last_applied = 0;
     }
     r->tasks = NULL;
     r->n_tasks = 0;
