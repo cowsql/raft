@@ -551,8 +551,13 @@ TEST(snapshot, installSnapshotDuringEntriesWrite, setUp, tearDown, 0, NULL)
     /* Set a large disk latency on the follower, this will allow a
      * InstallSnapshot RPC to arrive while the entries are being persisted. */
     CLUSTER_SET_DISK_LATENCY(1, 2000);
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
+
+    /* Set a low snapshot threshold on the leader (only do that on the leader,
+     * and not on the follower, otherwise the follower would trigger a snapshot
+     * and then receive the InstallSnapshot message while the snapshot is in
+     * progress, and would reject it. */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 3);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(0), 1);
 
     /* Replicate some entries, these will take a while to persist */
     CLUSTER_MAKE_PROGRESS;

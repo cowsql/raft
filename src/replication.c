@@ -1073,43 +1073,6 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
-    /* From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (args->leader_commit > r->commit_index &&
-        r->last_stored >= r->commit_index) {
-        r->commit_index = min(args->leader_commit, r->last_stored);
-    }
-
-    /* If this is an empty AppendEntries, there's nothing to write. However we
-     * still want to check if we can commit some entry. However, don't commit
-     * anything while a snapshot install is busy, r->last_stored will be 0 in
-     * that case.
-     *
-     * From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (n == 0) {
-        if (!replicationInstallSnapshotBusy(r)) {
-            rv = replicationApply(r);
-            if (rv != 0) {
-                return rv;
-            }
-        }
-        return 0;
-    }
-
-    *async = true;
-
-    /* Index of first new entry */
-    index = args->prev_log_index + 1 + i;
-
     /* Update our in-memory log to reflect that we received these entries. We'll
      * notify the leader of a successful append once the write entries request
      * that we issue below actually completes.  */
@@ -1131,6 +1094,42 @@ int replicationAppend(struct raft *r,
             goto err;
         }
     }
+
+    /* From Figure 3.1:
+     *
+     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
+     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
+     *   entry).
+     */
+    if (args->leader_commit > r->commit_index) {
+        r->commit_index = min(args->leader_commit, logLastIndex(r->log));
+    }
+
+    /* If this is an empty AppendEntries, there's nothing to write. However we
+     * still want to check if we can commit some entry. However, don't commit
+     * anything while a snapshot install is busy, r->last_stored will be 0 in
+     * that case.
+     *
+     * From Figure 3.1:
+     *
+     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
+     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
+     *   entry).
+     */
+    if (!replicationInstallSnapshotBusy(r)) {
+        rv = replicationApply(r);
+        if (rv != 0) {
+            return rv;
+        }
+    }
+    if (n == 0) {
+        return 0;
+    }
+
+    *async = true;
+
+    /* Index of first new entry */
+    index = args->prev_log_index + 1 + i;
 
     /* Acquire the relevant entries from the log. */
     rv = logAcquire(r->log, index, &entries, &n_entries);
