@@ -6,6 +6,7 @@
 #include "legacy.h"
 #include "membership.h"
 #include "progress.h"
+#include "queue.h"
 #include "replication.h"
 #include "tracing.h"
 
@@ -184,7 +185,10 @@ static int tickLeader(struct raft *r)
             change = r->leader_state.change;
             r->leader_state.change = NULL;
             if (change != NULL && change->cb != NULL) {
-                change->cb(change, RAFT_NOCONNECTION);
+                /* XXX: set the type here, since it's not done in client.c */
+                change->type = RAFT_CHANGE;
+                change->status = RAFT_NOCONNECTION;
+                QUEUE_PUSH(&r->legacy.requests, &change->queue);
             }
         }
     }
