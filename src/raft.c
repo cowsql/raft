@@ -11,6 +11,7 @@
 #include "err.h"
 #include "flags.h"
 #include "heap.h"
+#include "legacy.h"
 #include "log.h"
 #include "membership.h"
 #include "queue.h"
@@ -150,6 +151,9 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     assert(r->close_cb == NULL);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
+        if (r->io != NULL) {
+            LegacyFireCompletedRequests(r);
+        }
     }
     r->close_cb = cb;
     if (r->io != NULL) {
