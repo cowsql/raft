@@ -1073,6 +1073,28 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
+    /* Update our in-memory log to reflect that we received these entries. We'll
+     * notify the leader of a successful append once the write entries request
+     * that we issue below actually completes.  */
+    for (j = 0; j < n; j++) {
+        struct raft_entry *entry = &args->entries[i + j];
+        /* TODO This copy should not strictly be necessary, as the batch logic
+         * will take care of freeing the batch buffer in which the entries are
+         * received. However, this would lead to memory spikes in certain edge
+         * cases. https://github.com/canonical/dqlite/issues/276
+         */
+        struct raft_entry copy = {0};
+        rv = entryCopy(entry, &copy);
+        if (rv != 0) {
+            goto err;
+        }
+
+        rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
+        if (rv != 0) {
+            goto err;
+        }
+    }
+
     /* From Figure 3.1:
      *
      *   AppendEntries RPC: Receiver implementation: If leaderCommit >
@@ -1109,28 +1131,6 @@ int replicationAppend(struct raft *r,
 
     /* Index of first new entry */
     index = args->prev_log_index + 1 + i;
-
-    /* Update our in-memory log to reflect that we received these entries. We'll
-     * notify the leader of a successful append once the write entries request
-     * that we issue below actually completes.  */
-    for (j = 0; j < n; j++) {
-        struct raft_entry *entry = &args->entries[i + j];
-        /* TODO This copy should not strictly be necessary, as the batch logic
-         * will take care of freeing the batch buffer in which the entries are
-         * received. However, this would lead to memory spikes in certain edge
-         * cases. https://github.com/canonical/dqlite/issues/276
-         */
-        struct raft_entry copy = {0};
-        rv = entryCopy(entry, &copy);
-        if (rv != 0) {
-            goto err;
-        }
-
-        rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
-        if (rv != 0) {
-            goto err;
-        }
-    }
 
     /* Acquire the relevant entries from the log. */
     rv = logAcquire(r->log, index, &entries, &n_entries);
