@@ -9,4 +9,7 @@
  * legacy raft_io interface. */
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event);
 
+/* Fire the callbacks of all completed client requests. */
+void LegacyFireCompletedRequests(struct raft *r);
+
 #endif /* RAFT_LEGACY_H_ */

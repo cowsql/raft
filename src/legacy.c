@@ -473,8 +473,7 @@ static void legacyFireChange(struct raft_change *req)
     req->cb(req, req->status);
 }
 
-/* Fire the callbacks of all completed requests */
-static void legacyFireCompletedRequests(struct raft *r)
+void LegacyFireCompletedRequests(struct raft *r)
 {
     while (!QUEUE_IS_EMPTY(&r->legacy.requests)) {
         struct request *req;
@@ -531,7 +530,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             goto err;
         }
 
-        legacyFireCompletedRequests(r);
+        LegacyFireCompletedRequests(r);
 
         if (legacyShouldTakeSnapshot(r)) {
             legacyTakeSnapshot(r);
