@@ -469,21 +469,25 @@ static int leaderPersistEntriesDone(struct raft *r,
                 case RAFT_COMMAND: {
                     struct raft_apply *apply = (struct raft_apply *)req;
                     if (apply->cb) {
-                        apply->cb(apply, status, NULL);
+                        apply->status = status;
+                        apply->result = NULL;
+                        QUEUE_PUSH(&r->legacy.requests, &apply->queue);
                     }
                     break;
                 }
                 case RAFT_BARRIER: {
                     struct raft_barrier *barrier = (struct raft_barrier *)req;
                     if (barrier->cb) {
-                        barrier->cb(barrier, status);
+                        barrier->status = status;
+                        QUEUE_PUSH(&r->legacy.requests, &barrier->queue);
                     }
                     break;
                 }
                 case RAFT_CHANGE: {
                     struct raft_change *change = (struct raft_change *)req;
                     if (change->cb) {
-                        change->cb(change, status);
+                        change->status = status;
+                        QUEUE_PUSH(&r->legacy.requests, &change->queue);
                     }
                     break;
                 }
