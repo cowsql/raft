@@ -809,7 +809,8 @@ struct raft_log;
         /* Fields used by the v0 compatibility code */                       \
         struct                                                               \
         {                                                                    \
-            raft_index last_applied;                                         \
+            raft_index last_applied; /* Last index applied to raft_fsm */    \
+            void *requests[2];       /* Completed client requests */         \
         } legacy;                                                            \
     }
 
@@ -1231,10 +1232,11 @@ RAFT_API raft_index raft_last_applied(struct raft *r);
     }
 
 /* Extended RAFT__REQUEST fields added after the v0.x ABI freeze. */
-#define RAFT__REQUEST_EXTENSIONS                                        \
-    struct                                                              \
-    {                                                                   \
-        int status; /* Store the request result, for delayed firing. */ \
+#define RAFT__REQUEST_EXTENSIONS                                              \
+    struct                                                                    \
+    {                                                                         \
+        int status;   /* Store the request status code, for delayed firing */ \
+        void *result; /* For raft_apply, store the request result */          \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__REQUEST_RESERVED, RAFT__REQUEST_EXTENSIONS);
