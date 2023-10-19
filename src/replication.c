@@ -1117,13 +1117,13 @@ int replicationAppend(struct raft *r,
      *   commitIndex, set commitIndex = min(leaderCommit, index of last new
      *   entry).
      */
-    if (n == 0) {
-        if (!replicationInstallSnapshotBusy(r)) {
-            rv = replicationApply(r);
-            if (rv != 0) {
-                return rv;
-            }
+    if (!replicationInstallSnapshotBusy(r)) {
+        rv = replicationApply(r);
+        if (rv != 0) {
+            return rv;
         }
+    }
+    if (n == 0) {
         return 0;
     }
 
