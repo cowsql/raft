@@ -186,7 +186,8 @@ RAFT_API unsigned long long raft_digest(const char *text, unsigned long long n);
 enum {
     RAFT_COMMAND = 1, /* Command for the application FSM. */
     RAFT_BARRIER,     /* Wait for all previous commands to be applied. */
-    RAFT_CHANGE       /* Raft configuration change. */
+    RAFT_CHANGE,      /* Raft configuration change. */
+    RAFT_TRANSFER,    /* Raft leadership trasfer */
 };
 
 /**
@@ -647,7 +648,6 @@ enum {
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
     RAFT_SUBMIT,   /* New entries have been submitted. */
-    RAFT_TRANSFER, /* Submission of leadership trasfer request */
 };
 
 /**

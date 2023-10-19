@@ -473,6 +473,11 @@ static void legacyFireChange(struct raft_change *req)
     req->cb(req, req->status);
 }
 
+static void legacyFireTransfer(struct raft_transfer *req)
+{
+    req->cb(req);
+}
+
 void LegacyFireCompletedRequests(struct raft *r)
 {
     while (!QUEUE_IS_EMPTY(&r->legacy.requests)) {
@@ -490,6 +495,9 @@ void LegacyFireCompletedRequests(struct raft *r)
                 break;
             case RAFT_CHANGE:
                 legacyFireChange((struct raft_change *)req);
+                break;
+            case RAFT_TRANSFER:
+                legacyFireTransfer((struct raft_transfer *)req);
                 break;
         };
     }

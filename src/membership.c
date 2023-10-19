@@ -7,6 +7,7 @@
 #include "heap.h"
 #include "log.h"
 #include "progress.h"
+#include "queue.h"
 #include "task.h"
 #include "tracing.h"
 
@@ -249,6 +250,7 @@ void membershipLeadershipTransferClose(struct raft *r)
     raft_transfer_cb cb = req->cb;
     r->transfer = NULL;
     if (cb != NULL) {
-        cb(req);
+        req->type = RAFT_TRANSFER;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
