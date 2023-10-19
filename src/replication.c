@@ -1328,7 +1328,9 @@ static int applyCommand(struct raft *r,
 
     req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0, result);
+        req->status = 0;
+        req->result = result;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
     return 0;
 }
@@ -1341,7 +1343,8 @@ static void applyBarrier(struct raft *r, const raft_index index)
     struct raft_barrier *req;
     req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, 0);
+        req->status = 0;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
 
@@ -1385,7 +1388,10 @@ static void applyChange(struct raft *r, const raft_index index)
         }
 
         if (req != NULL && req->cb != NULL) {
-            req->cb(req, 0);
+            /* XXX: set the type here, since it's not done in client.c */
+            req->type = RAFT_CHANGE;
+            req->status = 0;
+            QUEUE_PUSH(&r->legacy.requests, &req->queue);
         }
     }
 }
