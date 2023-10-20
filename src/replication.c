@@ -1101,8 +1101,9 @@ int replicationAppend(struct raft *r,
      *   commitIndex, set commitIndex = min(leaderCommit, index of last new
      *   entry).
      */
-    if (args->leader_commit > r->commit_index) {
-        r->commit_index = min(args->leader_commit, logLastIndex(r->log));
+    if (args->leader_commit > r->commit_index &&
+        r->last_stored >= r->commit_index) {
+        r->commit_index = min(args->leader_commit, r->last_stored);
     }
 
     /* If this is an empty AppendEntries, there's nothing to write. However we
