@@ -330,7 +330,14 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
-    if (r->state == RAFT_UNAVAILABLE) {
+    /* We might have converted to RAFT_UNAVAILBLE if we are shutting down.
+     *
+     * Or the snapshot's index might not be in the log anymore because the
+     * associated entry failed to be persisted and got truncated (TODO: we
+     * should retry instead of truncating). */
+    assert(metadata.term != 0);
+    if (r->state == RAFT_UNAVAILABLE ||
+        logTermOf(r->log, metadata.index) != metadata.term) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
     }
