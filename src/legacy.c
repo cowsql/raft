@@ -4,7 +4,9 @@
 #include "err.h"
 #include "log.h"
 #include "membership.h"
+#include "queue.h"
 #include "replication.h"
+#include "request.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -456,6 +458,43 @@ abort:
     return;
 }
 
+static void legacyFireApply(struct raft_apply *req)
+{
+    req->cb(req, req->status, req->result);
+}
+
+static void legacyFireBarrier(struct raft_barrier *req)
+{
+    req->cb(req, req->status);
+}
+
+static void legacyFireChange(struct raft_change *req)
+{
+    req->cb(req, req->status);
+}
+
+void LegacyFireCompletedRequests(struct raft *r)
+{
+    while (!QUEUE_IS_EMPTY(&r->legacy.requests)) {
+        struct request *req;
+        queue *head;
+        head = QUEUE_HEAD(&r->legacy.requests);
+        QUEUE_REMOVE(head);
+        req = QUEUE_DATA(head, struct request, queue);
+        switch (req->type) {
+            case RAFT_COMMAND:
+                legacyFireApply((struct raft_apply *)req);
+                break;
+            case RAFT_BARRIER:
+                legacyFireBarrier((struct raft_barrier *)req);
+                break;
+            case RAFT_CHANGE:
+                legacyFireChange((struct raft_change *)req);
+                break;
+        };
+    }
+}
+
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_event *events;
@@ -490,6 +529,8 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         if (rv != 0) {
             goto err;
         }
+
+        LegacyFireCompletedRequests(r);
 
         if (legacyShouldTakeSnapshot(r)) {
             legacyTakeSnapshot(r);
