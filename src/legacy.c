@@ -330,6 +330,11 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
+    if (r->state == RAFT_UNAVAILABLE) {
+        tracef("cancelling snapshot");
+        status = RAFT_CANCELED;
+    }
+
     if (status != 0) {
         tracef("snapshot %lld at term %lld: %s", snapshot->index,
                snapshot->term, raft_strerror(status));
