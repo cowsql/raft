@@ -537,6 +537,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 
         LegacyFireCompletedRequests(r);
 
+        if (r->legacy.step_cb != NULL) {
+            r->legacy.step_cb(r);
+        }
+
         if (legacyShouldTakeSnapshot(r)) {
             legacyTakeSnapshot(r);
         }
