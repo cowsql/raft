@@ -809,7 +809,8 @@ struct raft_log;
         /* Fields used by the v0 compatibility code */                       \
         struct                                                               \
         {                                                                    \
-            void *requests[2]; /* Completed client requests */               \
+            void *requests[2];              /* Completed client requests */  \
+            void (*step_cb)(struct raft *); /* Invoked after raft_step() */  \
         } legacy;                                                            \
     }
 

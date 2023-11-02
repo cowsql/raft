@@ -112,6 +112,7 @@ int raft_init(struct raft *r,
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
         QUEUE_INIT(&r->legacy.requests);
+        r->legacy.step_cb = NULL;
     }
     r->tasks = NULL;
     r->n_tasks = 0;
@@ -148,6 +149,7 @@ static void ioCloseCb(struct raft_io *io)
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
+    assert(r->n_tasks == 0);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
         if (r->io != NULL) {

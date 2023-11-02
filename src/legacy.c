@@ -330,6 +330,18 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
+    /* We might have converted to RAFT_UNAVAILBLE if we are shutting down.
+     *
+     * Or the snapshot's index might not be in the log anymore because the
+     * associated entry failed to be persisted and got truncated (TODO: we
+     * should retry instead of truncating). */
+    assert(metadata.term != 0);
+    if (r->state == RAFT_UNAVAILABLE ||
+        logTermOf(r->log, metadata.index) != metadata.term) {
+        tracef("cancelling snapshot");
+        status = RAFT_CANCELED;
+    }
+
     if (status != 0) {
         tracef("snapshot %lld at term %lld: %s", snapshot->index,
                snapshot->term, raft_strerror(status));
@@ -531,6 +543,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
 
         LegacyFireCompletedRequests(r);
+
+        if (r->legacy.step_cb != NULL) {
+            r->legacy.step_cb(r);
+        }
 
         if (legacyShouldTakeSnapshot(r)) {
             legacyTakeSnapshot(r);

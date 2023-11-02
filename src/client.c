@@ -249,6 +249,7 @@ int raft_assign(struct raft *r,
                 raft_change_cb cb)
 {
     const struct raft_server *server;
+    struct raft_event event;
     unsigned server_index;
     raft_index last_index;
     int rv;
@@ -338,6 +339,16 @@ int raft_assign(struct raft *r,
         /* This error is not fatal. */
         tracef("failed to send append entries to server %llu: %s (%d)",
                server->id, raft_strerror(rv), rv);
+    }
+
+    /* Use a dummy event to trigger handling of possible RAFT_SEND_MESSAGE
+     * tasks.
+     *
+     * TODO: find a better solucation. */
+    if (r->io != NULL) {
+        event.type = 255;
+        event.time = r->now;
+        LegacyForwardToRaftIo(r, &event);
     }
 
     return 0;
