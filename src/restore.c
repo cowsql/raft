@@ -229,13 +229,6 @@ int raft_start(struct raft *r)
         snapshot_term = snapshot->term;
         raft_free(snapshot);
 
-        /* Use a dummy event to trigger handling of the RAFT_RESTORE_SNAPSHOT
-         * task.
-         *
-         * TODO: use the start event instead. */
-        event.type = 255;
-        event.time = r->now;
-        LegacyForwardToRaftIo(r, &event);
     } else if (n_entries > 0) {
         /* If we don't have a snapshot and the on-disk log is not empty, then
          * the first entry must be a configuration entry. */

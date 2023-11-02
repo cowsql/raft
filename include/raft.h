@@ -806,6 +806,11 @@ struct raft_log;
         unsigned n_tasks_cap;    /* Capacity of the task queue */            \
         /* Index of the last snapshot that was taken */                      \
         raft_index configuration_last_snapshot_index;                        \
+        /* Fields used by the v0 compatibility code */                       \
+        struct                                                               \
+        {                                                                    \
+            void *requests[2]; /* Completed client requests */               \
+        } legacy;                                                            \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -1218,21 +1223,42 @@ RAFT_API raft_index raft_last_index(struct raft *r);
  */
 RAFT_API raft_index raft_last_applied(struct raft *r);
 
+/* Unused uint64_t slots that are reserved for v0.x extensions.*/
+#define RAFT__REQUEST_RESERVED \
+    struct                     \
+    {                          \
+        uint64_t reserved[4];  \
+    }
+
+/* Extended RAFT__REQUEST fields added after the v0.x ABI freeze. */
+#define RAFT__REQUEST_EXTENSIONS                                              \
+    struct                                                                    \
+    {                                                                         \
+        int status;   /* Store the request status code, for delayed firing */ \
+        void *result; /* For raft_apply, store the request result */          \
+    }
+
+RAFT__ASSERT_COMPATIBILITY(RAFT__REQUEST_RESERVED, RAFT__REQUEST_EXTENSIONS);
+
 /**
  * Common fields across client request types.
  * `req_id`, `client_id` and `unique_id` are currently unused.
  * `reserved` fields should be replaced by new members with the same size
  * and alignment requirements as `uint64_t`.
  */
-#define RAFT__REQUEST      \
-    void *data;            \
-    int type;              \
-    raft_index index;      \
-    void *queue[2];        \
-    uint8_t req_id[16];    \
-    uint8_t client_id[16]; \
-    uint8_t unique_id[16]; \
-    uint64_t reserved[4]
+#define RAFT__REQUEST                                                         \
+    void *data;                                                               \
+    int type;                                                                 \
+    raft_index index;                                                         \
+    void *queue[2];                                                           \
+    uint8_t req_id[16];                                                       \
+    uint8_t client_id[16];                                                    \
+    uint8_t unique_id[16];                                                    \
+    /* Fields added after the v0.x ABI freeze, packed in the unused space. */ \
+    union {                                                                   \
+        RAFT__REQUEST_RESERVED;                                               \
+        RAFT__REQUEST_EXTENSIONS;                                             \
+    }
 
 /**
  * Asynchronous request to append a new command entry to the log and apply it to

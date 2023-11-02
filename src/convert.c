@@ -53,24 +53,30 @@ static void convertClearCandidate(struct raft *r)
     }
 }
 
-static void convertFailApply(struct raft_apply *req)
+static void convertFailApply(struct raft *r, struct raft_apply *req)
 {
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, RAFT_LEADERSHIPLOST, NULL);
+        req->status = RAFT_LEADERSHIPLOST;
+        req->result = NULL;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
 
-static void convertFailBarrier(struct raft_barrier *req)
+static void convertFailBarrier(struct raft *r, struct raft_barrier *req)
 {
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, RAFT_LEADERSHIPLOST);
+        req->status = RAFT_LEADERSHIPLOST;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
 
-static void convertFailChange(struct raft_change *req)
+static void convertFailChange(struct raft *r, struct raft_change *req)
 {
     if (req != NULL && req->cb != NULL) {
-        req->cb(req, RAFT_LEADERSHIPLOST);
+        /* XXX: set the type here, since it's not done in client.c */
+        req->type = RAFT_CHANGE;
+        req->status = RAFT_LEADERSHIPLOST;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
 
@@ -93,10 +99,10 @@ static void convertClearLeader(struct raft *r)
         assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
         switch (req->type) {
             case RAFT_COMMAND:
-                convertFailApply((struct raft_apply *)req);
+                convertFailApply(r, (struct raft_apply *)req);
                 break;
             case RAFT_BARRIER:
-                convertFailBarrier((struct raft_barrier *)req);
+                convertFailBarrier(r, (struct raft_barrier *)req);
                 break;
         };
     }
@@ -104,7 +110,7 @@ static void convertClearLeader(struct raft *r)
     /* Fail any promote request that is still outstanding because the server is
      * still catching up and no entry was submitted. */
     if (r->leader_state.change != NULL) {
-        convertFailChange(r->leader_state.change);
+        convertFailChange(r, r->leader_state.change);
         r->leader_state.change = NULL;
     }
 }
