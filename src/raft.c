@@ -13,6 +13,7 @@
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
+#include "queue.h"
 #include "recv.h"
 #include "replication.h"
 #include "tracing.h"
@@ -109,6 +110,7 @@ int raft_init(struct raft *r,
         }
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
+        QUEUE_INIT(&r->legacy.requests);
     }
     r->tasks = NULL;
     r->n_tasks = 0;
