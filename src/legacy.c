@@ -398,6 +398,13 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
         return false;
     }
 
+    /* If the last committed index is not anymore in our log, it means that the
+     * log got truncated because we have received an InstallSnapshot
+     * message. Don't take a snapshot now.*/
+    if (logTermOf(r->log, r->commit_index) == 0) {
+        return false;
+    }
+
     return true;
 }
 
