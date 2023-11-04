@@ -81,10 +81,17 @@ static int refsTryInsert(struct raft_entry_ref *table,
         /* All entries in a bucket must have the same index. */
         assert(next_slot->index == index);
 
-        /* It should never happen that two entries with the same index and term
-         * get appended. So no existing slot in this bucket must track an entry
-         * with the same term as the given one. */
-        assert(next_slot->term != term);
+        /* It might happen that two entries with the same index and term get
+         * appended. For example if the same entry was truncated by a leader
+         * because it failed to be written to disk, but it is then received
+         * again from a new leader, while the old leader's reference count for
+         * that entry hasn't dropped to zero yet (e.g. it's being sent). In that
+         * case we return an error, and let the leader retry the AppendEntries,
+         * until it eventually succeed when all references to the old entry are
+         * gone. */
+        if (next_slot->term == term) {
+            return RAFT_BUSY;
+        }
 
         last_slot = next_slot;
     }
@@ -235,7 +242,7 @@ static int refsInit(struct raft_log *l,
 
         rc = refsTryInsert(l->refs, l->refs_size, term, index, 1, &collision);
         if (rc != 0) {
-            return RAFT_NOMEM;
+            return rc;
         }
 
         if (!collision) {
