@@ -625,6 +625,29 @@ TEST(logAppend, oomRefs, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* Return an error when trying to append an entry with the same index and term
+ * of an older entry that got trucated but its still referenced. */
+TEST(logAppend, busy, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry *entries1;
+    struct raft_entry *entries2;
+    struct raft_entry *entries;
+    unsigned n;
+    APPEND(1 /* term */);
+    ACQUIRE(1);
+    entries1 = entries;
+    ACQUIRE(1);
+    entries2 = entries;
+    TRUNCATE(1);
+    entries = entries1;
+    RELEASE(1);
+    APPEND_ERROR(1 /* term */, RAFT_BUSY);
+    entries = entries2;
+    RELEASE(1);
+    return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * logAppendConfiguration

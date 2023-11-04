@@ -1069,8 +1069,6 @@ int replicationAppend(struct raft *r,
         return rv;
     }
 
-    *rejected = 0;
-
     n = args->n_entries - i; /* Number of new entries */
 
     /* Update our in-memory log to reflect that we received these entries. We'll
@@ -1091,9 +1089,12 @@ int replicationAppend(struct raft *r,
 
         rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
         if (rv != 0) {
+            raft_free(copy.buf.base);
             goto err;
         }
     }
+
+    *rejected = 0;
 
     /* From Figure 3.1:
      *
