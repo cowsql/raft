@@ -232,6 +232,7 @@ static void *setUpDeps(const MunitParameter params[], void *user_data)
     SETUP_UV_DEPS;
     SETUP_TCP;
     PEER_SETUP;
+    f->io.version = 0; /* Magic value to avoid assuming that io.data is raft */
     f->io.data = f;
     f->closed = false;
     return f;
@@ -251,6 +252,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
     struct fixture *f = setUpDeps(params, user_data);
     int rv;
     SETUP_UV;
+    f->io.version = 0; /* Magic value to avoid assuming that io.data is raft */
     f->io.data = f;
     rv = f->io.start(&f->io, 10000, NULL, recvCb);
     munit_assert_int(rv, ==, 0);

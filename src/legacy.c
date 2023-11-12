@@ -551,8 +551,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             goto err;
         }
 
-        LegacyFireCompletedRequests(r);
-
         if (r->legacy.step_cb != NULL) {
             r->legacy.step_cb(r);
         }

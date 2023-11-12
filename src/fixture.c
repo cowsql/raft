@@ -9,6 +9,7 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
+#include "legacy.h"
 #include "log.h"
 #include "queue.h"
 #include "random.h"
@@ -1504,6 +1505,11 @@ struct raft_fixture_event *raft_fixture_step(struct raft_fixture *f)
         fireTick(f, i);
     } else {
         completeRequest(f, j, completion_time);
+    }
+
+    for (j = 0; j < f->n; j++) {
+        struct raft *r = &f->servers[j]->raft;
+        LegacyFireCompletedRequests(r);
     }
 
     /* If the leader has not changed check the Leader Append-Only
