@@ -57,9 +57,9 @@ static void ioSendMessageCb(struct raft_io_send *send, int status)
 
 static int ioSendMessage(struct raft *r, struct raft_task *task)
 {
-    struct raft_send_message *params = &task->send_message;
+    struct raft_send_message *params;
     struct ioForwardSendMessage *req;
-    struct raft_message message;
+    struct raft_message *message;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -70,11 +70,13 @@ static int ioSendMessage(struct raft *r, struct raft_task *task)
     req->task = *task;
     req->send.data = req;
 
-    message = params->message;
-    message.server_id = params->id;
-    message.server_address = params->address;
+    params = &req->task.send_message;
 
-    rv = r->io->send(r->io, &req->send, &message, ioSendMessageCb);
+    message = &params->message;
+    message->server_id = params->id;
+    message->server_address = params->address;
+
+    rv = r->io->send(r->io, &req->send, message, ioSendMessageCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
