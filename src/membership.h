@@ -5,6 +5,10 @@
 
 #include "../include/raft.h"
 
+/* XXX Internal code for transfer request objects. Used by the legacy layer to
+ * differentiate between items in the legacy.requests queue. */
+#define RAFT_TRANSFER (RAFT_CHANGE + 1)
+
 /* Helper returning an error if the configuration can't be changed, either
  * because this node is not the leader or because a configuration change is
  * already in progress. */
