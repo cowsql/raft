@@ -160,7 +160,6 @@ int UvTruncate(struct raft_io *io, raft_index index)
     int rv;
 
     uv = io->impl;
-    tracef("uv truncate %llu", index);
     assert(!uv->closing);
 
     /* We should truncate only entries that we were requested to append in the
@@ -170,6 +169,8 @@ int UvTruncate(struct raft_io *io, raft_index index)
     if (index >= uv->append_next_index) {
         return 0;
     }
+
+    tracef("uv truncate %llu", index);
 
     truncate = RaftHeapMalloc(sizeof *truncate);
     if (truncate == NULL) {

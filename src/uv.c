@@ -14,6 +14,7 @@
 #include "configuration.h"
 #include "entry.h"
 #include "heap.h"
+#include "legacy.h"
 #include "snapshot.h"
 #include "tracing.h"
 #include "uv.h"
@@ -119,6 +120,14 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
     assert(rv == 0); /* This should never fail */
     uv->timer.data = uv;
 
+    rv = uv_prepare_init(uv->loop, &uv->prepare);
+    assert(rv == 0);
+    uv->prepare.data = uv;
+
+    rv = uv_check_init(uv->loop, &uv->check);
+    assert(rv == 0);
+    uv->check.data = uv;
+
     return 0;
 }
 
@@ -129,6 +138,24 @@ static void uvTickTimerCb(uv_timer_t *timer)
     uv = timer->data;
     if (uv->tick_cb != NULL) {
         uv->tick_cb(uv->io);
+    }
+}
+
+static void uvPrepareLoopCb(struct uv_prepare_s *prepare)
+{
+    struct uv *uv;
+    uv = prepare->data;
+    if (uv->io->data != NULL && uv->io->version != 0) {
+        LegacyFireCompletedRequests(uv->io->data);
+    }
+}
+
+static void uvCheckLoopCb(struct uv_check_s *check)
+{
+    struct uv *uv;
+    uv = check->data;
+    if (uv->io->data != NULL && uv->io->version != 0) {
+        LegacyFireCompletedRequests(uv->io->data);
     }
 }
 
@@ -150,6 +177,10 @@ static int uvStart(struct raft_io *io,
     }
     rv = uv_timer_start(&uv->timer, uvTickTimerCb, msecs, msecs);
     assert(rv == 0);
+    rv = uv_prepare_start(&uv->prepare, uvPrepareLoopCb);
+    assert(rv == 0);
+    rv = uv_check_start(&uv->check, uvCheckLoopCb);
+    assert(rv == 0);
     return 0;
 }
 
@@ -164,6 +195,12 @@ void uvMaybeFireCloseCb(struct uv *uv)
         return;
     }
     if (uv->timer.data != NULL) {
+        return;
+    }
+    if (uv->prepare.data != NULL) {
+        return;
+    }
+    if (uv->check.data != NULL) {
         return;
     }
     if (!QUEUE_IS_EMPTY(&uv->append_segments)) {
@@ -217,6 +254,22 @@ static void uvTransportCloseCb(struct raft_uv_transport *transport)
     uvMaybeFireCloseCb(uv);
 }
 
+static void uvPrepareCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->prepare.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
+static void uvCheckCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->check.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
 /* Implementation of raft_io->close. */
 static void uvClose(struct raft_io *io, raft_io_close_cb cb)
 {
@@ -234,6 +287,12 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
     }
     if (uv->timer.data != NULL) {
         uv_close((uv_handle_t *)&uv->timer, uvTickTimerCloseCb);
+    }
+    if (uv->prepare.data != NULL) {
+        uv_close((uv_handle_t *)&uv->prepare, uvPrepareCloseCb);
+    }
+    if (uv->check.data != NULL) {
+        uv_close((uv_handle_t *)&uv->check, uvCheckCloseCb);
     }
     uvMaybeFireCloseCb(uv);
 }

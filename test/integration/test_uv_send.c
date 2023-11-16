@@ -91,6 +91,7 @@ static void *setUpDeps(const MunitParameter params[], void *user_data)
     struct fixture *f = munit_malloc(sizeof *f);
     SETUP_UV_DEPS;
     SETUP_TCP_SERVER;
+    f->io.version = 0; /* Magic value to avoid assuming that io.data is raft */
     f->io.data = f;
     return f;
 }

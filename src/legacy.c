@@ -57,9 +57,9 @@ static void ioSendMessageCb(struct raft_io_send *send, int status)
 
 static int ioSendMessage(struct raft *r, struct raft_task *task)
 {
-    struct raft_send_message *params = &task->send_message;
+    struct raft_send_message *params;
     struct ioForwardSendMessage *req;
-    struct raft_message message;
+    struct raft_message *message;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -70,11 +70,13 @@ static int ioSendMessage(struct raft *r, struct raft_task *task)
     req->task = *task;
     req->send.data = req;
 
-    message = params->message;
-    message.server_id = params->id;
-    message.server_address = params->address;
+    params = &req->task.send_message;
 
-    rv = r->io->send(r->io, &req->send, &message, ioSendMessageCb);
+    message = &params->message;
+    message->server_id = params->id;
+    message->server_address = params->address;
+
+    rv = r->io->send(r->io, &req->send, message, ioSendMessageCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
@@ -343,8 +345,8 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     }
 
     if (status != 0) {
-        tracef("snapshot %lld at term %lld: %s", snapshot->index,
-               snapshot->term, raft_strerror(status));
+        tracef("snapshot %lld at term %lld: %s", metadata.index, metadata.term,
+               raft_strerror(status));
         configurationClose(&metadata.configuration);
         return;
     }
@@ -492,6 +494,11 @@ static void legacyFireChange(struct raft_change *req)
     req->cb(req, req->status);
 }
 
+static void legacyFireTransfer(struct raft_transfer *req)
+{
+    req->cb(req);
+}
+
 void LegacyFireCompletedRequests(struct raft *r)
 {
     while (!QUEUE_IS_EMPTY(&r->legacy.requests)) {
@@ -509,6 +516,13 @@ void LegacyFireCompletedRequests(struct raft *r)
                 break;
             case RAFT_CHANGE:
                 legacyFireChange((struct raft_change *)req);
+                break;
+            case RAFT_TRANSFER:
+                legacyFireTransfer((struct raft_transfer *)req);
+                break;
+            default:
+                tracef("unknown request type, shutdown.");
+                assert(false);
                 break;
         };
     }
@@ -541,6 +555,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         struct raft_task *tasks;
         unsigned n_tasks;
         unsigned j;
+        queue *head;
+        struct request *req;
+        bool has_pending_no_space_failure = false;
 
         event = &events[i];
 
@@ -549,9 +566,22 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             goto err;
         }
 
-        LegacyFireCompletedRequests(r);
+        /* Check if there's a client request in the completion queue which has
+         * failed due to a RAFT_NOSPACE error. In that case we will not call the
+         * step_cb just yet, because otherwise cowsql/dqlite would notice that
+         * the leader has stepped down and immediately close all connections,
+         * without a chance of properly returning the error to the client. */
+        QUEUE_FOREACH (head, &r->legacy.requests) {
+            req = QUEUE_DATA(head, struct request, queue);
+            if (req->type == RAFT_COMMAND) {
+                if (((struct raft_apply *)req)->status == RAFT_NOSPACE) {
+                    has_pending_no_space_failure = true;
+                    break;
+                }
+            }
+        }
 
-        if (r->legacy.step_cb != NULL) {
+        if (!has_pending_no_space_failure && r->legacy.step_cb != NULL) {
             r->legacy.step_cb(r);
         }
 
