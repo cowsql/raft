@@ -345,8 +345,8 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     }
 
     if (status != 0) {
-        tracef("snapshot %lld at term %lld: %s", snapshot->index,
-               snapshot->term, raft_strerror(status));
+        tracef("snapshot %lld at term %lld: %s", metadata.index, metadata.term,
+               raft_strerror(status));
         configurationClose(&metadata.configuration);
         return;
     }
