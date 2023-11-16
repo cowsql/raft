@@ -804,6 +804,7 @@ struct raft_log;
         struct                                                              \
         {                                                                   \
             unsigned short prev_state; /* Used to detect lost leadership */ \
+            void *pending[2];          /* Pending client requests */        \
             void *requests[2];         /* Completed client requests */      \
             void (*step_cb)(struct raft *); /* Invoked after raft_step() */ \
         } legacy;                                                           \
@@ -987,7 +988,6 @@ struct raft
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
-            void *requests[2];              /* Outstanding client requests. */
             uint64_t reserved[8];           /* Future use */
         } leader_state;
     };

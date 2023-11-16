@@ -56,23 +56,6 @@ static void convertClearCandidate(struct raft *r)
     }
 }
 
-static void convertFailApply(struct raft *r, struct raft_apply *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        req->status = RAFT_LEADERSHIPLOST;
-        req->result = NULL;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
-static void convertFailBarrier(struct raft *r, struct raft_barrier *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        req->status = RAFT_LEADERSHIPLOST;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
 static void convertFailChange(struct raft *r, struct raft_change *req)
 {
     if (req != NULL && req->cb != NULL) {
@@ -90,24 +73,6 @@ static void convertClearLeader(struct raft *r)
     if (r->leader_state.progress != NULL) {
         raft_free(r->leader_state.progress);
         r->leader_state.progress = NULL;
-    }
-
-    /* Fail all outstanding requests */
-    while (!QUEUE_IS_EMPTY(&r->leader_state.requests)) {
-        struct request *req;
-        queue *head;
-        head = QUEUE_HEAD(&r->leader_state.requests);
-        QUEUE_REMOVE(head);
-        req = QUEUE_DATA(head, struct request, queue);
-        assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
-        switch (req->type) {
-            case RAFT_COMMAND:
-                convertFailApply(r, (struct raft_apply *)req);
-                break;
-            case RAFT_BARRIER:
-                convertFailBarrier(r, (struct raft_barrier *)req);
-                break;
-        };
     }
 
     /* Fail any promote request that is still outstanding because the server is
@@ -201,9 +166,6 @@ int convertToLeader(struct raft *r)
     /* Reset timers */
     r->election_timer_start = r->now;
 
-    /* Reset apply requests queue */
-    QUEUE_INIT(&r->leader_state.requests);
-
     /* Allocate and initialize the progress array. */
     rv = progressBuildArray(r);
     if (rv != 0) {
@@ -267,7 +229,7 @@ int convertToLeader(struct raft *r)
             goto out;
         }
 
-        QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+        QUEUE_PUSH(&r->legacy.pending, &req->queue);
     }
 
 out:

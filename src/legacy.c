@@ -468,6 +468,44 @@ abort:
     return;
 }
 
+static void legacyFailApply(struct raft *r, struct raft_apply *req)
+{
+    if (req != NULL && req->cb != NULL) {
+        req->status = RAFT_LEADERSHIPLOST;
+        req->result = NULL;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+static void legacyFailBarrier(struct raft *r, struct raft_barrier *req)
+{
+    if (req != NULL && req->cb != NULL) {
+        req->status = RAFT_LEADERSHIPLOST;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+void LegacyFailPendingRequests(struct raft *r)
+{
+    /* Fail all outstanding requests */
+    while (!QUEUE_IS_EMPTY(&r->legacy.pending)) {
+        struct request *req;
+        queue *head;
+        head = QUEUE_HEAD(&r->legacy.pending);
+        QUEUE_REMOVE(head);
+        req = QUEUE_DATA(head, struct request, queue);
+        assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
+        switch (req->type) {
+            case RAFT_COMMAND:
+                legacyFailApply(r, (struct raft_apply *)req);
+                break;
+            case RAFT_BARRIER:
+                legacyFailBarrier(r, (struct raft_barrier *)req);
+                break;
+        };
+    }
+}
+
 static void legacyFireApply(struct raft_apply *req)
 {
     req->cb(req, req->status, req->result);
@@ -538,6 +576,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     }
 
     if (r->legacy.prev_state != r->state) {
+        if (r->legacy.prev_state == RAFT_LEADER) {
+            LegacyFailPendingRequests(r);
+            assert(QUEUE_IS_EMPTY(&r->legacy.pending));
+        }
         r->legacy.prev_state = r->state;
     }
 

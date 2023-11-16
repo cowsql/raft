@@ -140,7 +140,7 @@ int raft_apply(struct raft *r,
         return rv;
     }
 
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+    QUEUE_PUSH(&r->legacy.pending, &req->queue);
 
     return 0;
 }
@@ -178,7 +178,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         goto err_after_buf_alloc;
     }
 
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+    QUEUE_PUSH(&r->legacy.pending, &req->queue);
 
     return 0;
 
