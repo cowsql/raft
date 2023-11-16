@@ -555,6 +555,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         struct raft_task *tasks;
         unsigned n_tasks;
         unsigned j;
+        queue *head;
+        struct request *req;
+        bool has_pending_no_space_failure = false;
 
         event = &events[i];
 
@@ -563,7 +566,22 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             goto err;
         }
 
-        if (r->legacy.step_cb != NULL) {
+        /* Check if there's a client request in the completion queue which has
+         * failed due to a RAFT_NOSPACE error. In that case we will not call the
+         * step_cb just yet, because otherwise cowsql/dqlite would notice that
+         * the leader has stepped down and immediately close all connections,
+         * without a chance of properly returning the error to the client. */
+        QUEUE_FOREACH (head, &r->legacy.requests) {
+            req = QUEUE_DATA(head, struct request, queue);
+            if (req->type == RAFT_COMMAND) {
+                if (((struct raft_apply *)req)->status == RAFT_NOSPACE) {
+                    has_pending_no_space_failure = true;
+                    break;
+                }
+            }
+        }
+
+        if (!has_pending_no_space_failure && r->legacy.step_cb != NULL) {
             r->legacy.step_cb(r);
         }
 
