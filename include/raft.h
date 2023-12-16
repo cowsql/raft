@@ -561,18 +561,9 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  * consumers.
  */
 enum {
-    RAFT_SEND_MESSAGE = 1,
-    RAFT_PERSIST_ENTRIES,
+    RAFT_PERSIST_ENTRIES = 1,
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
-};
-
-/**
- * Parameters for tasks of type #RAFT_SEND_MESSAGE.
- */
-struct raft_send_message
-{
-    struct raft_message message;
 };
 
 /**
@@ -618,7 +609,6 @@ struct raft_task
     unsigned char type;
     unsigned char reserved[7];
     union {
-        struct raft_send_message send_message;
         struct raft_load_snapshot load_snapshot;
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
