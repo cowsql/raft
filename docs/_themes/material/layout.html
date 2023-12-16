@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 
 {%- macro css() %}
-    <link rel="stylesheet" href="{{ pathto('_static/' + styles[0], 1) }}" type="text/css" />
     {%- for css in css_files %}
       {%- if css|attr("filename") %}
     {{ css_tag(css) }}
