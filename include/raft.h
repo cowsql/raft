@@ -834,6 +834,9 @@ struct raft_log;
         raft_time now;    /* Current time, updated via raft_step() */        \
         unsigned random;  /* Pseudo-random number generator state */         \
         unsigned updates; /* Flags tracking updates during raft_step() */    \
+        struct raft_message *messages; /* Queue of pending messages */       \
+        unsigned n_messages;           /* Length of the messages queue */    \
+        unsigned n_messages_cap;       /* Capacity of the task queue */      \
         struct raft_task *tasks; /* Queue of pending raft_task operations */ \
         unsigned n_tasks;        /* Length of the task queue */              \
         unsigned n_tasks_cap;    /* Capacity of the task queue */            \

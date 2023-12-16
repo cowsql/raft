@@ -117,6 +117,9 @@ int raft_init(struct raft *r,
         r->legacy.step_cb = NULL;
     }
     r->updates = 0;
+    r->messages = NULL;
+    r->n_messages = 0;
+    r->n_messages_cap = 0;
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
@@ -135,6 +138,9 @@ static void finalClose(struct raft *r)
     logClose(r->log);
     raft_configuration_close(&r->configuration);
     raft_configuration_close(&r->configuration_last_snapshot);
+    if (r->messages != NULL) {
+        raft_free(r->messages);
+    }
     if (r->tasks != NULL) {
         raft_free(r->tasks);
     }
@@ -152,6 +158,7 @@ static void ioCloseCb(struct raft_io *io)
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
+    assert(r->n_messages == 0);
     assert(r->n_tasks == 0);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
@@ -264,6 +271,7 @@ int raft_step(struct raft *r,
     assert(update != NULL);
 
     assert(r->updates == 0);
+    assert(r->n_messages == 0);
 
     r->now = event->time;
 
@@ -302,6 +310,9 @@ int raft_step(struct raft *r,
     }
 
     update->flags = r->updates;
+    update->messages.batch = r->messages;
+    update->messages.n = r->n_messages;
+
     *commit_index = r->commit_index;
 
     (void)timeout;
@@ -309,10 +320,11 @@ int raft_step(struct raft *r,
     *tasks = r->tasks;
     *n_tasks = r->n_tasks;
 
-    r->n_tasks = 0;
-
 out:
     r->updates = 0;
+    r->n_messages = 0;
+    r->n_tasks = 0;
+
     if (rv != 0) {
         return rv;
     }

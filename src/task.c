@@ -3,6 +3,35 @@
 #include "heap.h"
 #include "queue.h"
 
+/* Append a new message to the r->messages queue and return a pointer to it.
+ *
+ * Return NULL if no-memory is available. */
+static struct raft_message *messageAppend(struct raft *r)
+{
+    struct raft_message *messages;
+    unsigned n_messages = r->n_messages + 1;
+
+    if (n_messages > r->n_messages_cap) {
+        unsigned n_messages_cap = r->n_messages_cap;
+        if (n_messages_cap == 0) {
+            n_messages_cap = 16; /* Initial cap */
+        } else {
+            n_messages_cap *= 2;
+        }
+        messages =
+            raft_realloc(r->messages, sizeof *r->messages * n_messages_cap);
+        if (messages == NULL) {
+            return NULL;
+        }
+        r->messages = messages;
+        r->n_messages_cap = n_messages_cap;
+    }
+
+    r->n_messages = n_messages;
+
+    return &r->messages[r->n_messages - 1];
+}
+
 /* Append a new task to the r->tasks queue and return a pointer to it.
  *
  * Return RAFT_NOMEM if no-memory is available. */
@@ -33,20 +62,16 @@ static struct raft_task *taskAppend(struct raft *r)
 
 int TaskSendMessage(struct raft *r, struct raft_message *message)
 {
-    struct raft_task *task;
-    struct raft_send_message *params;
+    struct raft_message *next;
     int rv;
 
-    task = taskAppend(r);
-    if (task == NULL) {
+    next = messageAppend(r);
+    if (next == NULL) {
         rv = RAFT_NOMEM;
         goto err;
     }
 
-    task->type = RAFT_SEND_MESSAGE;
-
-    params = &task->send_message;
-    params->message = *message;
+    *next = *message;
 
     return 0;
 

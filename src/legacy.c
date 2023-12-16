@@ -27,22 +27,24 @@ struct ioForwardSendMessage
 {
     struct raft_io_send send;
     struct raft *r;
-    struct raft_task task;
+    struct raft_message message;
 };
 
 static void ioSendMessageCb(struct raft_io_send *send, int status)
 {
     struct ioForwardSendMessage *req = send->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_message message = req->message;
+    struct raft_task task;
     raft_free(req);
+    task.type = RAFT_SEND_MESSAGE;
+    task.send_message.message = message;
     ioTaskDone(r, &task, status);
 }
 
-static int ioSendMessage(struct raft *r, struct raft_task *task)
+static int ioSendMessage(struct raft *r, struct raft_message *message)
 {
     struct ioForwardSendMessage *req;
-    struct raft_message *message;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -50,10 +52,10 @@ static int ioSendMessage(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->message = *message;
     req->send.data = req;
 
-    message = &req->task.send_message.message;
+    message = &req->message;
 
     rv = r->io->send(r->io, &req->send, message, ioSendMessageCb);
     if (rv != 0) {
@@ -549,6 +551,13 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             }
         }
 
+        for (j = 0; j < update.messages.n; j++) {
+            rv = ioSendMessage(r, &update.messages.batch[j]);
+            if (rv != 0) {
+                goto err;
+            }
+        }
+
         for (j = 0; j < n_tasks; j++) {
             struct raft_task *task = &tasks[j];
 
@@ -559,9 +568,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             }
 
             switch (task->type) {
-                case RAFT_SEND_MESSAGE:
-                    rv = ioSendMessage(r, task);
-                    break;
                 case RAFT_PERSIST_ENTRIES:
                     rv = ioForwardPersistEntries(r, task);
                     break;
