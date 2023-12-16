@@ -121,7 +121,6 @@ err:
 
 int recvBumpCurrentTerm(struct raft *r, raft_term term)
 {
-    int rv;
     char msg[128];
 
     assert(r != NULL);
@@ -133,12 +132,6 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
         strcat(msg, " and step down");
     }
     tracef("%s", msg);
-
-    /* Save the new term to persistent store, resetting the vote. */
-    rv = TaskPersistTermAndVote(r, term, 0);
-    if (rv != 0) {
-        return rv;
-    }
 
     /* Mark both the current term and vote as changed. */
     r->updates |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;

@@ -89,31 +89,6 @@ err:
     return rv;
 }
 
-int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for)
-{
-    struct raft_task *task;
-    struct raft_persist_term_and_vote *params;
-    int rv;
-
-    task = taskAppend(r);
-    if (task == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-
-    task->type = RAFT_PERSIST_TERM_AND_VOTE;
-
-    params = &task->persist_term_and_vote;
-    params->term = term;
-    params->voted_for = voted_for;
-
-    return 0;
-
-err:
-    assert(rv == RAFT_NOMEM);
-    return rv;
-}
-
 int TaskPersistSnapshot(struct raft *r,
                         struct raft_snapshot_metadata metadata,
                         size_t offset,

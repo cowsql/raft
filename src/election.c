@@ -125,11 +125,6 @@ int electionStart(struct raft *r)
     if (!r->candidate_state.in_pre_vote) {
         /* Increment current term and vote for self */
         term = r->current_term + 1;
-        rv = TaskPersistTermAndVote(r, term, r->id);
-        if (rv != 0) {
-            tracef("persist term and vote failed %d", rv);
-            goto err;
-        }
         tracef("beginning of term %llu", term);
 
         /* Mark both the current term and vote as changed. */
@@ -167,10 +162,6 @@ int electionStart(struct raft *r)
     }
 
     return 0;
-
-err:
-    assert(rv != 0);
-    return rv;
 }
 
 int electionVote(struct raft *r,
@@ -181,7 +172,6 @@ int electionVote(struct raft *r,
     raft_index local_last_index;
     raft_term local_last_term;
     bool is_transferee; /* Requester is the target of a leadership transfer */
-    int rv;
 
     assert(r != NULL);
     assert(args != NULL);
@@ -262,12 +252,6 @@ int electionVote(struct raft *r,
 
 grant_vote:
     if (!args->pre_vote) {
-        rv = TaskPersistTermAndVote(r, r->current_term, args->candidate_id);
-        if (rv != 0) {
-            tracef("persist term and vote failed %d", rv);
-            return rv;
-        }
-
         /* Mark the vote as changed. */
         r->updates |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
 

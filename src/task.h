@@ -31,16 +31,6 @@ int TaskPersistEntries(struct raft *r,
                        struct raft_entry entries[],
                        unsigned n);
 
-/* Create and enqueue a RAFT_PERSIST_TERM_AND_VOTE task to persist the given
- * term and vote.
- *
- * Errors:
- *
- * RAFT_NOMEM
- *     The r->tasks array could not be resized to fit the new task.
- */
-int TaskPersistTermAndVote(struct raft *r, raft_term term, raft_id voted_for);
-
 /* Create and enqueue a RAFT_PERSIST_SNAPSHOT task to persist a single chunk of
  * the snapshot with the given metadata, starting at the given offset.
  *
