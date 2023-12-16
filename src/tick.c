@@ -229,11 +229,6 @@ void tickCb(struct raft_io *io)
     int rv;
 
     r = io->data;
-    r->now = r->io->time(r->io);
-    rv = Tick(r);
-    if (rv != 0) {
-        goto err;
-    }
 
     event.type = RAFT_TIMEOUT;
     event.time = r->io->time(io);

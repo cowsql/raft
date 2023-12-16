@@ -17,6 +17,7 @@
 #include "queue.h"
 #include "recv.h"
 #include "replication.h"
+#include "tick.h"
 #include "tracing.h"
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -276,6 +277,9 @@ int raft_step(struct raft *r,
         case RAFT_SNAPSHOT:
             rv = replicationSnapshot(r, &event->snapshot.metadata,
                                      event->snapshot.trailing);
+            break;
+        case RAFT_TIMEOUT:
+            rv = Tick(r);
             break;
         default:
             rv = 0;
