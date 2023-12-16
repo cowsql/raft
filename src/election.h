@@ -56,7 +56,7 @@ bool electionTimerExpired(struct raft *r);
  *   RequestVote RPCs in parallel to each of the other servers in the
  *   cluster.
  */
-int electionStart(struct raft *r);
+void electionStart(struct raft *r);
 
 /* Decide whether our vote should be granted to the requesting server and update
  * our state accordingly.

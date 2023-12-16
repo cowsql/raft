@@ -96,13 +96,13 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     return 0;
 }
 
-int electionStart(struct raft *r)
+void electionStart(struct raft *r)
 {
     raft_term term;
     size_t n_voters;
     size_t voting_index;
     size_t i;
-    int rv;
+
     assert(r->state == RAFT_CANDIDATE);
 
     n_voters = configurationVoterCount(&r->configuration);
@@ -150,9 +150,12 @@ int electionStart(struct raft *r)
     }
     for (i = 0; i < r->configuration.n; i++) {
         const struct raft_server *server = &r->configuration.servers[i];
+        int rv;
+
         if (server->id == r->id || server->role != RAFT_VOTER) {
             continue;
         }
+
         rv = electionSend(r, server);
         if (rv != 0) {
             /* This is not a critical failure, let's just log it. */
@@ -160,8 +163,6 @@ int electionStart(struct raft *r)
                    raft_strerror(rv));
         }
     }
-
-    return 0;
 }
 
 int electionVote(struct raft *r,
