@@ -31,10 +31,7 @@ static struct raft_task *taskAppend(struct raft *r)
     return &r->tasks[r->n_tasks - 1];
 }
 
-int TaskSendMessage(struct raft *r,
-                    raft_id id,
-                    const char *address,
-                    struct raft_message *message)
+int TaskSendMessage(struct raft *r, struct raft_message *message)
 {
     struct raft_task *task;
     struct raft_send_message *params;
@@ -49,8 +46,6 @@ int TaskSendMessage(struct raft *r,
     task->type = RAFT_SEND_MESSAGE;
 
     params = &task->send_message;
-    params->id = id;
-    params->address = address;
     params->message = *message;
 
     return 0;

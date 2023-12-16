@@ -572,8 +572,6 @@ enum {
  */
 struct raft_send_message
 {
-    raft_id id;
-    const char *address; /* TODO: make a copy */
     struct raft_message message;
 };
 

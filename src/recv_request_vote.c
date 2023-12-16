@@ -123,8 +123,10 @@ reply:
     }
 
     message.type = RAFT_IO_REQUEST_VOTE_RESULT;
+    message.server_id = id;
+    message.server_address = address;
 
-    rv = TaskSendMessage(r, id, address, &message);
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         return rv;
     }

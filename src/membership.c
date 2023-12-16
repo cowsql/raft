@@ -235,7 +235,10 @@ int membershipLeadershipTransferStart(struct raft *r)
      * function. */
     r->transfer->send.data = r;
 
-    rv = TaskSendMessage(r, server->id, server->address, &message);
+    message.server_id = server->id;
+    message.server_address = server->address;
+
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "send timeout now to %llu",
                         server->id);

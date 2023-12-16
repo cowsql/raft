@@ -55,12 +55,13 @@ int replicationSendAppendEntriesDone(struct raft *r,
                                      int status)
 {
     struct raft_append_entries *args = &params->message.append_entries;
-    unsigned i = configurationIndexOf(&r->configuration, params->id);
+    unsigned i =
+        configurationIndexOf(&r->configuration, params->message.server_id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
         if (status != 0) {
             tracef("failed to send append entries to server %llu: %s",
-                   params->id, raft_strerror(status));
+                   params->message.server_id, raft_strerror(status));
             /* Go back to probe mode. */
             progressToProbe(r, i);
         }
@@ -116,7 +117,7 @@ static int sendAppendEntries(struct raft *r,
     message.server_id = server->id;
     message.server_address = server->address;
 
-    rv = TaskSendMessage(r, server->id, server->address, &message);
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         goto err_after_entries_acquired;
     }
@@ -153,13 +154,14 @@ int replicationSendInstallSnapshotDone(struct raft *r,
 {
     const struct raft_server *server;
 
-    server = configurationGet(&r->configuration, params->id);
+    server = configurationGet(&r->configuration, params->message.server_id);
 
     if (status != 0) {
         tracef("send install snapshot: %s", raft_strerror(status));
         if (r->state == RAFT_LEADER && server != NULL) {
             unsigned i;
-            i = configurationIndexOf(&r->configuration, params->id);
+            i = configurationIndexOf(&r->configuration,
+                                     params->message.server_id);
             progressAbortSnapshot(r, i);
         }
     }
@@ -225,7 +227,10 @@ int replicationLoadSnapshotDone(struct raft *r,
     tracef("sending snapshot with last index %llu to %llu", params->index,
            server->id);
 
-    rv = TaskSendMessage(r, server->id, server->address, &message);
+    message.server_id = server->id;
+    message.server_address = server->address;
+
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         goto abort_with_snapshot;
     }
@@ -843,7 +848,10 @@ static void sendAppendEntriesResult(
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.append_entries_result = *result;
 
-    rv = TaskSendMessage(r, id, address, &message);
+    message.server_id = id;
+    message.server_address = address;
+
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         /* This is not fatal, we'll retry. */
         (void)rv;

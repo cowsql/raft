@@ -82,8 +82,10 @@ reply:
     raft_free(args->data.base);
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
+    message.server_id = id;
+    message.server_address = address;
 
-    rv = TaskSendMessage(r, id, address, &message);
+    rv = TaskSendMessage(r, &message);
     if (rv != 0) {
         return rv;
     }

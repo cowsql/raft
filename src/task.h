@@ -13,10 +13,7 @@
  * RAFT_NOMEM
  *     The r->tasks array could not be resized to fit the new task.
  */
-int TaskSendMessage(struct raft *r,
-                    raft_id id,
-                    const char *address,
-                    struct raft_message *message);
+int TaskSendMessage(struct raft *r, struct raft_message *message);
 
 /* Create and enqueue a RAFT_PERSIST_ENTRIES task to persist the given entries
  * starting at the given index.
