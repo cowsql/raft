@@ -249,7 +249,7 @@ void membershipLeadershipTransferClose(struct raft *r)
     struct raft_transfer *req = r->transfer;
     r->transfer = NULL;
     if (req->cb != NULL) {
-        req->type = RAFT_TRANSFER;
+        req->type = RAFT_TRANSFER_;
         QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
