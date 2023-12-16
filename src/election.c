@@ -132,6 +132,9 @@ int electionStart(struct raft *r)
         }
         tracef("beginning of term %llu", term);
 
+        /* Mark both the current term and vote as changed. */
+        r->updates |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
+
         /* Update our cache too. */
         r->current_term = term;
         r->voted_for = r->id;
@@ -264,6 +267,10 @@ grant_vote:
             tracef("persist term and vote failed %d", rv);
             return rv;
         }
+
+        /* Mark the vote as changed. */
+        r->updates |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
+
         r->voted_for = args->candidate_id;
 
         /* Reset the election timer. */
