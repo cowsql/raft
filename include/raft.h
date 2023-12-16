@@ -694,6 +694,34 @@ struct raft_event
 };
 
 /**
+ * Hold information about changes that user code must perform after a call to
+ * raft_step() returns (e.g. new entries that must be persisted, new messages
+ * that must be sent, etc.).
+ */
+struct raft_update
+{
+    unsigned flags;
+    struct
+    {
+        struct raft_message *batch;
+        unsigned n;
+    } messages;
+    struct
+    {
+        raft_index index; /* 0 if no change */
+        struct raft_entry *batch;
+        unsigned n;
+    } entries;
+    struct
+    {
+        struct raft_snapshot_metadata metadata;
+        size_t offset;
+        struct raft_buffer chunk;
+        bool last;
+    } snapshot;
+};
+
+/**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
  * methods.
