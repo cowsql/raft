@@ -74,11 +74,10 @@ err:
     return rv;
 }
 
-int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
+int clientBarrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
     raft_index index;
     struct raft_buffer buf;
-    struct raft_event event;
     int rv;
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
@@ -114,14 +113,6 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         goto err_after_log_append;
     }
 
-    event.type = RAFT_SUBMIT;
-    event.time = r->io->time(r->io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
     return 0;
 
 err_after_log_append:
@@ -131,6 +122,27 @@ err_after_buf_alloc:
     raft_free(buf.base);
 err:
     return rv;
+}
+
+int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
+{
+    struct raft_event event;
+    int rv;
+
+    rv = clientBarrier(r, req, cb);
+    if (rv != 0) {
+        return rv;
+    }
+
+    event.type = RAFT_SUBMIT;
+    event.time = r->io->time(r->io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        return rv;
+    }
+
+    return 0;
 }
 
 static int clientChangeConfiguration(

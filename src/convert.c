@@ -1,6 +1,7 @@
 #include "convert.h"
 
 #include "assert.h"
+#include "client.h"
 #include "configuration.h"
 #include "election.h"
 #include "log.h"
@@ -186,7 +187,7 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
     return 0;
 }
 
-void convertInitialBarrierCb(struct raft_barrier *req, int status)
+static void convertInitialBarrierCb(struct raft_barrier *req, int status)
 {
     (void)status;
     raft_free(req);
@@ -240,7 +241,7 @@ int convertToLeader(struct raft *r)
         if (req == NULL) {
             return RAFT_NOMEM;
         }
-        rv = raft_barrier(r, req, convertInitialBarrierCb);
+        rv = clientBarrier(r, req, convertInitialBarrierCb);
         if (rv != 0) {
             tracef(
                 "failed to send no-op barrier entry after leader conversion: "
