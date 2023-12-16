@@ -11,22 +11,6 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-static struct raft_event *eventAppend(struct raft_event *events[],
-                                      unsigned *n_events)
-{
-    struct raft_event *array;
-
-    array = raft_realloc(*events, sizeof **events * (*n_events + 1));
-    if (array == NULL) {
-        return NULL;
-    }
-
-    *events = array;
-    *n_events += 1;
-
-    return &(*events)[*n_events - 1];
-}
-
 /* Call LegacyForwardToRaftIo() after an asynchronous task has been
  * completed. */
 static void ioTaskDone(struct raft *r, struct raft_task *task, int status)
@@ -134,32 +118,6 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
 err:
     raft_free(req);
     ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", params->n);
-    return rv;
-}
-
-static int ioPersistTermAndVote(struct raft *r,
-                                struct raft_task *task,
-                                struct raft_event *events[],
-                                unsigned *n_events)
-{
-    struct raft_event *event;
-    int rv;
-
-    /* Add a completion event immediately, since set_term() and set_vote() are
-     * required to be synchronous */
-    event = eventAppend(events, n_events);
-    if (event == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-    event->type = RAFT_DONE;
-    event->time = r->io->time(r->io);
-    event->done.task = *task;
-    event->done.status = 0;
-
-    return 0;
-
-err:
     return rv;
 }
 
@@ -613,7 +571,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                     rv = ioForwardPersistEntries(r, task);
                     break;
                 case RAFT_PERSIST_TERM_AND_VOTE:
-                    rv = ioPersistTermAndVote(r, task, &events, &n_events);
+                    rv = 0;
                     break;
                 case RAFT_PERSIST_SNAPSHOT:
                     rv = ioForwardPersistSnapshot(r, task);

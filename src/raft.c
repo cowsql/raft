@@ -228,11 +228,7 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
             rv = persistEntriesDone(r, task, status);
             break;
         case RAFT_PERSIST_TERM_AND_VOTE:
-            /* TODO: reason more about what todo upon errors */
-            if (status != 0 && r->state != RAFT_UNAVAILABLE) {
-                convertToUnavailable(r);
-            }
-            rv = status;
+            rv = 0;
             break;
         case RAFT_PERSIST_SNAPSHOT:
             rv = persistSnapshotDone(r, task, status);
