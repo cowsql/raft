@@ -841,8 +841,9 @@ struct raft_log;
 #define RAFT__EXTENSIONS                                                     \
     struct                                                                   \
     {                                                                        \
-        raft_time now;           /* Current time, updated via raft_step() */ \
-        unsigned random;         /* Pseudo-random number generator state */  \
+        raft_time now;    /* Current time, updated via raft_step() */        \
+        unsigned random;  /* Pseudo-random number generator state */         \
+        unsigned updates; /* Flags tracking updates during raft_step() */    \
         struct raft_task *tasks; /* Queue of pending raft_task operations */ \
         unsigned n_tasks;        /* Length of the task queue */              \
         unsigned n_tasks_cap;    /* Capacity of the task queue */            \
