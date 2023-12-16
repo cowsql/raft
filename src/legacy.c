@@ -142,19 +142,8 @@ static int ioPersistTermAndVote(struct raft *r,
                                 struct raft_event *events[],
                                 unsigned *n_events)
 {
-    struct raft_persist_term_and_vote *params = &task->persist_term_and_vote;
     struct raft_event *event;
     int rv;
-
-    rv = r->io->set_term(r->io, params->term);
-    if (rv != 0) {
-        goto err;
-    }
-
-    rv = r->io->set_vote(r->io, params->voted_for);
-    if (rv != 0) {
-        goto err;
-    }
 
     /* Add a completion event immediately, since set_term() and set_vote() are
      * required to be synchronous */
@@ -589,6 +578,22 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 
         if (legacyShouldTakeSnapshot(r)) {
             legacyTakeSnapshot(r);
+        }
+
+        /* If the current term was updated, persist it. */
+        if (update.flags & RAFT_UPDATE_CURRENT_TERM) {
+            rv = r->io->set_term(r->io, raft_current_term(r));
+            if (rv != 0) {
+                goto err;
+            }
+        }
+
+        /* If the current vote was updated, persist it. */
+        if (update.flags & RAFT_UPDATE_VOTED_FOR) {
+            rv = r->io->set_vote(r->io, raft_voted_for(r));
+            if (rv != 0) {
+                goto err;
+            }
         }
 
         for (j = 0; j < n_tasks; j++) {
