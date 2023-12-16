@@ -563,7 +563,6 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
 enum {
     RAFT_SEND_MESSAGE = 1,
     RAFT_PERSIST_ENTRIES,
-    RAFT_PERSIST_TERM_AND_VOTE,
     RAFT_PERSIST_SNAPSHOT,
     RAFT_LOAD_SNAPSHOT,
 };
@@ -589,15 +588,6 @@ struct raft_persist_entries
     raft_index index;
     struct raft_entry *entries;
     unsigned n;
-};
-
-/**
- * Parameters for tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
- */
-struct raft_persist_term_and_vote
-{
-    raft_term term;
-    raft_id voted_for;
 };
 
 /**
@@ -631,7 +621,6 @@ struct raft_task
     unsigned char reserved[7];
     union {
         struct raft_send_message send_message;
-        struct raft_persist_term_and_vote persist_term_and_vote;
         struct raft_load_snapshot load_snapshot;
         struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;

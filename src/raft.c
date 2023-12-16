@@ -227,9 +227,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
         case RAFT_PERSIST_ENTRIES:
             rv = persistEntriesDone(r, task, status);
             break;
-        case RAFT_PERSIST_TERM_AND_VOTE:
-            rv = 0;
-            break;
         case RAFT_PERSIST_SNAPSHOT:
             rv = persistSnapshotDone(r, task, status);
             break;

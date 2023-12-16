@@ -570,9 +570,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
                 case RAFT_PERSIST_ENTRIES:
                     rv = ioForwardPersistEntries(r, task);
                     break;
-                case RAFT_PERSIST_TERM_AND_VOTE:
-                    rv = 0;
-                    break;
                 case RAFT_PERSIST_SNAPSHOT:
                     rv = ioForwardPersistSnapshot(r, task);
                     break;
