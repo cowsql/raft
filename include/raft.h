@@ -630,6 +630,7 @@ struct raft_task
  */
 enum {
     RAFT_DONE = 1, /* A task has been completed. */
+    RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
@@ -653,6 +654,11 @@ struct raft_event
             struct raft_task task;
             int status;
         } done;
+        struct
+        {
+            struct raft_message message;
+            int status;
+        } sent;
         struct
         {
             raft_id id;

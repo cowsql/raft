@@ -51,17 +51,16 @@ struct sendAppendEntries
 
 /* Callback invoked after request to send an AppendEntries RPC has completed. */
 int replicationSendAppendEntriesDone(struct raft *r,
-                                     struct raft_send_message *params,
+                                     struct raft_message *message,
                                      int status)
 {
-    struct raft_append_entries *args = &params->message.append_entries;
-    unsigned i =
-        configurationIndexOf(&r->configuration, params->message.server_id);
+    struct raft_append_entries *args = &message->append_entries;
+    unsigned i = configurationIndexOf(&r->configuration, message->server_id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
         if (status != 0) {
             tracef("failed to send append entries to server %llu: %s",
-                   params->message.server_id, raft_strerror(status));
+                   message->server_id, raft_strerror(status));
             /* Go back to probe mode. */
             progressToProbe(r, i);
         }
@@ -149,25 +148,24 @@ struct sendInstallSnapshot
 };
 
 int replicationSendInstallSnapshotDone(struct raft *r,
-                                       struct raft_send_message *params,
+                                       struct raft_message *message,
                                        int status)
 {
     const struct raft_server *server;
 
-    server = configurationGet(&r->configuration, params->message.server_id);
+    server = configurationGet(&r->configuration, message->server_id);
 
     if (status != 0) {
         tracef("send install snapshot: %s", raft_strerror(status));
         if (r->state == RAFT_LEADER && server != NULL) {
             unsigned i;
-            i = configurationIndexOf(&r->configuration,
-                                     params->message.server_id);
+            i = configurationIndexOf(&r->configuration, message->server_id);
             progressAbortSnapshot(r, i);
         }
     }
 
-    configurationClose(&params->message.install_snapshot.conf);
-    raft_free(params->message.install_snapshot.data.base);
+    configurationClose(&message->install_snapshot.conf);
+    raft_free(message->install_snapshot.data.base);
 
     return 0;
 }

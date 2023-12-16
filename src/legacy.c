@@ -35,11 +35,15 @@ static void ioSendMessageCb(struct raft_io_send *send, int status)
     struct ioForwardSendMessage *req = send->data;
     struct raft *r = req->r;
     struct raft_message message = req->message;
-    struct raft_task task;
+    struct raft_event event;
+
     raft_free(req);
-    task.type = RAFT_SEND_MESSAGE;
-    task.send_message.message = message;
-    ioTaskDone(r, &task, status);
+
+    event.type = RAFT_SENT;
+    event.time = r->io->time(r->io);
+    event.sent.message = message;
+    event.sent.status = status;
+    LegacyForwardToRaftIo(r, &event);
 }
 
 static int ioSendMessage(struct raft *r, struct raft_message *message)

@@ -179,16 +179,16 @@ void raft_seed(struct raft *r, unsigned random)
     r->random = random;
 }
 
-static int sendMessageDone(struct raft *r, struct raft_task *task, int status)
+/* Handle the completion of a send message operation. */
+static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
-    struct raft_send_message *params = &task->send_message;
     int rv;
-    switch (params->message.type) {
+    switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
-            rv = replicationSendAppendEntriesDone(r, params, status);
+            rv = replicationSendAppendEntriesDone(r, message, status);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = replicationSendInstallSnapshotDone(r, params, status);
+            rv = replicationSendInstallSnapshotDone(r, message, status);
             break;
         default:
             /* Ignore the status, in case of errors we'll retry. */
@@ -228,9 +228,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
     assert(task != NULL);
 
     switch (task->type) {
-        case RAFT_SEND_MESSAGE:
-            rv = sendMessageDone(r, task, status);
-            break;
         case RAFT_PERSIST_ENTRIES:
             rv = persistEntriesDone(r, task, status);
             break;
@@ -278,6 +275,9 @@ int raft_step(struct raft *r,
     switch (event->type) {
         case RAFT_DONE:
             rv = stepDone(r, &event->done.task, event->done.status);
+            break;
+        case RAFT_SENT:
+            rv = stepSent(r, &event->sent.message, event->sent.status);
             break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.id, event->receive.address,
