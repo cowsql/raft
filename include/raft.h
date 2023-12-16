@@ -721,6 +721,9 @@ struct raft_update
     } snapshot;
 };
 
+#define RAFT_UPDATE_CURRENT_TERM 1 << 0
+#define RAFT_UPDATE_VOTED_FOR 1 << 1
+
 /**
  * version field MUST be filled out by user.
  * When moving to a new version, the user MUST implement the newly added
