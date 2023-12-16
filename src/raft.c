@@ -326,6 +326,16 @@ out:
     return 0;
 }
 
+raft_term raft_current_term(struct raft *r)
+{
+    return r->current_term;
+}
+
+raft_term raft_voted_for(struct raft *r)
+{
+    return r->voted_for;
+}
+
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;

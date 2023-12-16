@@ -1146,6 +1146,17 @@ RAFT_API int raft_step(struct raft *r,
                        unsigned *n_tasks);
 
 /**
+ * Return the current term of this server.
+ */
+RAFT_API raft_term raft_current_term(struct raft *r);
+
+/**
+ * Return the ID of the server that this server has voted for, or #0 if it not
+ * vote.
+ */
+RAFT_API raft_id raft_voted_for(struct raft *r);
+
+/**
  * Bootstrap this raft instance using the given configuration. The instance must
  * not have been started yet and must be completely pristine, otherwise
  * #RAFT_CANTBOOTSTRAP will be returned.
