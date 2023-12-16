@@ -550,6 +550,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     n_events = 1;
 
     for (i = 0; i < n_events; i++) {
+        struct raft_update update;
         raft_index commit_index;
         raft_time timeout;
         struct raft_task *tasks;
@@ -561,7 +562,8 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 
         event = &events[i];
 
-        rv = raft_step(r, event, &commit_index, &timeout, &tasks, &n_tasks);
+        rv = raft_step(r, event, &update, &commit_index, &timeout, &tasks,
+                       &n_tasks);
         if (rv != 0) {
             goto err;
         }
