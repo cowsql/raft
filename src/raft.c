@@ -116,6 +116,7 @@ int raft_init(struct raft *r,
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
     }
+    r->updates = 0;
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
@@ -266,7 +267,10 @@ int raft_step(struct raft *r,
 {
     int rv;
 
-    (void)update;
+    assert(event != NULL);
+    assert(update != NULL);
+
+    assert(r->updates == 0);
 
     r->now = event->time;
 
@@ -301,9 +305,10 @@ int raft_step(struct raft *r,
     }
 
     if (rv != 0) {
-        return rv;
+        goto out;
     }
 
+    update->flags = r->updates;
     *commit_index = r->commit_index;
 
     (void)timeout;
@@ -313,6 +318,11 @@ int raft_step(struct raft *r,
 
     r->n_tasks = 0;
 
+out:
+    r->updates = 0;
+    if (rv != 0) {
+        return rv;
+    }
     return 0;
 }
 
