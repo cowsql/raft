@@ -152,22 +152,45 @@ err:
 int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
     struct raft_event event;
+    struct raft_entry entry;
+    raft_index index;
     int rv;
 
-    rv = clientBarrier(r, req, cb);
-    if (rv != 0) {
-        return rv;
+    /* Index of the barrier entry being appended. */
+    index = logLastIndex(r->log) + 1;
+    req->type = RAFT_BARRIER;
+    req->index = index;
+    req->cb = cb;
+
+    entry.type = RAFT_BARRIER;
+    entry.term = r->current_term;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+
+    if (entry.buf.base == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
     }
 
-    event.type = 255;
     event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
-        return rv;
+        goto err_after_buf_alloc;
     }
 
+    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+
     return 0;
+
+err_after_buf_alloc:
+    raft_free(entry.buf.base);
+err:
+    assert(rv != 0);
+    return rv;
 }
 
 static int clientChangeConfiguration(
