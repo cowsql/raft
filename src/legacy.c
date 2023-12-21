@@ -77,21 +77,33 @@ struct ioForwardPersistEntries
 {
     struct raft_io_append append;
     struct raft *r;
-    struct raft_task task;
+    raft_index index;
+    struct raft_entry *entries;
+    unsigned n;
 };
 
 static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
 {
     struct ioForwardPersistEntries *req = append->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_task task;
+    struct raft_persist_entries *params;
+
+    task.type = RAFT_PERSIST_ENTRIES;
+    params = &task.persist_entries;
+    params->index = req->index;
+    params->entries = req->entries;
+    params->n = req->n;
+
     raft_free(req);
     ioTaskDone(r, &task, status);
 }
 
-static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
+static int ioForwardPersistEntries(struct raft *r,
+                                   raft_index index,
+                                   struct raft_entry *entries,
+                                   unsigned n)
 {
-    struct raft_persist_entries *params = &task->persist_entries;
     struct ioForwardPersistEntries *req;
     int rv;
 
@@ -100,15 +112,17 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->index = index;
+    req->entries = entries;
+    req->n = n;
     req->append.data = req;
 
-    rv = r->io->truncate(r->io, params->index);
+    rv = r->io->truncate(r->io, index);
     if (rv != 0) {
         goto err;
     }
 
-    rv = r->io->append(r->io, &req->append, params->entries, params->n,
+    rv = r->io->append(r->io, &req->append, entries, n,
                        ioForwardPersistEntriesCb);
     if (rv != 0) {
         goto err;
@@ -118,7 +132,7 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
 
 err:
     raft_free(req);
-    ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", params->n);
+    ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", n);
     return rv;
 }
 
@@ -555,6 +569,15 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             }
         }
 
+        if (update.entries.index != 0) {
+            rv =
+                ioForwardPersistEntries(r, update.entries.index,
+                                        update.entries.batch, update.entries.n);
+            if (rv != 0) {
+                goto err;
+            }
+        }
+
         for (j = 0; j < update.messages.n; j++) {
             rv = ioSendMessage(r, &update.messages.batch[j]);
             if (rv != 0) {
@@ -572,9 +595,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
             }
 
             switch (task->type) {
-                case RAFT_PERSIST_ENTRIES:
-                    rv = ioForwardPersistEntries(r, task);
-                    break;
                 case RAFT_PERSIST_SNAPSHOT:
                     rv = ioForwardPersistSnapshot(r, task);
                     break;

@@ -85,28 +85,13 @@ int TaskPersistEntries(struct raft *r,
                        struct raft_entry entries[],
                        unsigned n)
 {
-    struct raft_task *task;
-    struct raft_persist_entries *params;
-    int rv;
+    assert(r->entries_index == 0);
 
-    task = taskAppend(r);
-    if (task == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-
-    task->type = RAFT_PERSIST_ENTRIES;
-
-    params = &task->persist_entries;
-    params->index = index;
-    params->entries = entries;
-    params->n = n;
+    r->entries_index = index;
+    r->entries = entries;
+    r->n_entries = n;
 
     return 0;
-
-err:
-    assert(rv == RAFT_NOMEM);
-    return rv;
 }
 
 int TaskPersistSnapshot(struct raft *r,
