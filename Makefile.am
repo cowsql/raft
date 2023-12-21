@@ -24,7 +24,6 @@ libraft_la_SOURCES = \
   src/flags.c \
   src/heap.c \
   src/legacy.c \
-  src/lifecycle.c \
   src/log.c \
   src/membership.c \
   src/progress.c \
