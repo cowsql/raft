@@ -561,22 +561,8 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  * consumers.
  */
 enum {
-    RAFT_PERSIST_ENTRIES = 1,
-    RAFT_PERSIST_SNAPSHOT,
+    RAFT_PERSIST_SNAPSHOT = 1,
     RAFT_LOAD_SNAPSHOT,
-};
-
-/**
- * Parameters for tasks of type #RAFT_PERSIST_ENTRIES.
- *
- * Note that when writing an entry index at i, any previously-persisted entries
- * with index >= i must be discarded.
- */
-struct raft_persist_entries
-{
-    raft_index index;
-    struct raft_entry *entries;
-    unsigned n;
 };
 
 /**
@@ -610,7 +596,6 @@ struct raft_task
     unsigned char reserved[7];
     union {
         struct raft_load_snapshot load_snapshot;
-        struct raft_persist_entries persist_entries;
         struct raft_persist_snapshot persist_snapshot;
     };
 };
