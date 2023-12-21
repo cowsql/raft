@@ -3,6 +3,9 @@
 
 #include "../include/raft.h"
 
+/* Submit the given entries and start replicating them. */
+int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n);
+
 /* Apply a barrier entry.
  *
  * This function holds the common logic shared by raft_barrier() and

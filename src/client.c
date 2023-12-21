@@ -13,21 +13,15 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-int raft_apply(struct raft *r,
-               struct raft_apply *req,
-               const struct raft_buffer bufs[],
-               const unsigned n,
-               raft_apply_cb cb)
+int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
     raft_index index;
-    struct raft_event event;
+    unsigned i;
     int rv;
 
-    tracef("raft_apply n %d", n);
-
     assert(r != NULL);
-    assert(bufs != NULL);
-    assert(n == 1);
+    assert(entries != NULL);
+    assert(n > 0);
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
         rv = RAFT_NOTLEADER;
@@ -38,28 +32,16 @@ int raft_apply(struct raft *r,
 
     /* Index of the first entry being appended. */
     index = logLastIndex(r->log) + 1;
-    tracef("%u commands starting at %lld", n, index);
-    req->type = RAFT_COMMAND;
-    req->index = index;
-    req->cb = cb;
 
-    /* Append the new entries to the log. */
-    rv = logAppendCommands(r->log, r->current_term, bufs, n);
-    if (rv != 0) {
-        goto err;
+    for (i = 0; i < n; i++) {
+        struct raft_entry *entry = &entries[i];
+        rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
+        if (rv != 0) {
+            return rv;
+        }
     }
-
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
 
     rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    event.type = RAFT_SUBMIT;
-    event.time = r->io->time(r->io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
         goto err_after_log_append;
     }
@@ -68,10 +50,53 @@ int raft_apply(struct raft *r,
 
 err_after_log_append:
     logDiscard(r->log, index);
-    QUEUE_REMOVE(&req->queue);
 err:
     assert(rv != 0);
     return rv;
+}
+
+int raft_apply(struct raft *r,
+               struct raft_apply *req,
+               const struct raft_buffer bufs[],
+               const unsigned n,
+               raft_apply_cb cb)
+{
+    raft_index index;
+    struct raft_event event;
+    struct raft_entry entry;
+    int rv;
+
+    tracef("raft_apply n %d", n);
+
+    assert(r != NULL);
+    assert(bufs != NULL);
+    assert(n == 1);
+
+    /* Index of the first entry being appended. */
+    index = logLastIndex(r->log) + 1;
+    tracef("%u commands starting at %lld", n, index);
+    req->type = RAFT_COMMAND;
+    req->index = index;
+    req->cb = cb;
+
+    entry.type = RAFT_COMMAND;
+    entry.term = r->current_term;
+    entry.buf = bufs[0];
+    entry.batch = NULL;
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        return rv;
+    }
+
+    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+
+    return 0;
 }
 
 int clientBarrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
@@ -134,7 +159,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         return rv;
     }
 
-    event.type = RAFT_SUBMIT;
+    event.type = 255;
     event.time = r->io->time(r->io);
 
     rv = LegacyForwardToRaftIo(r, &event);
@@ -188,7 +213,7 @@ static int clientChangeConfiguration(
 
     r->configuration_uncommitted_index = index;
 
-    event.type = RAFT_SUBMIT;
+    event.type = 255;
     event.time = r->io->time(r->io);
 
     rv = LegacyForwardToRaftIo(r, &event);

@@ -5,6 +5,7 @@
 
 #include "assert.h"
 #include "byte.h"
+#include "client.h"
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
@@ -280,6 +281,9 @@ int raft_step(struct raft *r,
             break;
         case RAFT_TIMEOUT:
             rv = Tick(r);
+            break;
+        case RAFT_SUBMIT:
+            rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
         default:
             rv = 0;
