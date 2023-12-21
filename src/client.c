@@ -282,6 +282,36 @@ err:
     return rv;
 }
 
+void ClientCatchUp(struct raft *r, raft_id server_id)
+{
+    const struct raft_server *server;
+    unsigned server_index;
+    raft_index last_index;
+    int rv;
+
+    server = configurationGet(&r->configuration, server_id);
+    assert(server != NULL);
+
+    server_index = configurationIndexOf(&r->configuration, server_id);
+
+    last_index = logLastIndex(r->log);
+
+    r->leader_state.promotee_id = server->id;
+
+    /* Initialize the first catch-up round. */
+    r->leader_state.round_number = 1;
+    r->leader_state.round_index = last_index;
+    r->leader_state.round_start = r->now;
+
+    /* Immediately initiate an AppendEntries request. */
+    rv = replicationProgress(r, server_index);
+    if (rv != 0 && rv != RAFT_NOCONNECTION) {
+        /* This error is not fatal. */
+        tracef("failed to send append entries to server %llu: %s (%d)",
+               server->id, raft_strerror(rv), rv);
+    }
+}
+
 int raft_assign(struct raft *r,
                 struct raft_change *req,
                 raft_id id,
@@ -366,30 +396,10 @@ int raft_assign(struct raft *r,
         return 0;
     }
 
-    r->leader_state.promotee_id = server->id;
-
-    /* Initialize the first catch-up round. */
-    r->leader_state.round_number = 1;
-    r->leader_state.round_index = last_index;
-    r->leader_state.round_start = r->now;
-
-    /* Immediately initiate an AppendEntries request. */
-    rv = replicationProgress(r, server_index);
-    if (rv != 0 && rv != RAFT_NOCONNECTION) {
-        /* This error is not fatal. */
-        tracef("failed to send append entries to server %llu: %s (%d)",
-               server->id, raft_strerror(rv), rv);
-    }
-
-    /* Use a dummy event to trigger handling of possible RAFT_SEND_MESSAGE
-     * tasks.
-     *
-     * TODO: find a better solucation. */
-    if (r->io != NULL) {
-        event.type = 255;
-        event.time = r->now;
-        LegacyForwardToRaftIo(r, &event);
-    }
+    event.time = r->now;
+    event.type = RAFT_CATCH_UP;
+    event.catch_up.server_id = server->id;
+    LegacyForwardToRaftIo(r, &event);
 
     return 0;
 

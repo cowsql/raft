@@ -285,6 +285,10 @@ int raft_step(struct raft *r,
         case RAFT_SUBMIT:
             rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
+        case RAFT_CATCH_UP:
+            ClientCatchUp(r, event->catch_up.server_id);
+            rv = 0;
+            break;
         default:
             rv = 0;
             break;

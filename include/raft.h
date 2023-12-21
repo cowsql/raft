@@ -647,6 +647,7 @@ enum {
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
     RAFT_SUBMIT,   /* New entries have been submitted. */
+    RAFT_CATCH_UP, /* Start catching-up a server. */
     RAFT_TRANSFER, /* Submission of leadership trasfer request */
 };
 
@@ -681,6 +682,10 @@ struct raft_event
             struct raft_entry *entries;
             unsigned n;
         } submit;
+        struct
+        {
+            raft_id server_id;
+        } catch_up;
     };
 };
 
