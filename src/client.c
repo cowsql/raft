@@ -13,6 +13,44 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
+/* This function is called when a new configuration entry is being submitted. It
+ * updates the progress array and it switches the current configuration to the
+ * new one. */
+static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
+{
+    struct raft_configuration configuration;
+    int rv;
+
+    assert(entry->type == RAFT_CHANGE);
+
+    rv = configurationDecode(&entry->buf, &configuration);
+    if (rv != 0) {
+        goto err;
+    }
+
+    /* Rebuild the progress array if the new configuration has a different
+     * number of servers than the old one. */
+    if (configuration.n != r->configuration.n) {
+        rv = progressRebuildArray(r, &configuration);
+        if (rv != 0) {
+            goto err_after_decode;
+        }
+    }
+
+    /* Update the current configuration. */
+    raft_configuration_close(&r->configuration);
+    r->configuration = configuration;
+    r->configuration_uncommitted_index = logLastIndex(r->log);
+
+    return 0;
+
+err_after_decode:
+    configurationClose(&configuration);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
     raft_index index;
@@ -35,9 +73,17 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
+
         rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
         if (rv != 0) {
-            return rv;
+            goto err_after_log_append;
+        }
+
+        if (entry->type == RAFT_CHANGE) {
+            rv = clientSubmitConfiguration(r, entry);
+            if (rv != 0) {
+                goto err_after_log_append;
+            }
         }
     }
 
@@ -149,7 +195,7 @@ static int clientChangeConfiguration(
     const struct raft_configuration *configuration)
 {
     raft_index index;
-    raft_term term = r->current_term;
+    struct raft_entry entry;
     struct raft_event event;
     int rv;
 
@@ -158,36 +204,19 @@ static int clientChangeConfiguration(
     /* Index of the entry being appended. */
     index = logLastIndex(r->log) + 1;
 
-    /* Encode the new configuration and append it to the log. */
-    rv = logAppendConfiguration(r->log, term, configuration);
+    entry.type = RAFT_CHANGE;
+    entry.term = r->current_term;
+
+    /* Encode the configuration. */
+    rv = configurationEncode(configuration, &entry.buf);
     if (rv != 0) {
         goto err;
     }
 
-    if (configuration->n != r->configuration.n) {
-        rv = progressRebuildArray(r, configuration);
-        if (rv != 0) {
-            goto err;
-        }
-    }
-
-    /* Update the current configuration if we've created a new object. */
-    if (configuration != &r->configuration) {
-        raft_configuration_close(&r->configuration);
-        r->configuration = *configuration;
-    }
-
-    /* Start writing the new log entry to disk and send it to the followers. */
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        /* TODO: restore the old next/match indexes and configuration. */
-        goto err_after_log_append;
-    }
-
-    r->configuration_uncommitted_index = index;
-
-    event.type = 255;
     event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
@@ -241,6 +270,8 @@ int raft_add(struct raft *r,
 
     assert(r->leader_state.change == NULL);
     r->leader_state.change = req;
+
+    raft_configuration_close(&configuration);
 
     return 0;
 
@@ -410,6 +441,8 @@ int raft_remove(struct raft *r,
 
     assert(r->leader_state.change == NULL);
     r->leader_state.change = req;
+
+    raft_configuration_close(&configuration);
 
     return 0;
 
