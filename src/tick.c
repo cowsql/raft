@@ -195,7 +195,7 @@ static int tickLeader(struct raft *r)
     return 0;
 }
 
-static int tick(struct raft *r)
+int Tick(struct raft *r)
 {
     int rv = -1;
 
@@ -229,11 +229,6 @@ void tickCb(struct raft_io *io)
     int rv;
 
     r = io->data;
-    r->now = r->io->time(r->io);
-    rv = tick(r);
-    if (rv != 0) {
-        goto err;
-    }
 
     event.type = RAFT_TIMEOUT;
     event.time = r->io->time(io);

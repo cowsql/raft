@@ -3,7 +3,6 @@
 #include "configuration.h"
 #include "err.h"
 #include "legacy.h"
-#include "lifecycle.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
@@ -14,20 +13,52 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-int raft_apply(struct raft *r,
-               struct raft_apply *req,
-               const struct raft_buffer bufs[],
-               const unsigned n,
-               raft_apply_cb cb)
+/* This function is called when a new configuration entry is being submitted. It
+ * updates the progress array and it switches the current configuration to the
+ * new one. */
+static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
 {
-    raft_index index;
-    struct raft_event event;
+    struct raft_configuration configuration;
     int rv;
 
-    tracef("raft_apply n %d", n);
+    assert(entry->type == RAFT_CHANGE);
+
+    rv = configurationDecode(&entry->buf, &configuration);
+    if (rv != 0) {
+        goto err;
+    }
+
+    /* Rebuild the progress array if the new configuration has a different
+     * number of servers than the old one. */
+    if (configuration.n != r->configuration.n) {
+        rv = progressRebuildArray(r, &configuration);
+        if (rv != 0) {
+            goto err_after_decode;
+        }
+    }
+
+    /* Update the current configuration. */
+    raft_configuration_close(&r->configuration);
+    r->configuration = configuration;
+    r->configuration_uncommitted_index = logLastIndex(r->log);
+
+    return 0;
+
+err_after_decode:
+    configurationClose(&configuration);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
+int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
+{
+    raft_index index;
+    unsigned i;
+    int rv;
 
     assert(r != NULL);
-    assert(bufs != NULL);
+    assert(entries != NULL);
     assert(n > 0);
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
@@ -39,28 +70,24 @@ int raft_apply(struct raft *r,
 
     /* Index of the first entry being appended. */
     index = logLastIndex(r->log) + 1;
-    tracef("%u commands starting at %lld", n, index);
-    req->type = RAFT_COMMAND;
-    req->index = index;
-    req->cb = cb;
 
-    /* Append the new entries to the log. */
-    rv = logAppendCommands(r->log, r->current_term, bufs, n);
-    if (rv != 0) {
-        goto err;
+    for (i = 0; i < n; i++) {
+        struct raft_entry *entry = &entries[i];
+
+        rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
+        if (rv != 0) {
+            goto err_after_log_append;
+        }
+
+        if (entry->type == RAFT_CHANGE) {
+            rv = clientSubmitConfiguration(r, entry);
+            if (rv != 0) {
+                goto err_after_log_append;
+            }
+        }
     }
-
-    lifecycleRequestStart(r, (struct request *)req);
 
     rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    event.type = RAFT_SUBMIT;
-    event.time = r->io->time(r->io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
         goto err_after_log_append;
     }
@@ -69,68 +96,96 @@ int raft_apply(struct raft *r,
 
 err_after_log_append:
     logDiscard(r->log, index);
-    QUEUE_REMOVE(&req->queue);
 err:
     assert(rv != 0);
     return rv;
 }
 
-int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
+int raft_apply(struct raft *r,
+               struct raft_apply *req,
+               const struct raft_buffer bufs[],
+               const unsigned n,
+               raft_apply_cb cb)
 {
     raft_index index;
-    struct raft_buffer buf;
     struct raft_event event;
+    struct raft_entry entry;
     int rv;
 
-    if (r->state != RAFT_LEADER || r->transfer != NULL) {
-        rv = RAFT_NOTLEADER;
-        goto err;
+    tracef("raft_apply n %d", n);
+
+    assert(r != NULL);
+    assert(bufs != NULL);
+    assert(n == 1);
+
+    /* Index of the first entry being appended. */
+    index = logLastIndex(r->log) + 1;
+    tracef("%u commands starting at %lld", n, index);
+    req->type = RAFT_COMMAND;
+    req->index = index;
+    req->cb = cb;
+
+    entry.type = RAFT_COMMAND;
+    entry.term = r->current_term;
+    entry.buf = bufs[0];
+    entry.batch = NULL;
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        return rv;
     }
 
-    /* TODO: use a completely empty buffer */
-    buf.len = 8;
-    buf.base = raft_malloc(buf.len);
+    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
 
-    if (buf.base == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
+    return 0;
+}
+
+int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
+{
+    struct raft_event event;
+    struct raft_entry entry;
+    raft_index index;
+    int rv;
 
     /* Index of the barrier entry being appended. */
     index = logLastIndex(r->log) + 1;
-    tracef("barrier starting at %lld", index);
     req->type = RAFT_BARRIER;
     req->index = index;
     req->cb = cb;
 
-    rv = logAppend(r->log, r->current_term, RAFT_BARRIER, &buf, NULL);
+    entry.type = RAFT_BARRIER;
+    entry.term = r->current_term;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+
+    if (entry.buf.base == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
+
+    rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
         goto err_after_buf_alloc;
     }
 
-    lifecycleRequestStart(r, (struct request *)req);
-
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    event.type = RAFT_SUBMIT;
-    event.time = r->io->time(r->io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
+    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
 
     return 0;
 
-err_after_log_append:
-    logDiscard(r->log, index);
-    QUEUE_REMOVE(&req->queue);
 err_after_buf_alloc:
-    raft_free(buf.base);
+    raft_free(entry.buf.base);
 err:
+    assert(rv != 0);
     return rv;
 }
 
@@ -140,7 +195,7 @@ static int clientChangeConfiguration(
     const struct raft_configuration *configuration)
 {
     raft_index index;
-    raft_term term = r->current_term;
+    struct raft_entry entry;
     struct raft_event event;
     int rv;
 
@@ -149,36 +204,19 @@ static int clientChangeConfiguration(
     /* Index of the entry being appended. */
     index = logLastIndex(r->log) + 1;
 
-    /* Encode the new configuration and append it to the log. */
-    rv = logAppendConfiguration(r->log, term, configuration);
+    entry.type = RAFT_CHANGE;
+    entry.term = r->current_term;
+
+    /* Encode the configuration. */
+    rv = configurationEncode(configuration, &entry.buf);
     if (rv != 0) {
         goto err;
     }
 
-    if (configuration->n != r->configuration.n) {
-        rv = progressRebuildArray(r, configuration);
-        if (rv != 0) {
-            goto err;
-        }
-    }
-
-    /* Update the current configuration if we've created a new object. */
-    if (configuration != &r->configuration) {
-        raft_configuration_close(&r->configuration);
-        r->configuration = *configuration;
-    }
-
-    /* Start writing the new log entry to disk and send it to the followers. */
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        /* TODO: restore the old next/match indexes and configuration. */
-        goto err_after_log_append;
-    }
-
-    r->configuration_uncommitted_index = index;
-
-    event.type = RAFT_SUBMIT;
     event.time = r->io->time(r->io);
+    event.type = RAFT_SUBMIT;
+    event.submit.entries = &entry;
+    event.submit.n = 1;
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
@@ -233,6 +271,8 @@ int raft_add(struct raft *r,
     assert(r->leader_state.change == NULL);
     r->leader_state.change = req;
 
+    raft_configuration_close(&configuration);
+
     return 0;
 
 err_after_configuration_copy:
@@ -240,6 +280,36 @@ err_after_configuration_copy:
 err:
     assert(rv != 0);
     return rv;
+}
+
+void ClientCatchUp(struct raft *r, raft_id server_id)
+{
+    const struct raft_server *server;
+    unsigned server_index;
+    raft_index last_index;
+    int rv;
+
+    server = configurationGet(&r->configuration, server_id);
+    assert(server != NULL);
+
+    server_index = configurationIndexOf(&r->configuration, server_id);
+
+    last_index = logLastIndex(r->log);
+
+    r->leader_state.promotee_id = server->id;
+
+    /* Initialize the first catch-up round. */
+    r->leader_state.round_number = 1;
+    r->leader_state.round_index = last_index;
+    r->leader_state.round_start = r->now;
+
+    /* Immediately initiate an AppendEntries request. */
+    rv = replicationProgress(r, server_index);
+    if (rv != 0 && rv != RAFT_NOCONNECTION) {
+        /* This error is not fatal. */
+        tracef("failed to send append entries to server %llu: %s (%d)",
+               server->id, raft_strerror(rv), rv);
+    }
 }
 
 int raft_assign(struct raft *r,
@@ -326,30 +396,10 @@ int raft_assign(struct raft *r,
         return 0;
     }
 
-    r->leader_state.promotee_id = server->id;
-
-    /* Initialize the first catch-up round. */
-    r->leader_state.round_number = 1;
-    r->leader_state.round_index = last_index;
-    r->leader_state.round_start = r->now;
-
-    /* Immediately initiate an AppendEntries request. */
-    rv = replicationProgress(r, server_index);
-    if (rv != 0 && rv != RAFT_NOCONNECTION) {
-        /* This error is not fatal. */
-        tracef("failed to send append entries to server %llu: %s (%d)",
-               server->id, raft_strerror(rv), rv);
-    }
-
-    /* Use a dummy event to trigger handling of possible RAFT_SEND_MESSAGE
-     * tasks.
-     *
-     * TODO: find a better solucation. */
-    if (r->io != NULL) {
-        event.type = 255;
-        event.time = r->now;
-        LegacyForwardToRaftIo(r, &event);
-    }
+    event.time = r->now;
+    event.type = RAFT_CATCH_UP;
+    event.catch_up.server_id = server->id;
+    LegacyForwardToRaftIo(r, &event);
 
     return 0;
 
@@ -402,6 +452,8 @@ int raft_remove(struct raft *r,
     assert(r->leader_state.change == NULL);
     r->leader_state.change = req;
 
+    raft_configuration_close(&configuration);
+
     return 0;
 
 err_after_configuration_copy:
@@ -434,6 +486,48 @@ static raft_id clientSelectTransferee(struct raft *r)
     }
 
     return 0;
+}
+
+int ClientTransfer(struct raft *r, raft_id server_id)
+{
+    const struct raft_server *server;
+    unsigned i;
+    int rv;
+
+    if (server_id == 0) {
+        server_id = clientSelectTransferee(r);
+        if (server_id == 0) {
+            rv = RAFT_NOTFOUND;
+            ErrMsgPrintf(r->errmsg, "there's no other voting server");
+            goto err;
+        }
+    }
+
+    server = configurationGet(&r->configuration, server_id);
+    if (server == NULL || server->id == r->id || server->role != RAFT_VOTER) {
+        rv = RAFT_BADID;
+        ErrMsgFromCode(r->errmsg, rv);
+        goto err;
+    }
+
+    /* If this follower is up-to-date, we can send it the TimeoutNow message
+     * right away. */
+    i = configurationIndexOf(&r->configuration, server->id);
+    assert(i < r->configuration.n);
+
+    if (progressIsUpToDate(r, i)) {
+        rv = membershipLeadershipTransferStart(r);
+        if (rv != 0) {
+            r->transfer = NULL;
+            goto err;
+        }
+    }
+
+    return 0;
+
+err:
+    assert(rv != 0);
+    return rv;
 }
 
 int raft_transfer(struct raft *r,
@@ -477,16 +571,9 @@ int raft_transfer(struct raft *r,
 
     membershipLeadershipTransferInit(r, req, id, cb);
 
-    if (progressIsUpToDate(r, i)) {
-        rv = membershipLeadershipTransferStart(r);
-        if (rv != 0) {
-            r->transfer = NULL;
-            goto err;
-        }
-    }
-
-    event.type = RAFT_TRANSFER;
     event.time = r->io->time(r->io);
+    event.type = RAFT_TRANSFER;
+    event.transfer.server_id = id;
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {

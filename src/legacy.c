@@ -517,7 +517,7 @@ void LegacyFireCompletedRequests(struct raft *r)
             case RAFT_CHANGE:
                 legacyFireChange((struct raft_change *)req);
                 break;
-            case RAFT_TRANSFER:
+            case RAFT_TRANSFER_:
                 legacyFireTransfer((struct raft_transfer *)req);
                 break;
             default:

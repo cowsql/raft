@@ -5,6 +5,7 @@
 
 #include "assert.h"
 #include "byte.h"
+#include "client.h"
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
@@ -17,6 +18,7 @@
 #include "queue.h"
 #include "recv.h"
 #include "replication.h"
+#include "tick.h"
 #include "tracing.h"
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -276,6 +278,19 @@ int raft_step(struct raft *r,
         case RAFT_SNAPSHOT:
             rv = replicationSnapshot(r, &event->snapshot.metadata,
                                      event->snapshot.trailing);
+            break;
+        case RAFT_TIMEOUT:
+            rv = Tick(r);
+            break;
+        case RAFT_SUBMIT:
+            rv = ClientSubmit(r, event->submit.entries, event->submit.n);
+            break;
+        case RAFT_CATCH_UP:
+            ClientCatchUp(r, event->catch_up.server_id);
+            rv = 0;
+            break;
+        case RAFT_TRANSFER:
+            rv = ClientTransfer(r, event->transfer.server_id);
             break;
         default:
             rv = 0;
