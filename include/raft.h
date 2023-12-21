@@ -676,6 +676,11 @@ struct raft_event
             struct raft_snapshot_metadata metadata; /* Snapshot metadata */
             unsigned trailing;                      /* Trailing entries kept */
         } snapshot;
+        struct
+        {
+            struct raft_entry *entries;
+            unsigned n;
+        } submit;
     };
 };
 
