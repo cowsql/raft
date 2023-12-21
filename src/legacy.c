@@ -86,17 +86,18 @@ static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
 {
     struct ioForwardPersistEntries *req = append->data;
     struct raft *r = req->r;
-    struct raft_task task;
-    struct raft_persist_entries *params;
+    struct raft_event event;
 
-    task.type = RAFT_PERSIST_ENTRIES;
-    params = &task.persist_entries;
-    params->index = req->index;
-    params->entries = req->entries;
-    params->n = req->n;
+    event.time = r->io->time(r->io);
+    event.type = RAFT_PERSISTED_ENTRIES;
+    event.persisted_entries.index = req->index;
+    event.persisted_entries.batch = req->entries;
+    event.persisted_entries.n = req->n;
+    event.persisted_entries.status = status;
 
     raft_free(req);
-    ioTaskDone(r, &task, status);
+
+    LegacyForwardToRaftIo(r, &event);
 }
 
 static int ioForwardPersistEntries(struct raft *r,

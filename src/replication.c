@@ -440,7 +440,9 @@ static struct request *getRequest(struct raft *r,
 
 /* Invoked once a disk write request for new entries has been completed. */
 static int leaderPersistEntriesDone(struct raft *r,
-                                    struct raft_persist_entries *params,
+                                    raft_index index,
+                                    struct raft_entry *entries,
+                                    unsigned n,
                                     int status)
 {
     size_t server_index;
@@ -448,8 +450,8 @@ static int leaderPersistEntriesDone(struct raft *r,
 
     assert(r->state == RAFT_LEADER);
 
-    tracef("leader: written %u entries starting at %lld: status %d", params->n,
-           params->index, status);
+    tracef("leader: written %u entries starting at %lld: status %d", n, index,
+           status);
 
     /* In case of a failed disk write, if we were the leader creating these
      * entries in the first place, truncate our log too (since we have appended
@@ -461,10 +463,10 @@ static int leaderPersistEntriesDone(struct raft *r,
     if (status != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
 
-        for (unsigned i = 0; i < params->n; i++) {
-            struct request *req = getRequest(r, params->index + i, -1);
+        for (unsigned i = 0; i < n; i++) {
+            struct request *req = getRequest(r, index + i, -1);
             if (!req) {
-                tracef("no request found at index %llu", params->index + i);
+                tracef("no request found at index %llu", index + i);
                 continue;
             }
             switch (req->type) {
@@ -503,7 +505,7 @@ static int leaderPersistEntriesDone(struct raft *r,
         goto out;
     }
 
-    updateLastStored(r, params->index, params->entries, params->n);
+    updateLastStored(r, index, entries, n);
 
     /* Only update the next index if we are part of the current
      * configuration. The only case where this is not true is when we were
@@ -533,36 +535,40 @@ out:
 }
 
 static int followerPersistEntriesDone(struct raft *r,
-                                      struct raft_persist_entries *io,
+                                      raft_index index,
+                                      struct raft_entry *entries,
+                                      unsigned n,
                                       int status);
 
 /* Invoked once a disk write request for new entries has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
-                                  struct raft_persist_entries *params,
+                                  raft_index index,
+                                  struct raft_entry *entries,
+                                  unsigned n,
                                   int status)
 {
     int rv;
 
     switch (r->state) {
         case RAFT_LEADER:
-            rv = leaderPersistEntriesDone(r, params, status);
+            rv = leaderPersistEntriesDone(r, index, entries, n, status);
             break;
         case RAFT_FOLLOWER:
-            rv = followerPersistEntriesDone(r, params, status);
+            rv = followerPersistEntriesDone(r, index, entries, n, status);
             break;
         default:
             if (status != 0) {
-                updateLastStored(r, params->index, params->entries, params->n);
+                updateLastStored(r, index, entries, n);
             }
             rv = 0;
             break;
     }
 
-    logRelease(r->log, params->index, params->entries, params->n);
+    logRelease(r->log, index, entries, n);
 
     if (status != 0) {
-        if (params->index <= logLastIndex(r->log)) {
-            logTruncate(r->log, params->index);
+        if (index <= logLastIndex(r->log)) {
+            logTruncate(r->log, index);
         }
     }
 
@@ -857,7 +863,9 @@ static void sendAppendEntriesResult(
 }
 
 static int followerPersistEntriesDone(struct raft *r,
-                                      struct raft_persist_entries *params,
+                                      raft_index first_index,
+                                      struct raft_entry *entries,
+                                      unsigned n,
                                       int status)
 {
     struct raft_append_entries_result result;
@@ -869,18 +877,18 @@ static int followerPersistEntriesDone(struct raft *r,
 
     tracef("I/O completed on follower: status %d", status);
 
-    assert(params->entries != NULL);
-    assert(params->n > 0);
+    assert(entries != NULL);
+    assert(n > 0);
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result.features = RAFT_DEFAULT_FEATURE_FLAGS;
     if (status != 0) {
-        result.rejected = params->index;
+        result.rejected = first_index;
         goto respond;
     }
 
-    i = updateLastStored(r, params->index, params->entries, params->n);
+    i = updateLastStored(r, first_index, entries, n);
 
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
@@ -897,8 +905,8 @@ static int followerPersistEntriesDone(struct raft *r,
 
     /* Possibly apply configuration changes as uncommitted. */
     for (j = 0; j < i; j++) {
-        struct raft_entry *entry = &params->entries[j];
-        raft_index index = params->index + j;
+        struct raft_entry *entry = &entries[j];
+        raft_index index = first_index + j;
         raft_term local_term = logTermOf(r->log, index);
 
         assert(local_term != 0 && local_term == entry->term);

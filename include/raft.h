@@ -619,7 +619,8 @@ struct raft_task
  * Type codes of events to be passed to raft_step().
  */
 enum {
-    RAFT_DONE = 1, /* A task has been completed. */
+    RAFT_DONE = 1,          /* A task has been completed. */
+    RAFT_PERSISTED_ENTRIES, /* A batch of entries have been persisted. */
     RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
@@ -644,6 +645,13 @@ struct raft_event
             struct raft_task task;
             int status;
         } done;
+        struct
+        {
+            raft_index index;
+            struct raft_entry *batch;
+            unsigned n;
+            int status;
+        } persisted_entries;
         struct
         {
             struct raft_message message;

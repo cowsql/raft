@@ -207,14 +207,6 @@ static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
     return replicationLoadSnapshotDone(r, params, status);
 }
 
-static int persistEntriesDone(struct raft *r,
-                              struct raft_task *task,
-                              int status)
-{
-    struct raft_persist_entries *params = &task->persist_entries;
-    return replicationPersistEntriesDone(r, params, status);
-}
-
 static int persistSnapshotDone(struct raft *r,
                                struct raft_task *task,
                                int status)
@@ -231,9 +223,6 @@ static int stepDone(struct raft *r, struct raft_task *task, int status)
     assert(task != NULL);
 
     switch (task->type) {
-        case RAFT_PERSIST_ENTRIES:
-            rv = persistEntriesDone(r, task, status);
-            break;
         case RAFT_PERSIST_SNAPSHOT:
             rv = persistSnapshotDone(r, task, status);
             break;
@@ -279,6 +268,12 @@ int raft_step(struct raft *r,
     switch (event->type) {
         case RAFT_DONE:
             rv = stepDone(r, &event->done.task, event->done.status);
+            break;
+        case RAFT_PERSISTED_ENTRIES:
+            rv = replicationPersistEntriesDone(
+                r, event->persisted_entries.index,
+                event->persisted_entries.batch, event->persisted_entries.n,
+                event->persisted_entries.status);
             break;
         case RAFT_SENT:
             rv = stepSent(r, &event->sent.message, event->sent.status);

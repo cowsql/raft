@@ -112,7 +112,9 @@ int replicationLoadSnapshotDone(struct raft *r,
 
 /* Called when a RAFT_PERSIST_ENTRIES task has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
-                                  struct raft_persist_entries *params,
+                                  raft_index index,
+                                  struct raft_entry *entries,
+                                  unsigned n,
                                   int status);
 
 /* Called when a RAFT_PERSIST_SNAPSHOT task has been completed. */
