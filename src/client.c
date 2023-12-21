@@ -99,56 +99,6 @@ int raft_apply(struct raft *r,
     return 0;
 }
 
-int clientBarrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
-{
-    raft_index index;
-    struct raft_buffer buf;
-    int rv;
-
-    if (r->state != RAFT_LEADER || r->transfer != NULL) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
-    /* TODO: use a completely empty buffer */
-    buf.len = 8;
-    buf.base = raft_malloc(buf.len);
-
-    if (buf.base == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-
-    /* Index of the barrier entry being appended. */
-    index = logLastIndex(r->log) + 1;
-    tracef("barrier starting at %lld", index);
-    req->type = RAFT_BARRIER;
-    req->index = index;
-    req->cb = cb;
-
-    rv = logAppend(r->log, r->current_term, RAFT_BARRIER, &buf, NULL);
-    if (rv != 0) {
-        goto err_after_buf_alloc;
-    }
-
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
-
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    return 0;
-
-err_after_log_append:
-    logDiscard(r->log, index);
-    QUEUE_REMOVE(&req->queue);
-err_after_buf_alloc:
-    raft_free(buf.base);
-err:
-    return rv;
-}
-
 int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
 {
     struct raft_event event;
