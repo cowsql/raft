@@ -27,7 +27,7 @@ int raft_apply(struct raft *r,
 
     assert(r != NULL);
     assert(bufs != NULL);
-    assert(n > 0);
+    assert(n == 1);
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
         rv = RAFT_NOTLEADER;
