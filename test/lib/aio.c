@@ -15,6 +15,14 @@ int AioFill(aio_context_t *ctx, unsigned n)
     int limit;
     int used;
 
+    /* Only run these tests if the "CI" variable is set (GitHub runners do set
+     * it). This avoids spurious failures when running the tests in environments
+     * that are not isolated enough, and that might run other workflows using
+     * the AIO kernel sub-system. */
+    if (getenv("CI") == NULL) {
+        return -1;
+    }
+
     /* Figure out how many events are available. */
     fd = open("/proc/sys/fs/aio-max-nr", O_RDONLY);
     munit_assert_int(fd, !=, -1);
