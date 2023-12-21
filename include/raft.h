@@ -824,26 +824,29 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                     \
-    struct                                                                   \
-    {                                                                        \
-        raft_time now;    /* Current time, updated via raft_step() */        \
-        unsigned random;  /* Pseudo-random number generator state */         \
-        unsigned updates; /* Flags tracking updates during raft_step() */    \
-        struct raft_message *messages; /* Queue of pending messages */       \
-        unsigned n_messages;           /* Length of the messages queue */    \
-        unsigned n_messages_cap;       /* Capacity of the task queue */      \
-        struct raft_task *tasks; /* Queue of pending raft_task operations */ \
-        unsigned n_tasks;        /* Length of the task queue */              \
-        unsigned n_tasks_cap;    /* Capacity of the task queue */            \
-        /* Index of the last snapshot that was taken */                      \
-        raft_index configuration_last_snapshot_index;                        \
-        /* Fields used by the v0 compatibility code */                       \
-        struct                                                               \
-        {                                                                    \
-            void *requests[2];              /* Completed client requests */  \
-            void (*step_cb)(struct raft *); /* Invoked after raft_step() */  \
-        } legacy;                                                            \
+#define RAFT__EXTENSIONS                                                      \
+    struct                                                                    \
+    {                                                                         \
+        raft_time now;    /* Current time, updated via raft_step() */         \
+        unsigned random;  /* Pseudo-random number generator state */          \
+        unsigned updates; /* Flags tracking updates during raft_step() */     \
+        struct raft_message *messages; /* Queue of pending messages */        \
+        unsigned n_messages;           /* Length of the messages queue */     \
+        unsigned n_messages_cap;       /* Capacity of the task queue */       \
+        raft_index entries_index; /* Index of first entry in entries array */ \
+        struct raft_entry *entries; /* Array of entries to persist */         \
+        unsigned n_entries;         /* Length of the entries queue */         \
+        struct raft_task *tasks; /* Queue of pending raft_task operations */  \
+        unsigned n_tasks;        /* Length of the task queue */               \
+        unsigned n_tasks_cap;    /* Capacity of the task queue */             \
+        /* Index of the last snapshot that was taken */                       \
+        raft_index configuration_last_snapshot_index;                         \
+        /* Fields used by the v0 compatibility code */                        \
+        struct                                                                \
+        {                                                                     \
+            void *requests[2];              /* Completed client requests */   \
+            void (*step_cb)(struct raft *); /* Invoked after raft_step() */   \
+        } legacy;                                                             \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
