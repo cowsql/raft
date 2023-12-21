@@ -488,6 +488,48 @@ static raft_id clientSelectTransferee(struct raft *r)
     return 0;
 }
 
+int ClientTransfer(struct raft *r, raft_id server_id)
+{
+    const struct raft_server *server;
+    unsigned i;
+    int rv;
+
+    if (server_id == 0) {
+        server_id = clientSelectTransferee(r);
+        if (server_id == 0) {
+            rv = RAFT_NOTFOUND;
+            ErrMsgPrintf(r->errmsg, "there's no other voting server");
+            goto err;
+        }
+    }
+
+    server = configurationGet(&r->configuration, server_id);
+    if (server == NULL || server->id == r->id || server->role != RAFT_VOTER) {
+        rv = RAFT_BADID;
+        ErrMsgFromCode(r->errmsg, rv);
+        goto err;
+    }
+
+    /* If this follower is up-to-date, we can send it the TimeoutNow message
+     * right away. */
+    i = configurationIndexOf(&r->configuration, server->id);
+    assert(i < r->configuration.n);
+
+    if (progressIsUpToDate(r, i)) {
+        rv = membershipLeadershipTransferStart(r);
+        if (rv != 0) {
+            r->transfer = NULL;
+            goto err;
+        }
+    }
+
+    return 0;
+
+err:
+    assert(rv != 0);
+    return rv;
+}
+
 int raft_transfer(struct raft *r,
                   struct raft_transfer *req,
                   raft_id id,
@@ -529,16 +571,9 @@ int raft_transfer(struct raft *r,
 
     membershipLeadershipTransferInit(r, req, id, cb);
 
-    if (progressIsUpToDate(r, i)) {
-        rv = membershipLeadershipTransferStart(r);
-        if (rv != 0) {
-            r->transfer = NULL;
-            goto err;
-        }
-    }
-
-    event.type = RAFT_TRANSFER;
     event.time = r->io->time(r->io);
+    event.type = RAFT_TRANSFER;
+    event.transfer.server_id = id;
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {

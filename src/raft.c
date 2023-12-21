@@ -289,6 +289,9 @@ int raft_step(struct raft *r,
             ClientCatchUp(r, event->catch_up.server_id);
             rv = 0;
             break;
+        case RAFT_TRANSFER:
+            rv = ClientTransfer(r, event->transfer.server_id);
+            break;
         default:
             rv = 0;
             break;

@@ -686,6 +686,10 @@ struct raft_event
         {
             raft_id server_id;
         } catch_up;
+        struct
+        {
+            raft_id server_id;
+        } transfer;
     };
 };
 
