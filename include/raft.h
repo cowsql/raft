@@ -1084,9 +1084,7 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
-                       struct raft_update *update,
-                       raft_index *commit_index,
-                       raft_time *timeout);
+                       struct raft_update *update);
 
 /**
  * Return the current term of this server.

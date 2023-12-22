@@ -520,8 +520,6 @@ void LegacyFireCompletedRequests(struct raft *r)
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_update update;
-    raft_index commit_index;
-    raft_time timeout;
     unsigned j;
     queue *head;
     struct request *req;
@@ -534,7 +532,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         return 0;
     }
 
-    rv = raft_step(r, event, &update, &commit_index, &timeout);
+    rv = raft_step(r, event, &update);
     if (rv != 0) {
         goto err;
     }

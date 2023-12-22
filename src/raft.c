@@ -202,9 +202,7 @@ static int stepReceive(struct raft *r,
 
 int raft_step(struct raft *r,
               struct raft_event *event,
-              struct raft_update *update,
-              raft_index *commit_index,
-              raft_time *timeout)
+              struct raft_update *update)
 {
     int rv;
 
@@ -283,10 +281,6 @@ int raft_step(struct raft *r,
         update->messages.batch = r->messages;
         update->messages.n = r->n_messages;
     }
-
-    *commit_index = r->commit_index;
-
-    (void)timeout;
 
 out:
     r->updates = 0;
