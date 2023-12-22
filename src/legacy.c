@@ -537,6 +537,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         goto err;
     }
 
+    if (r->legacy.prev_state != r->state) {
+        r->legacy.prev_state = r->state;
+    }
+
     /* Check if there's a client request in the completion queue which has
      * failed due to a RAFT_NOSPACE error. In that case we will not call the
      * step_cb just yet, because otherwise cowsql/dqlite would notice that
