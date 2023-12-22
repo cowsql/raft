@@ -1222,7 +1222,6 @@ int replicationInstallSnapshot(struct raft *r,
 {
     struct raft_snapshot_metadata metadata;
     raft_term local_term;
-    int rv;
 
     assert(r->state == RAFT_FOLLOWER);
 
@@ -1269,18 +1268,16 @@ int replicationInstallSnapshot(struct raft *r,
     metadata.configuration_index = args->conf_index;
     metadata.configuration = args->conf;
 
-    rv = TaskPersistSnapshot(r, metadata, 0, args->data, true /* last */);
-    if (rv != 0) {
-        tracef("snapshot_put failed %d", rv);
-        goto err;
-    }
+    assert(!(r->updates & RAFT_UPDATE_SNAPSHOT));
+
+    r->updates |= RAFT_UPDATE_SNAPSHOT;
+
+    r->snapshot_metadata = metadata;
+    r->snapshot_offset = 0;
+    r->snapshot_chunk = args->data;
+    r->snapshot_last = true;
 
     return 0;
-
-err:
-    r->snapshot.persisting = false;
-    assert(rv != 0);
-    return rv;
 }
 
 /* Apply a RAFT_COMMAND entry that has been committed. */

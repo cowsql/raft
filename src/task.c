@@ -53,21 +53,3 @@ err:
     assert(rv == RAFT_NOMEM);
     return rv;
 }
-
-int TaskPersistSnapshot(struct raft *r,
-                        struct raft_snapshot_metadata metadata,
-                        size_t offset,
-                        struct raft_buffer chunk,
-                        bool last)
-{
-    assert(!(r->updates & RAFT_UPDATE_SNAPSHOT));
-
-    r->updates |= RAFT_UPDATE_SNAPSHOT;
-
-    r->snapshot_metadata = metadata;
-    r->snapshot_offset = offset;
-    r->snapshot_chunk = chunk;
-    r->snapshot_last = last;
-
-    return 0;
-}
