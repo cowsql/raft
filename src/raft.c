@@ -158,7 +158,7 @@ static void ioCloseCb(struct raft_io *io)
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
-    assert(r->n_messages == 0);
+    assert(r->updates == 0);
     assert(r->n_tasks == 0);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
@@ -310,6 +310,13 @@ int raft_step(struct raft *r,
         update->entries.index = r->entries_index;
         update->entries.batch = r->entries;
         update->entries.n = r->n_entries;
+    }
+
+    if (update->flags & RAFT_UPDATE_SNAPSHOT) {
+        update->snapshot.metadata = r->snapshot_metadata;
+        update->snapshot.offset = r->snapshot_offset;
+        update->snapshot.chunk = r->snapshot_chunk;
+        update->snapshot.last = r->snapshot_last;
     }
 
     if (update->flags & RAFT_UPDATE_MESSAGES) {

@@ -832,6 +832,10 @@ struct raft_log;
         raft_index entries_index; /* Index of first entry in entries array */ \
         struct raft_entry *entries; /* Array of entries to persist */         \
         unsigned n_entries;         /* Length of the entries queue */         \
+        struct raft_snapshot_metadata snapshot_metadata;                      \
+        size_t snapshot_offset;                                               \
+        struct raft_buffer snapshot_chunk;                                    \
+        bool snapshot_last;                                                   \
         struct raft_task *tasks; /* Queue of pending raft_task operations */  \
         unsigned n_tasks;        /* Length of the task queue */               \
         unsigned n_tasks_cap;    /* Capacity of the task queue */             \

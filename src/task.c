@@ -104,29 +104,16 @@ int TaskPersistSnapshot(struct raft *r,
                         struct raft_buffer chunk,
                         bool last)
 {
-    struct raft_task *task;
-    struct raft_persist_snapshot *params;
-    int rv;
+    assert(!(r->updates & RAFT_UPDATE_SNAPSHOT));
 
-    task = taskAppend(r);
-    if (task == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
+    r->updates |= RAFT_UPDATE_SNAPSHOT;
 
-    task->type = RAFT_PERSIST_SNAPSHOT;
-
-    params = &task->persist_snapshot;
-    params->metadata = metadata;
-    params->offset = offset;
-    params->chunk = chunk;
-    params->last = last;
+    r->snapshot_metadata = metadata;
+    r->snapshot_offset = offset;
+    r->snapshot_chunk = chunk;
+    r->snapshot_last = last;
 
     return 0;
-
-err:
-    assert(rv == RAFT_NOMEM);
-    return rv;
 }
 
 int TaskLoadSnapshot(struct raft *r, raft_index index, size_t offset)

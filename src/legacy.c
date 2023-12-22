@@ -142,7 +142,10 @@ struct ioForwardPersistSnapshot
     struct raft_io_snapshot_put put;
     struct raft_snapshot snapshot;
     struct raft *r;
-    struct raft_task task;
+    struct raft_snapshot_metadata metadata;
+    size_t offset;
+    struct raft_buffer chunk;
+    bool last;
 };
 
 static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
@@ -150,15 +153,26 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
 {
     struct ioForwardPersistSnapshot *req = put->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_task task;
+
+    task.type = RAFT_PERSIST_SNAPSHOT;
+    task.persist_snapshot.metadata = req->metadata;
+    task.persist_snapshot.offset = req->offset;
+    task.persist_snapshot.chunk = req->chunk;
+    task.persist_snapshot.last = req->last;
+
     raft_free(req);
+
     ioTaskDone(r, &task, status);
 }
 
-static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
+static int ioForwardPersistSnapshot(struct raft *r,
+                                    struct raft_snapshot_metadata *metadata,
+                                    size_t offset,
+                                    struct raft_buffer *chunk,
+                                    bool last)
 {
     struct ioForwardPersistSnapshot *req;
-    struct raft_persist_snapshot *params;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -166,16 +180,17 @@ static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->metadata = *metadata;
+    req->offset = offset;
+    req->chunk = *chunk;
+    req->last = last;
     req->put.data = req;
 
-    params = &req->task.persist_snapshot;
-
-    req->snapshot.index = params->metadata.index;
-    req->snapshot.term = params->metadata.term;
-    req->snapshot.configuration = params->metadata.configuration;
-    req->snapshot.configuration_index = params->metadata.configuration_index;
-    req->snapshot.bufs = &params->chunk;
+    req->snapshot.index = req->metadata.index;
+    req->snapshot.term = req->metadata.term;
+    req->snapshot.configuration = req->metadata.configuration;
+    req->snapshot.configuration_index = req->metadata.configuration_index;
+    req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
 
     rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
@@ -189,7 +204,7 @@ static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
 err:
     raft_free(req);
     ErrMsgTransferf(r->io->errmsg, r->errmsg, "put snapshot at %llu",
-                    params->metadata.index);
+                    req->metadata.index);
     return rv;
 }
 
@@ -563,6 +578,15 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
+    if (update.flags & RAFT_UPDATE_SNAPSHOT) {
+        rv = ioForwardPersistSnapshot(
+            r, &update.snapshot.metadata, update.snapshot.offset,
+            &update.snapshot.chunk, update.snapshot.last);
+        if (rv != 0) {
+            goto err;
+        }
+    }
+
     if (update.flags & RAFT_UPDATE_MESSAGES) {
         for (j = 0; j < update.messages.n; j++) {
             rv = ioSendMessage(r, &update.messages.batch[j]);
@@ -582,9 +606,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
 
         switch (task->type) {
-            case RAFT_PERSIST_SNAPSHOT:
-                rv = ioForwardPersistSnapshot(r, task);
-                break;
             case RAFT_LOAD_SNAPSHOT:
                 rv = ioForwardLoadSnapshot(r, task);
                 break;
