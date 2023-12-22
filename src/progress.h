@@ -27,7 +27,6 @@ struct raft_progress
     {
         raft_index index;    /* Last index of most recent snapshot sent. */
         raft_time last_send; /* Timestamp of last InstallSnaphot RPC. */
-        bool loading;        /* True when waiting for raft_load_snapshot */
     } snapshot;
 };
 
@@ -94,11 +93,6 @@ void progressToProbe(struct raft *r, unsigned i);
 
 /* Convert to pipeline mode. */
 void progressToPipeline(struct raft *r, unsigned i);
-
-/* To be called once a RAFT_LOAD_SNAPSHOT task to load a snapshot has been
- * completed successfully. If the i'th server in the configuration was waiting
- * for this snapshot data, then return i. */
-unsigned progressSnapshotLoaded(struct raft *r, raft_index index);
 
 /* Abort snapshot mode and switch to back to probe.
  *
