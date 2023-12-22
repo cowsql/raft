@@ -250,15 +250,6 @@ int raft_start(struct raft *r)
         return rv;
     }
 
-    /* Start the I/O backend. The tickCb function is expected to fire every
-     * r->heartbeat_timeout milliseconds and recvCb whenever an RPC is
-     * received. */
-    rv = r->io->start(r->io, r->heartbeat_timeout, tickCb, recvCb);
-    if (rv != 0) {
-        tracef("io start failed %d", rv);
-        return rv;
-    }
-
     /* By default we start as followers. */
     convertToFollower(r);
 
@@ -277,6 +268,15 @@ int raft_start(struct raft *r)
     event.type = 255;
     event.time = r->now;
     LegacyForwardToRaftIo(r, &event);
+
+    /* Start the I/O backend. The tickCb function is expected to fire every
+     * r->heartbeat_timeout milliseconds and recvCb whenever an RPC is
+     * received. */
+    rv = r->io->start(r->io, r->heartbeat_timeout, tickCb, recvCb);
+    if (rv != 0) {
+        tracef("io start failed %d", rv);
+        return rv;
+    }
 
     return 0;
 }
