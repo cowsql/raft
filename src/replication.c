@@ -524,6 +524,20 @@ int replicationPersistEntriesDone(struct raft *r,
     return 0;
 }
 
+static void persistEntries(struct raft *r,
+                           raft_index index,
+                           struct raft_entry entries[],
+                           unsigned n)
+{
+    assert(!(r->updates & RAFT_UPDATE_ENTRIES));
+
+    r->updates |= RAFT_UPDATE_ENTRIES;
+
+    r->entries_index = index;
+    r->entries = entries;
+    r->n_entries = n;
+}
+
 /* Submit a disk write for all entries from the given index onward. */
 static int appendLeader(struct raft *r, raft_index index)
 {
@@ -551,11 +565,7 @@ static int appendLeader(struct raft *r, raft_index index)
         goto err_after_entries_acquired;
     }
 
-    rv = TaskPersistEntries(r, index, entries, n);
-    if (rv != 0) {
-        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        goto err_after_entries_acquired;
-    }
+    persistEntries(r, index, entries, n);
 
     return 0;
 
@@ -1111,18 +1121,10 @@ int replicationAppend(struct raft *r,
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
 
-    rv = TaskPersistEntries(r, index, entries, n_entries);
-    if (rv != 0) {
-        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        goto err_after_acquire_entries;
-    }
+    persistEntries(r, index, entries, n_entries);
 
     entryBatchesDestroy(args->entries, args->n_entries);
     return 0;
-
-err_after_acquire_entries:
-    /* Release the entries related to the IO request */
-    logRelease(r->log, index, entries, n_entries);
 
 err_after_log_append:
     /* Release all entries added to the in-memory log, making

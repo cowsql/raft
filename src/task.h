@@ -15,19 +15,6 @@
  */
 int TaskSendMessage(struct raft *r, struct raft_message *message);
 
-/* Create and enqueue a RAFT_PERSIST_ENTRIES task to persist the given entries
- * starting at the given index.
- *
- * Errors:
- *
- * RAFT_NOMEM
- *     The r->tasks array could not be resized to fit the new task.
- */
-int TaskPersistEntries(struct raft *r,
-                       raft_index first_index,
-                       struct raft_entry entries[],
-                       unsigned n);
-
 /* Create and enqueue a RAFT_PERSIST_SNAPSHOT task to persist a single chunk of
  * the snapshot with the given metadata, starting at the given offset.
  *

@@ -54,22 +54,6 @@ err:
     return rv;
 }
 
-int TaskPersistEntries(struct raft *r,
-                       raft_index index,
-                       struct raft_entry entries[],
-                       unsigned n)
-{
-    assert(!(r->updates & RAFT_UPDATE_ENTRIES));
-
-    r->updates |= RAFT_UPDATE_ENTRIES;
-
-    r->entries_index = index;
-    r->entries = entries;
-    r->n_entries = n;
-
-    return 0;
-}
-
 int TaskPersistSnapshot(struct raft *r,
                         struct raft_snapshot_metadata metadata,
                         size_t offset,
