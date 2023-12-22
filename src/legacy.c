@@ -11,18 +11,6 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-/* Call LegacyForwardToRaftIo() after an asynchronous task has been
- * completed. */
-static void ioTaskDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_event event;
-    event.type = RAFT_DONE;
-    event.time = r->io->time(r->io);
-    event.done.task = *task;
-    event.done.status = status;
-    LegacyForwardToRaftIo(r, &event);
-}
-
 struct ioForwardSendMessage
 {
     struct raft_io_send send;
@@ -619,26 +607,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
-    for (j = 0; j < n_tasks; j++) {
-        struct raft_task *task = &tasks[j];
-
-        /* Don't execute any further task if we're shutting down. */
-        if (r->close_cb != NULL) {
-            ioTaskDone(r, task, RAFT_CANCELED);
-            continue;
-        }
-
-        switch (task->type) {
-            default:
-                rv = RAFT_INVALID;
-                assert(0);
-                break;
-        };
-
-        if (rv != 0) {
-            goto err;
-        }
-    }
+    assert(n_tasks == 0);
 
     return 0;
 

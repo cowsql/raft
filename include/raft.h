@@ -557,43 +557,20 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
 /**
- * Type codes for async tasks issued by #raft and that must be completed by
- * consumers.
- */
-enum {
-    RAFT_LOAD_SNAPSHOT = 1,
-};
-
-/**
- * Parameters for tasks of type #RAFT_LOAD_SNAPSHOT.
- */
-struct raft_load_snapshot
-{
-    raft_index index;         /* Index of last entry in the snapshot */
-    size_t offset;            /* Load snapshot data starting from this offset */
-    struct raft_buffer chunk; /* Load data into this buffer */
-    bool last;                /* OUTPUT: Whether this was the last chunk */
-};
-
-/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
 {
     unsigned char type;
     unsigned char reserved[7];
-    union {
-        struct raft_load_snapshot load_snapshot;
-    };
 };
 
 /**
  * Type codes of events to be passed to raft_step().
  */
 enum {
-    RAFT_DONE = 1,           /* A task has been completed. */
-    RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
-    RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
+    RAFT_PERSISTED_ENTRIES = 1, /* A batch of entries have been persisted. */
+    RAFT_PERSISTED_SNAPSHOT,    /* A snapshot has been persisted. */
     RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */

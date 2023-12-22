@@ -198,31 +198,6 @@ static int stepSent(struct raft *r, struct raft_message *message, int status)
     return rv;
 }
 
-static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_load_snapshot *params = &task->load_snapshot;
-    return replicationLoadSnapshotDone(r, params, status);
-}
-
-/* Handle the completion of a task. */
-static int stepDone(struct raft *r, struct raft_task *task, int status)
-{
-    int rv;
-
-    assert(task != NULL);
-
-    switch (task->type) {
-        case RAFT_LOAD_SNAPSHOT:
-            rv = loadSnapshotDone(r, task, status);
-            break;
-        default:
-            rv = RAFT_INVALID;
-            break;
-    }
-
-    return rv;
-}
-
 /* Handle new messages. */
 static int stepReceive(struct raft *r,
                        raft_id id,
@@ -251,9 +226,6 @@ int raft_step(struct raft *r,
     r->now = event->time;
 
     switch (event->type) {
-        case RAFT_DONE:
-            rv = stepDone(r, &event->done.task, event->done.status);
-            break;
         case RAFT_PERSISTED_ENTRIES:
             rv = replicationPersistEntriesDone(
                 r, event->persisted_entries.index,

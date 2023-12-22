@@ -105,11 +105,6 @@ int replicationSendInstallSnapshotDone(struct raft *r,
                                        struct raft_message *message,
                                        int status);
 
-/* Called when a RAFT_LOAD_SNAPSHOT task has been completed. */
-int replicationLoadSnapshotDone(struct raft *r,
-                                struct raft_load_snapshot *params,
-                                int status);
-
 /* Called when a RAFT_PERSIST_ENTRIES task has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
                                   raft_index index,
