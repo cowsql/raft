@@ -4,8 +4,8 @@
 #include "configuration.h"
 #include "heap.h"
 #include "log.h"
+#include "message.h"
 #include "random.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -91,7 +91,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     message.server_id = server->id;
     message.server_address = server->address;
 
-    rv = TaskSendMessage(r, &message);
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         return rv;
     }

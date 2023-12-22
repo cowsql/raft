@@ -4,9 +4,9 @@
 #include "convert.h"
 #include "flags.h"
 #include "log.h"
+#include "message.h"
 #include "recv.h"
 #include "replication.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -85,7 +85,7 @@ reply:
     message.server_id = id;
     message.server_address = address;
 
-    rv = TaskSendMessage(r, &message);
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         return rv;
     }

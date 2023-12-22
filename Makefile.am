@@ -26,6 +26,7 @@ libraft_la_SOURCES = \
   src/legacy.c \
   src/log.c \
   src/membership.c \
+  src/message.c \
   src/progress.c \
   src/random.c \
   src/raft.c \
@@ -41,7 +42,6 @@ libraft_la_SOURCES = \
   src/snapshot.c \
   src/state.c \
   src/syscall.c \
-  src/task.c \
   src/tick.c \
   src/tracing.c
 

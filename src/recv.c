@@ -7,6 +7,7 @@
 #include "legacy.h"
 #include "log.h"
 #include "membership.h"
+#include "message.h"
 #include "recv_append_entries.h"
 #include "recv_append_entries_result.h"
 #include "recv_install_snapshot.h"
@@ -14,7 +15,6 @@
 #include "recv_request_vote_result.h"
 #include "recv_timeout_now.h"
 #include "string.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)

@@ -13,12 +13,12 @@
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
+#include "message.h"
 #include "progress.h"
 #include "queue.h"
 #include "replication.h"
 #include "request.h"
 #include "restore.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -116,7 +116,7 @@ static int sendAppendEntries(struct raft *r,
     message.server_id = server->id;
     message.server_address = server->address;
 
-    rv = TaskSendMessage(r, &message);
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         goto err_after_entries_acquired;
     }
@@ -199,7 +199,7 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     tracef("sending snapshot with last index %llu to %llu", args->last_index,
            server->id);
 
-    rv = TaskSendMessage(r, &message);
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         goto err;
     }
@@ -810,7 +810,7 @@ static void sendAppendEntriesResult(
     message.server_id = id;
     message.server_address = address;
 
-    rv = TaskSendMessage(r, &message);
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         /* This is not fatal, we'll retry. */
         (void)rv;

@@ -1,4 +1,4 @@
-#include "task.h"
+#include "message.h"
 #include "assert.h"
 #include "heap.h"
 #include "queue.h"
@@ -32,7 +32,7 @@ static struct raft_message *messageAppend(struct raft *r)
     return &r->messages[r->n_messages - 1];
 }
 
-int TaskSendMessage(struct raft *r, struct raft_message *message)
+int MessageEnqueue(struct raft *r, struct raft_message *message)
 {
     struct raft_message *next;
     int rv;
