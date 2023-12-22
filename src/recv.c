@@ -7,6 +7,7 @@
 #include "legacy.h"
 #include "log.h"
 #include "membership.h"
+#include "message.h"
 #include "recv_append_entries.h"
 #include "recv_append_entries_result.h"
 #include "recv_install_snapshot.h"
@@ -14,7 +15,6 @@
 #include "recv_request_vote_result.h"
 #include "recv_timeout_now.h"
 #include "string.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -121,7 +121,6 @@ err:
 
 int recvBumpCurrentTerm(struct raft *r, raft_term term)
 {
-    int rv;
     char msg[128];
 
     assert(r != NULL);
@@ -134,11 +133,8 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     }
     tracef("%s", msg);
 
-    /* Save the new term to persistent store, resetting the vote. */
-    rv = TaskPersistTermAndVote(r, term, 0);
-    if (rv != 0) {
-        return rv;
-    }
+    /* Mark both the current term and vote as changed. */
+    r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
 
     /* Update our cache too. */
     r->current_term = term;

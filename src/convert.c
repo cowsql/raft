@@ -150,7 +150,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 {
     const struct raft_server *server;
     size_t n_voters = configurationVoterCount(&r->configuration);
-    int rv;
 
     (void)server; /* Only used for assertions. */
 
@@ -177,12 +176,7 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
     }
 
     /* Start a new election round */
-    rv = electionStart(r);
-    if (rv != 0) {
-        r->state = RAFT_FOLLOWER;
-        raft_free(r->candidate_state.votes);
-        return rv;
-    }
+    electionStart(r);
 
     return 0;
 }

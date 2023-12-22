@@ -11,55 +11,39 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-static struct raft_event *eventAppend(struct raft_event *events[],
-                                      unsigned *n_events)
-{
-    struct raft_event *array;
-
-    array = raft_realloc(*events, sizeof **events * (*n_events + 1));
-    if (array == NULL) {
-        return NULL;
-    }
-
-    *events = array;
-    *n_events += 1;
-
-    return &(*events)[*n_events - 1];
-}
-
-/* Call LegacyForwardToRaftIo() after an asynchronous task has been
- * completed. */
-static void ioTaskDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_event event;
-    event.type = RAFT_DONE;
-    event.time = r->io->time(r->io);
-    event.done.task = *task;
-    event.done.status = status;
-    LegacyForwardToRaftIo(r, &event);
-}
-
 struct ioForwardSendMessage
 {
     struct raft_io_send send;
+    struct raft_io_snapshot_get get;
     struct raft *r;
-    struct raft_task task;
+    struct raft_message message;
 };
 
 static void ioSendMessageCb(struct raft_io_send *send, int status)
 {
     struct ioForwardSendMessage *req = send->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_event event;
+
+    if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        raft_free(req->message.install_snapshot.data.base);
+    }
+
+    event.type = RAFT_SENT;
+    event.time = r->io->time(r->io);
+    event.sent.message = req->message;
+    event.sent.status = status;
+
     raft_free(req);
-    ioTaskDone(r, &task, status);
+
+    LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioSendMessage(struct raft *r, struct raft_task *task)
+static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req);
+
+static int ioSendMessage(struct raft *r, struct raft_message *message)
 {
-    struct raft_send_message *params;
     struct ioForwardSendMessage *req;
-    struct raft_message *message;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -67,21 +51,23 @@ static int ioSendMessage(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->message = *message;
     req->send.data = req;
 
-    params = &req->task.send_message;
+    if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        rv = ioForwardLoadSnapshot(req);
+        if (rv != 0) {
+            return rv;
+        }
+        return 0;
+    }
 
-    message = &params->message;
-    message->server_id = params->id;
-    message->server_address = params->address;
-
-    rv = r->io->send(r->io, &req->send, message, ioSendMessageCb);
+    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
-                        "send message of type %d to %llu", params->message.type,
-                        params->id);
+                        "send message of type %d to %llu", message->type,
+                        message->server_id);
         return rv;
     }
 
@@ -92,21 +78,34 @@ struct ioForwardPersistEntries
 {
     struct raft_io_append append;
     struct raft *r;
-    struct raft_task task;
+    raft_index index;
+    struct raft_entry *entries;
+    unsigned n;
 };
 
 static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
 {
     struct ioForwardPersistEntries *req = append->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_event event;
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_PERSISTED_ENTRIES;
+    event.persisted_entries.index = req->index;
+    event.persisted_entries.batch = req->entries;
+    event.persisted_entries.n = req->n;
+    event.persisted_entries.status = status;
+
     raft_free(req);
-    ioTaskDone(r, &task, status);
+
+    LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
+static int ioForwardPersistEntries(struct raft *r,
+                                   raft_index index,
+                                   struct raft_entry *entries,
+                                   unsigned n)
 {
-    struct raft_persist_entries *params = &task->persist_entries;
     struct ioForwardPersistEntries *req;
     int rv;
 
@@ -115,15 +114,17 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->index = index;
+    req->entries = entries;
+    req->n = n;
     req->append.data = req;
 
-    rv = r->io->truncate(r->io, params->index);
+    rv = r->io->truncate(r->io, index);
     if (rv != 0) {
         goto err;
     }
 
-    rv = r->io->append(r->io, &req->append, params->entries, params->n,
+    rv = r->io->append(r->io, &req->append, entries, n,
                        ioForwardPersistEntriesCb);
     if (rv != 0) {
         goto err;
@@ -133,44 +134,7 @@ static int ioForwardPersistEntries(struct raft *r, struct raft_task *task)
 
 err:
     raft_free(req);
-    ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", params->n);
-    return rv;
-}
-
-static int ioPersistTermAndVote(struct raft *r,
-                                struct raft_task *task,
-                                struct raft_event *events[],
-                                unsigned *n_events)
-{
-    struct raft_persist_term_and_vote *params = &task->persist_term_and_vote;
-    struct raft_event *event;
-    int rv;
-
-    rv = r->io->set_term(r->io, params->term);
-    if (rv != 0) {
-        goto err;
-    }
-
-    rv = r->io->set_vote(r->io, params->voted_for);
-    if (rv != 0) {
-        goto err;
-    }
-
-    /* Add a completion event immediately, since set_term() and set_vote() are
-     * required to be synchronous */
-    event = eventAppend(events, n_events);
-    if (event == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
-    }
-    event->type = RAFT_DONE;
-    event->time = r->io->time(r->io);
-    event->done.task = *task;
-    event->done.status = 0;
-
-    return 0;
-
-err:
+    ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", n);
     return rv;
 }
 
@@ -179,7 +143,10 @@ struct ioForwardPersistSnapshot
     struct raft_io_snapshot_put put;
     struct raft_snapshot snapshot;
     struct raft *r;
-    struct raft_task task;
+    struct raft_snapshot_metadata metadata;
+    size_t offset;
+    struct raft_buffer chunk;
+    bool last;
 };
 
 static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
@@ -187,15 +154,28 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
 {
     struct ioForwardPersistSnapshot *req = put->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
+    struct raft_event event;
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = req->metadata;
+    event.persisted_snapshot.offset = req->offset;
+    event.persisted_snapshot.chunk = req->chunk;
+    event.persisted_snapshot.last = req->last;
+    event.persisted_snapshot.status = status;
+
     raft_free(req);
-    ioTaskDone(r, &task, status);
+
+    LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
+static int ioForwardPersistSnapshot(struct raft *r,
+                                    struct raft_snapshot_metadata *metadata,
+                                    size_t offset,
+                                    struct raft_buffer *chunk,
+                                    bool last)
 {
     struct ioForwardPersistSnapshot *req;
-    struct raft_persist_snapshot *params;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -203,16 +183,17 @@ static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
         return RAFT_NOMEM;
     }
     req->r = r;
-    req->task = *task;
+    req->metadata = *metadata;
+    req->offset = offset;
+    req->chunk = *chunk;
+    req->last = last;
     req->put.data = req;
 
-    params = &req->task.persist_snapshot;
-
-    req->snapshot.index = params->metadata.index;
-    req->snapshot.term = params->metadata.term;
-    req->snapshot.configuration = params->metadata.configuration;
-    req->snapshot.configuration_index = params->metadata.configuration_index;
-    req->snapshot.bufs = &params->chunk;
+    req->snapshot.index = req->metadata.index;
+    req->snapshot.term = req->metadata.term;
+    req->snapshot.configuration = req->metadata.configuration;
+    req->snapshot.configuration_index = req->metadata.configuration_index;
+    req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
 
     rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
@@ -226,64 +207,72 @@ static int ioForwardPersistSnapshot(struct raft *r, struct raft_task *task)
 err:
     raft_free(req);
     ErrMsgTransferf(r->io->errmsg, r->errmsg, "put snapshot at %llu",
-                    params->metadata.index);
+                    req->metadata.index);
     return rv;
 }
-
-struct ioForwardLoadSnapshot
-{
-    struct raft_io_snapshot_get get;
-    struct raft *r;
-    struct raft_task task;
-};
 
 static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
                                     struct raft_snapshot *snapshot,
                                     int status)
 {
-    struct ioForwardLoadSnapshot *req = get->data;
+    struct ioForwardSendMessage *req = get->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
-    struct raft_load_snapshot *params = &task.load_snapshot;
-
-    if (status == 0) {
-        /* The old raft_io interface makes no guarantee about the index of the
-         * loaded snapshot. */
-        if (snapshot->index != params->index) {
-            assert(snapshot->index > params->index);
-            params->index = snapshot->index;
-        }
-
-        assert(snapshot->n_bufs == 1);
-        params->chunk = snapshot->bufs[0];
-        configurationClose(&snapshot->configuration);
-        raft_free(snapshot->bufs);
-        raft_free(snapshot);
-    }
-
-    raft_free(req);
-    ioTaskDone(r, &task, status);
-}
-
-static int ioForwardLoadSnapshot(struct raft *r, struct raft_task *task)
-{
-    struct raft_load_snapshot *params = &task->load_snapshot;
-    struct ioForwardLoadSnapshot *req;
+    struct raft_install_snapshot *params = &req->message.install_snapshot;
+    struct raft_event event;
     int rv;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return RAFT_NOMEM;
+    if (status != 0) {
+        goto abort;
     }
-    req->r = r;
-    req->task = *task;
+
+    /* The old raft_io interface makes no guarantee about the index of the
+     * loaded snapshot. */
+    if (snapshot->index != params->last_index) {
+        assert(snapshot->index > params->last_index);
+        params->last_index = snapshot->index;
+    }
+
+    assert(snapshot->n_bufs == 1);
+    params->data = snapshot->bufs[0];
+
+    configurationClose(&snapshot->configuration);
+    raft_free(snapshot->bufs);
+    raft_free(snapshot);
+
+    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
+    if (rv != 0) {
+        ErrMsgTransferf(r->io->errmsg, r->errmsg,
+                        "send message of type %d to %llu", req->message.type,
+                        req->message.server_id);
+        status = rv;
+        goto abort;
+    }
+
+    return;
+
+abort:
+    event.type = RAFT_SENT;
+    event.time = r->io->time(r->io);
+    event.sent.message = req->message;
+    event.sent.status = status;
+
+    raft_free(req);
+
+    LegacyForwardToRaftIo(r, &event);
+}
+
+static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req)
+{
+    struct raft *r = req->r;
+    int rv;
+
     req->get.data = req;
 
     rv = r->io->snapshot_get(r->io, &req->get, ioForwardLoadSnapshotCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
-                        params->index);
+                        req->message.install_snapshot.last_index);
         return rv;
     }
 
@@ -530,9 +519,12 @@ void LegacyFireCompletedRequests(struct raft *r)
 
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
-    struct raft_event *events;
-    unsigned n_events;
-    unsigned i;
+    struct raft_update update;
+    unsigned j;
+    queue *head;
+    struct request *req;
+    bool has_pending_no_space_failure = false;
+
     int rv;
 
     if (r->io == NULL) {
@@ -540,96 +532,79 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         return 0;
     }
 
-    /* Initially the set of events contains only the event passed as argument,
-     * but might grow if some of the tasks get completed synchronously. */
-    events = raft_malloc(sizeof *events);
-    if (events == NULL) {
-        return RAFT_NOMEM;
+    rv = raft_step(r, event, &update);
+    if (rv != 0) {
+        goto err;
     }
-    events[0] = *event;
-    n_events = 1;
 
-    for (i = 0; i < n_events; i++) {
-        raft_index commit_index;
-        raft_time timeout;
-        struct raft_task *tasks;
-        unsigned n_tasks;
-        unsigned j;
-        queue *head;
-        struct request *req;
-        bool has_pending_no_space_failure = false;
+    /* Check if there's a client request in the completion queue which has
+     * failed due to a RAFT_NOSPACE error. In that case we will not call the
+     * step_cb just yet, because otherwise cowsql/dqlite would notice that
+     * the leader has stepped down and immediately close all connections,
+     * without a chance of properly returning the error to the client. */
+    QUEUE_FOREACH (head, &r->legacy.requests) {
+        req = QUEUE_DATA(head, struct request, queue);
+        if (req->type == RAFT_COMMAND) {
+            if (((struct raft_apply *)req)->status == RAFT_NOSPACE) {
+                has_pending_no_space_failure = true;
+                break;
+            }
+        }
+    }
 
-        event = &events[i];
+    if (!has_pending_no_space_failure && r->legacy.step_cb != NULL) {
+        r->legacy.step_cb(r);
+    }
 
-        rv = raft_step(r, event, &commit_index, &timeout, &tasks, &n_tasks);
+    if (legacyShouldTakeSnapshot(r)) {
+        legacyTakeSnapshot(r);
+    }
+
+    /* If the current term was updated, persist it. */
+    if (update.flags & RAFT_UPDATE_CURRENT_TERM) {
+        rv = r->io->set_term(r->io, raft_current_term(r));
         if (rv != 0) {
             goto err;
         }
+    }
 
-        /* Check if there's a client request in the completion queue which has
-         * failed due to a RAFT_NOSPACE error. In that case we will not call the
-         * step_cb just yet, because otherwise cowsql/dqlite would notice that
-         * the leader has stepped down and immediately close all connections,
-         * without a chance of properly returning the error to the client. */
-        QUEUE_FOREACH (head, &r->legacy.requests) {
-            req = QUEUE_DATA(head, struct request, queue);
-            if (req->type == RAFT_COMMAND) {
-                if (((struct raft_apply *)req)->status == RAFT_NOSPACE) {
-                    has_pending_no_space_failure = true;
-                    break;
-                }
-            }
+    /* If the current vote was updated, persist it. */
+    if (update.flags & RAFT_UPDATE_VOTED_FOR) {
+        rv = r->io->set_vote(r->io, raft_voted_for(r));
+        if (rv != 0) {
+            goto err;
         }
+    }
 
-        if (!has_pending_no_space_failure && r->legacy.step_cb != NULL) {
-            r->legacy.step_cb(r);
+    if (update.flags & RAFT_UPDATE_ENTRIES) {
+        rv = ioForwardPersistEntries(r, update.entries.index,
+                                     update.entries.batch, update.entries.n);
+        if (rv != 0) {
+            goto err;
         }
+    }
 
-        if (legacyShouldTakeSnapshot(r)) {
-            legacyTakeSnapshot(r);
+    if (update.flags & RAFT_UPDATE_SNAPSHOT) {
+        rv = ioForwardPersistSnapshot(
+            r, &update.snapshot.metadata, update.snapshot.offset,
+            &update.snapshot.chunk, update.snapshot.last);
+        if (rv != 0) {
+            goto err;
         }
+    }
 
-        for (j = 0; j < n_tasks; j++) {
-            struct raft_task *task = &tasks[j];
-
-            /* Don't execute any further task if we're shutting down. */
-            if (r->close_cb != NULL) {
-                ioTaskDone(r, task, RAFT_CANCELED);
-                continue;
-            }
-
-            switch (task->type) {
-                case RAFT_SEND_MESSAGE:
-                    rv = ioSendMessage(r, task);
-                    break;
-                case RAFT_PERSIST_ENTRIES:
-                    rv = ioForwardPersistEntries(r, task);
-                    break;
-                case RAFT_PERSIST_TERM_AND_VOTE:
-                    rv = ioPersistTermAndVote(r, task, &events, &n_events);
-                    break;
-                case RAFT_PERSIST_SNAPSHOT:
-                    rv = ioForwardPersistSnapshot(r, task);
-                    break;
-                case RAFT_LOAD_SNAPSHOT:
-                    rv = ioForwardLoadSnapshot(r, task);
-                    break;
-                default:
-                    rv = RAFT_INVALID;
-                    assert(0);
-                    break;
-            };
-
+    if (update.flags & RAFT_UPDATE_MESSAGES) {
+        for (j = 0; j < update.messages.n; j++) {
+            rv = ioSendMessage(r, &update.messages.batch[j]);
             if (rv != 0) {
                 goto err;
             }
         }
     }
 
-    raft_free(events);
     return 0;
-err:
-    raft_free(events);
 
+err:
+    assert(rv != 0);
     return rv;
 }

@@ -4,8 +4,8 @@
 #include "configuration.h"
 #include "heap.h"
 #include "log.h"
+#include "message.h"
 #include "random.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -88,7 +88,10 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     message.request_vote.disrupt_leader = r->candidate_state.disrupt_leader;
     message.request_vote.pre_vote = r->candidate_state.in_pre_vote;
 
-    rv = TaskSendMessage(r, server->id, server->address, &message);
+    message.server_id = server->id;
+    message.server_address = server->address;
+
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         return rv;
     }
@@ -96,13 +99,13 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     return 0;
 }
 
-int electionStart(struct raft *r)
+void electionStart(struct raft *r)
 {
     raft_term term;
     size_t n_voters;
     size_t voting_index;
     size_t i;
-    int rv;
+
     assert(r->state == RAFT_CANDIDATE);
 
     n_voters = configurationVoterCount(&r->configuration);
@@ -125,12 +128,10 @@ int electionStart(struct raft *r)
     if (!r->candidate_state.in_pre_vote) {
         /* Increment current term and vote for self */
         term = r->current_term + 1;
-        rv = TaskPersistTermAndVote(r, term, r->id);
-        if (rv != 0) {
-            tracef("persist term and vote failed %d", rv);
-            goto err;
-        }
         tracef("beginning of term %llu", term);
+
+        /* Mark both the current term and vote as changed. */
+        r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
 
         /* Update our cache too. */
         r->current_term = term;
@@ -152,9 +153,12 @@ int electionStart(struct raft *r)
     }
     for (i = 0; i < r->configuration.n; i++) {
         const struct raft_server *server = &r->configuration.servers[i];
+        int rv;
+
         if (server->id == r->id || server->role != RAFT_VOTER) {
             continue;
         }
+
         rv = electionSend(r, server);
         if (rv != 0) {
             /* This is not a critical failure, let's just log it. */
@@ -162,12 +166,6 @@ int electionStart(struct raft *r)
                    raft_strerror(rv));
         }
     }
-
-    return 0;
-
-err:
-    assert(rv != 0);
-    return rv;
 }
 
 int electionVote(struct raft *r,
@@ -178,7 +176,6 @@ int electionVote(struct raft *r,
     raft_index local_last_index;
     raft_term local_last_term;
     bool is_transferee; /* Requester is the target of a leadership transfer */
-    int rv;
 
     assert(r != NULL);
     assert(args != NULL);
@@ -259,11 +256,9 @@ int electionVote(struct raft *r,
 
 grant_vote:
     if (!args->pre_vote) {
-        rv = TaskPersistTermAndVote(r, r->current_term, args->candidate_id);
-        if (rv != 0) {
-            tracef("persist term and vote failed %d", rv);
-            return rv;
-        }
+        /* Mark the vote as changed. */
+        r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
+
         r->voted_for = args->candidate_id;
 
         /* Reset the election timer. */

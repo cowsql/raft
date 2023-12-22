@@ -557,92 +557,12 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
 /**
- * Type codes for async tasks issued by #raft and that must be completed by
- * consumers.
- */
-enum {
-    RAFT_SEND_MESSAGE = 1,
-    RAFT_PERSIST_ENTRIES,
-    RAFT_PERSIST_TERM_AND_VOTE,
-    RAFT_PERSIST_SNAPSHOT,
-    RAFT_LOAD_SNAPSHOT,
-};
-
-/**
- * Parameters for tasks of type #RAFT_SEND_MESSAGE.
- */
-struct raft_send_message
-{
-    raft_id id;
-    const char *address; /* TODO: make a copy */
-    struct raft_message message;
-};
-
-/**
- * Parameters for tasks of type #RAFT_PERSIST_ENTRIES.
- *
- * Note that when writing an entry index at i, any previously-persisted entries
- * with index >= i must be discarded.
- */
-struct raft_persist_entries
-{
-    raft_index index;
-    struct raft_entry *entries;
-    unsigned n;
-};
-
-/**
- * Parameters for tasks of type #RAFT_PERSIST_TERM_AND_VOTE.
- */
-struct raft_persist_term_and_vote
-{
-    raft_term term;
-    raft_id voted_for;
-};
-
-/**
- * Parameters for tasks of type #RAFT_LOAD_SNAPSHOT.
- */
-struct raft_load_snapshot
-{
-    raft_index index;         /* Index of last entry in the snapshot */
-    size_t offset;            /* Load snapshot data starting from this offset */
-    struct raft_buffer chunk; /* Load data into this buffer */
-    bool last;                /* OUTPUT: Whether this was the last chunk */
-};
-
-/**
- * Parameters for tasks of type #RAFT_PERSIST_SNAPSHOT.
- */
-struct raft_persist_snapshot
-{
-    struct raft_snapshot_metadata metadata;
-    size_t offset;
-    struct raft_buffer chunk;
-    bool last;
-};
-
-/**
- * Represents a task that can be queued and executed asynchronously.
- */
-struct raft_task
-{
-    unsigned char type;
-    unsigned char reserved[7];
-    union {
-        struct raft_send_message send_message;
-        struct raft_persist_term_and_vote persist_term_and_vote;
-        struct raft_load_snapshot load_snapshot;
-        struct raft_persist_entries persist_entries;
-        struct raft_persist_snapshot persist_snapshot;
-    };
-};
-
-/**
  * Type codes of events to be passed to raft_step().
  */
 enum {
-    RAFT_DONE = 1, /* A task has been completed. */
+    RAFT_PERSISTED_ENTRIES = 1, /* A batch of entries have been persisted. */
+    RAFT_PERSISTED_SNAPSHOT,    /* A snapshot has been persisted. */
+    RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
@@ -663,9 +583,24 @@ struct raft_event
     union {
         struct
         {
-            struct raft_task task;
+            raft_index index;
+            struct raft_entry *batch;
+            unsigned n;
             int status;
-        } done;
+        } persisted_entries;
+        struct
+        {
+            struct raft_snapshot_metadata metadata;
+            size_t offset;
+            struct raft_buffer chunk;
+            bool last;
+            int status;
+        } persisted_snapshot;
+        struct
+        {
+            struct raft_message message;
+            int status;
+        } sent;
         struct
         {
             raft_id id;
@@ -692,6 +627,40 @@ struct raft_event
         } transfer;
     };
 };
+
+/**
+ * Hold information about changes that user code must perform after a call to
+ * raft_step() returns (e.g. new entries that must be persisted, new messages
+ * that must be sent, etc.).
+ */
+struct raft_update
+{
+    unsigned flags;
+    struct
+    {
+        raft_index index; /* 0 if no change */
+        struct raft_entry *batch;
+        unsigned n;
+    } entries;
+    struct
+    {
+        struct raft_snapshot_metadata metadata;
+        size_t offset;
+        struct raft_buffer chunk;
+        bool last;
+    } snapshot;
+    struct
+    {
+        struct raft_message *batch;
+        unsigned n;
+    } messages;
+};
+
+#define RAFT_UPDATE_CURRENT_TERM 1 << 0
+#define RAFT_UPDATE_VOTED_FOR 1 << 1
+#define RAFT_UPDATE_ENTRIES 1 << 2
+#define RAFT_UPDATE_SNAPSHOT 1 << 3
+#define RAFT_UPDATE_MESSAGES 1 << 4
 
 /**
  * version field MUST be filled out by user.
@@ -810,22 +779,22 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                     \
-    struct                                                                   \
-    {                                                                        \
-        raft_time now;           /* Current time, updated via raft_step() */ \
-        unsigned random;         /* Pseudo-random number generator state */  \
-        struct raft_task *tasks; /* Queue of pending raft_task operations */ \
-        unsigned n_tasks;        /* Length of the task queue */              \
-        unsigned n_tasks_cap;    /* Capacity of the task queue */            \
-        /* Index of the last snapshot that was taken */                      \
-        raft_index configuration_last_snapshot_index;                        \
-        /* Fields used by the v0 compatibility code */                       \
-        struct                                                               \
-        {                                                                    \
-            void *requests[2];              /* Completed client requests */  \
-            void (*step_cb)(struct raft *); /* Invoked after raft_step() */  \
-        } legacy;                                                            \
+#define RAFT__EXTENSIONS                                                    \
+    struct                                                                  \
+    {                                                                       \
+        raft_time now;   /* Current time, updated via raft_step() */        \
+        unsigned random; /* Pseudo-random number generator state */         \
+        struct raft_update *update;    /* Pointer passed to raft_step() */  \
+        struct raft_message *messages; /* Pre-allocated message queue */    \
+        unsigned n_messages_cap;       /* Capacity of the message queue */  \
+        /* Index of the last snapshot that was taken */                     \
+        raft_index configuration_last_snapshot_index;                       \
+        /* Fields used by the v0 compatibility code */                      \
+        struct                                                              \
+        {                                                                   \
+            void *requests[2];              /* Completed client requests */ \
+            void (*step_cb)(struct raft *); /* Invoked after raft_step() */ \
+        } legacy;                                                           \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -1107,10 +1076,18 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
-                       raft_index *commit_index,
-                       raft_time *timeout,
-                       struct raft_task **tasks,
-                       unsigned *n_tasks);
+                       struct raft_update *update);
+
+/**
+ * Return the current term of this server.
+ */
+RAFT_API raft_term raft_current_term(struct raft *r);
+
+/**
+ * Return the ID of the server that this server has voted for, or #0 if it not
+ * vote.
+ */
+RAFT_API raft_id raft_voted_for(struct raft *r);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance must

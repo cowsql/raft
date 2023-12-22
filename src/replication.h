@@ -95,31 +95,29 @@ int replicationApply(struct raft *r);
  *   matchIndex[i] >= N, and log[N].term == currentTerm: set commitIndex = N */
 void replicationQuorum(struct raft *r, const raft_index index);
 
-/* Called when a RAFT_SEND_MESSAGE task for sending an AppendEntries message has
- * been completed. */
+/* Called when an enqueued AppendEntries message has been processed. */
 int replicationSendAppendEntriesDone(struct raft *r,
-                                     struct raft_send_message *params,
+                                     struct raft_message *message,
                                      int status);
 
-/* Called when a RAFT_SEND_MESSAGE task for sending an InstallSnapshot message
- * has been completed. */
+/* Called when an enqueued InstallSnapshot message has been processed. */
 int replicationSendInstallSnapshotDone(struct raft *r,
-                                       struct raft_send_message *params,
+                                       struct raft_message *message,
                                        int status);
 
-/* Called when a RAFT_LOAD_SNAPSHOT task has been completed. */
-int replicationLoadSnapshotDone(struct raft *r,
-                                struct raft_load_snapshot *params,
-                                int status);
-
-/* Called when a RAFT_PERSIST_ENTRIES task has been completed. */
+/* Called when handling a RAFT_PERSISTED_ENTRIES event. */
 int replicationPersistEntriesDone(struct raft *r,
-                                  struct raft_persist_entries *params,
+                                  raft_index index,
+                                  struct raft_entry *entries,
+                                  unsigned n,
                                   int status);
 
-/* Called when a RAFT_PERSIST_SNAPSHOT task has been completed. */
+/* Called when handling RAFT_PERSISTED_SNAPSHOT event. */
 int replicationPersistSnapshotDone(struct raft *r,
-                                   struct raft_persist_snapshot *params,
+                                   struct raft_snapshot_metadata *metadata,
+                                   size_t offset,
+                                   struct raft_buffer *chunk,
+                                   bool last,
                                    int status);
 
 /* Called when a RAFT_SNAPSHOT event is fired, signalling the completion of a

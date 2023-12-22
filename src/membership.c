@@ -6,9 +6,9 @@
 #include "err.h"
 #include "heap.h"
 #include "log.h"
+#include "message.h"
 #include "progress.h"
 #include "queue.h"
-#include "task.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -235,7 +235,10 @@ int membershipLeadershipTransferStart(struct raft *r)
      * function. */
     r->transfer->send.data = r;
 
-    rv = TaskSendMessage(r, server->id, server->address, &message);
+    message.server_id = server->id;
+    message.server_address = server->address;
+
+    rv = MessageEnqueue(r, &message);
     if (rv != 0) {
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "send timeout now to %llu",
                         server->id);

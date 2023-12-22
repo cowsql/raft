@@ -1497,7 +1497,6 @@ struct raft_fixture_event *raft_fixture_step(struct raft_fixture *f)
 
     getLowestTickTime(f, &tick_time, &i);
     getLowestRequestCompletionTime(f, &completion_time, &j);
-
     assert(i < f->n || j < f->n);
 
     if (tick_time < completion_time ||
@@ -1554,8 +1553,8 @@ bool raft_fixture_step_until(struct raft_fixture *f,
     return f->time - start < max_msecs;
 }
 
-/* A step function which return always false, forcing raft_fixture_step_n to
- * advance time at each iteration. */
+/* A step function which return always false, forcing
+ * raft_fixture_step_n to advance time at each iteration. */
 static bool spin(struct raft_fixture *f, void *arg)
 {
     (void)f;
@@ -1592,8 +1591,8 @@ bool raft_fixture_step_until_has_no_leader(struct raft_fixture *f,
     return raft_fixture_step_until(f, hasNoLeader, NULL, max_msecs);
 }
 
-/* Enable/disable dropping outgoing messages of a certain type from all servers
- * except one. */
+/* Enable/disable dropping outgoing messages of a certain type from all
+ * servers except one. */
 static void dropAllExcept(struct raft_fixture *f,
                           int type,
                           bool flag,
@@ -1609,8 +1608,8 @@ static void dropAllExcept(struct raft_fixture *f,
     }
 }
 
-/* Set the randomized election timeout of the given server to the minimum value
- * compatible with its current state and timers. */
+/* Set the randomized election timeout of the given server to the
+ * minimum value compatible with its current state and timers. */
 static void minimizeRandomizedElectionTimeout(struct raft_fixture *f,
                                               unsigned i)
 {
@@ -1619,8 +1618,8 @@ static void minimizeRandomizedElectionTimeout(struct raft_fixture *f,
     unsigned timeout = raft->election_timeout;
     assert(raft->state == RAFT_FOLLOWER);
 
-    /* If the minimum election timeout value would make the timer expire in the
-     * past, cap it. */
+    /* If the minimum election timeout value would make the timer expire
+     * in the past, cap it. */
     if (now - raft->election_timer_start > timeout) {
         timeout = (unsigned)(now - raft->election_timer_start);
     }
@@ -1628,8 +1627,8 @@ static void minimizeRandomizedElectionTimeout(struct raft_fixture *f,
     raft->follower_state.randomized_election_timeout = timeout;
 }
 
-/* Set the randomized election timeout to the maximum value on all servers
- * except the given one. */
+/* Set the randomized election timeout to the maximum value on all
+ * servers except the given one. */
 static void maximizeAllRandomizedElectionTimeoutsExcept(struct raft_fixture *f,
                                                         unsigned i)
 {
@@ -1667,9 +1666,10 @@ void raft_fixture_start_elect(struct raft_fixture *f, unsigned i)
         assert(raft_state(&f->servers[j]->raft) == RAFT_FOLLOWER);
     }
 
-    /* Pretend that the last randomized election timeout was set at the maximum
-     * value on all server expect the one to be elected, which is instead set to
-     * the minimum possible value compatible with its current state. */
+    /* Pretend that the last randomized election timeout was set at the
+     * maximum value on all server expect the one to be elected, which
+     * is instead set to the minimum possible value compatible with its
+     * current state. */
     minimizeRandomizedElectionTimeout(f, i);
     maximizeAllRandomizedElectionTimeoutsExcept(f, i);
 }
@@ -1691,12 +1691,12 @@ void raft_fixture_depose(struct raft_fixture *f)
     leader_i = (unsigned)f->leader_id - 1;
     assert(raft_state(&f->servers[leader_i]->raft) == RAFT_LEADER);
 
-    /* Set a very large election timeout on all followers, to prevent them from
-     * starting an election. */
+    /* Set a very large election timeout on all followers, to prevent
+     * them from starting an election. */
     maximizeAllRandomizedElectionTimeoutsExcept(f, leader_i);
 
-    /* Prevent all servers from sending append entries results, so the leader
-     * will eventually step down. */
+    /* Prevent all servers from sending append entries results, so the
+     * leader will eventually step down. */
     dropAllExcept(f, RAFT_IO_APPEND_ENTRIES_RESULT, true, leader_i);
 
     raft_fixture_step_until_has_no_leader(f, ELECTION_TIMEOUT * 3);

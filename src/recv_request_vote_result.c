@@ -124,10 +124,7 @@ int recvRequestVoteResult(struct raft *r,
             if (r->candidate_state.in_pre_vote) {
                 tracef("votes quorum reached -> pre-vote successful");
                 r->candidate_state.in_pre_vote = false;
-                rv = electionStart(r);
-                if (rv != 0) {
-                    return rv;
-                }
+                electionStart(r);
             } else {
                 tracef("votes quorum reached -> convert to leader");
                 rv = convertToLeader(r);

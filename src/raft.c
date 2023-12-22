@@ -116,9 +116,9 @@ int raft_init(struct raft *r,
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
     }
-    r->tasks = NULL;
-    r->n_tasks = 0;
-    r->n_tasks_cap = 0;
+    r->update = NULL;
+    r->messages = NULL;
+    r->n_messages_cap = 0;
     return 0;
 
 err_after_address_alloc:
@@ -134,8 +134,8 @@ static void finalClose(struct raft *r)
     logClose(r->log);
     raft_configuration_close(&r->configuration);
     raft_configuration_close(&r->configuration_last_snapshot);
-    if (r->tasks != NULL) {
-        raft_free(r->tasks);
+    if (r->messages != NULL) {
+        raft_free(r->messages);
     }
 }
 
@@ -151,7 +151,7 @@ static void ioCloseCb(struct raft_io *io)
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
-    assert(r->n_tasks == 0);
+    assert(r->update == NULL);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
         if (r->io != NULL) {
@@ -171,79 +171,22 @@ void raft_seed(struct raft *r, unsigned random)
     r->random = random;
 }
 
-static int sendMessageDone(struct raft *r, struct raft_task *task, int status)
+/* Handle the completion of a send message operation. */
+static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
-    struct raft_send_message *params = &task->send_message;
     int rv;
-    switch (params->message.type) {
+    switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
-            rv = replicationSendAppendEntriesDone(r, params, status);
+            rv = replicationSendAppendEntriesDone(r, message, status);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = replicationSendInstallSnapshotDone(r, params, status);
+            rv = replicationSendInstallSnapshotDone(r, message, status);
             break;
         default:
             /* Ignore the status, in case of errors we'll retry. */
             rv = 0;
             break;
     }
-    return rv;
-}
-
-static int loadSnapshotDone(struct raft *r, struct raft_task *task, int status)
-{
-    struct raft_load_snapshot *params = &task->load_snapshot;
-    return replicationLoadSnapshotDone(r, params, status);
-}
-
-static int persistEntriesDone(struct raft *r,
-                              struct raft_task *task,
-                              int status)
-{
-    struct raft_persist_entries *params = &task->persist_entries;
-    return replicationPersistEntriesDone(r, params, status);
-}
-
-static int persistSnapshotDone(struct raft *r,
-                               struct raft_task *task,
-                               int status)
-{
-    struct raft_persist_snapshot *params = &task->persist_snapshot;
-    return replicationPersistSnapshotDone(r, params, status);
-}
-
-/* Handle the completion of a task. */
-static int stepDone(struct raft *r, struct raft_task *task, int status)
-{
-    int rv;
-
-    assert(task != NULL);
-
-    switch (task->type) {
-        case RAFT_SEND_MESSAGE:
-            rv = sendMessageDone(r, task, status);
-            break;
-        case RAFT_PERSIST_ENTRIES:
-            rv = persistEntriesDone(r, task, status);
-            break;
-        case RAFT_PERSIST_TERM_AND_VOTE:
-            /* TODO: reason more about what todo upon errors */
-            if (status != 0 && r->state != RAFT_UNAVAILABLE) {
-                convertToUnavailable(r);
-            }
-            rv = status;
-            break;
-        case RAFT_PERSIST_SNAPSHOT:
-            rv = persistSnapshotDone(r, task, status);
-            break;
-        case RAFT_LOAD_SNAPSHOT:
-            rv = loadSnapshotDone(r, task, status);
-            break;
-        default:
-            rv = RAFT_INVALID;
-            break;
-    }
-
     return rv;
 }
 
@@ -258,18 +201,39 @@ static int stepReceive(struct raft *r,
 
 int raft_step(struct raft *r,
               struct raft_event *event,
-              raft_index *commit_index,
-              raft_time *timeout,
-              struct raft_task **tasks,
-              unsigned *n_tasks)
+              struct raft_update *update)
 {
     int rv;
+
+    assert(event != NULL);
+    assert(update != NULL);
+
+    assert(r->update == NULL);
+
+    r->update = update;
+    r->update->flags = 0;
+    r->update->messages.batch = r->messages;
+    r->update->messages.n = 0;
 
     r->now = event->time;
 
     switch (event->type) {
-        case RAFT_DONE:
-            rv = stepDone(r, &event->done.task, event->done.status);
+        case RAFT_PERSISTED_ENTRIES:
+            rv = replicationPersistEntriesDone(
+                r, event->persisted_entries.index,
+                event->persisted_entries.batch, event->persisted_entries.n,
+                event->persisted_entries.status);
+            break;
+        case RAFT_PERSISTED_SNAPSHOT:
+            rv = replicationPersistSnapshotDone(
+                r, &event->persisted_snapshot.metadata,
+                event->persisted_snapshot.offset,
+                &event->persisted_snapshot.chunk,
+                event->persisted_snapshot.last,
+                event->persisted_snapshot.status);
+            break;
+        case RAFT_SENT:
+            rv = stepSent(r, &event->sent.message, event->sent.status);
             break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.id, event->receive.address,
@@ -298,19 +262,26 @@ int raft_step(struct raft *r,
     }
 
     if (rv != 0) {
-        return rv;
+        goto out;
     }
 
-    *commit_index = r->commit_index;
+out:
+    r->update = NULL;
 
-    (void)timeout;
-
-    *tasks = r->tasks;
-    *n_tasks = r->n_tasks;
-
-    r->n_tasks = 0;
-
+    if (rv != 0) {
+        return rv;
+    }
     return 0;
+}
+
+raft_term raft_current_term(struct raft *r)
+{
+    return r->current_term;
+}
+
+raft_term raft_voted_for(struct raft *r)
+{
+    return r->voted_for;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)

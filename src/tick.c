@@ -77,7 +77,7 @@ static int tickCandidate(struct raft *r)
      */
     if (electionTimerExpired(r)) {
         tracef("start new election");
-        return electionStart(r);
+        electionStart(r);
     }
 
     return 0;

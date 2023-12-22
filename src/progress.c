@@ -24,7 +24,6 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->recent_recv = false;
     p->snapshot.index = 0;
     p->snapshot.last_send = 0;
-    p->snapshot.loading = false;
     p->state = PROGRESS__PROBE;
     p->features = 0;
 }
@@ -199,21 +198,6 @@ void progressToSnapshot(struct raft *r, unsigned i)
     struct raft_progress *p = &r->leader_state.progress[i];
     p->state = PROGRESS__SNAPSHOT;
     p->snapshot.index = logSnapshotIndex(r->log);
-    p->snapshot.loading = true;
-}
-
-unsigned progressSnapshotLoaded(struct raft *r, raft_index index)
-{
-    unsigned i;
-    for (i = 0; i < r->configuration.n; i++) {
-        struct raft_progress *p = &r->leader_state.progress[i];
-        if (p->state == PROGRESS__SNAPSHOT && p->snapshot.index == index &&
-            p->snapshot.loading) {
-            p->snapshot.loading = false;
-            break;
-        }
-    }
-    return i;
 }
 
 void progressAbortSnapshot(struct raft *r, const unsigned i)

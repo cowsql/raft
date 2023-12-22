@@ -8,7 +8,6 @@
 #include "log.h"
 #include "recv.h"
 #include "snapshot.h"
-#include "task.h"
 #include "tick.h"
 #include "tracing.h"
 
