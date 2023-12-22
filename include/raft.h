@@ -560,15 +560,16 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  * Type codes of events to be passed to raft_step().
  */
 enum {
-    RAFT_PERSISTED_ENTRIES = 1, /* A batch of entries have been persisted. */
-    RAFT_PERSISTED_SNAPSHOT,    /* A snapshot has been persisted. */
+    RAFT_START = 1, /* Initial event starting the engine with persisted data. */
+    RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
+    RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
     RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
     RAFT_TIMEOUT,  /* The timeout has expired. */
     RAFT_SUBMIT,   /* New entries have been submitted. */
     RAFT_CATCH_UP, /* Start catching-up a server. */
-    RAFT_TRANSFER, /* Submission of leadership trasfer request */
+    RAFT_TRANSFER  /* Submission of leadership trasfer request */
 };
 
 /**
@@ -581,6 +582,15 @@ struct raft_event
     unsigned char reserved[7];
     raft_time time;
     union {
+        struct
+        {
+            raft_term term;
+            raft_id voted_for;
+            struct raft_snapshot_metadata *metadata;
+            raft_index start_index;
+            struct raft_entry *entries;
+            unsigned n_entries;
+        } start;
         struct
         {
             raft_index index;
