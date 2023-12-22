@@ -153,17 +153,19 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
 {
     struct ioForwardPersistSnapshot *req = put->data;
     struct raft *r = req->r;
-    struct raft_task task;
+    struct raft_event event;
 
-    task.type = RAFT_PERSIST_SNAPSHOT;
-    task.persist_snapshot.metadata = req->metadata;
-    task.persist_snapshot.offset = req->offset;
-    task.persist_snapshot.chunk = req->chunk;
-    task.persist_snapshot.last = req->last;
+    event.time = r->io->time(r->io);
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = req->metadata;
+    event.persisted_snapshot.offset = req->offset;
+    event.persisted_snapshot.chunk = req->chunk;
+    event.persisted_snapshot.last = req->last;
+    event.persisted_snapshot.status = status;
 
     raft_free(req);
 
-    ioTaskDone(r, &task, status);
+    LegacyForwardToRaftIo(r, &event);
 }
 
 static int ioForwardPersistSnapshot(struct raft *r,

@@ -119,7 +119,10 @@ int replicationPersistEntriesDone(struct raft *r,
 
 /* Called when a RAFT_PERSIST_SNAPSHOT task has been completed. */
 int replicationPersistSnapshotDone(struct raft *r,
-                                   struct raft_persist_snapshot *params,
+                                   struct raft_snapshot_metadata *metadata,
+                                   size_t offset,
+                                   struct raft_buffer *chunk,
+                                   bool last,
                                    int status);
 
 /* Called when a RAFT_SNAPSHOT event is fired, signalling the completion of a

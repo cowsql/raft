@@ -561,8 +561,7 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  * consumers.
  */
 enum {
-    RAFT_PERSIST_SNAPSHOT = 1,
-    RAFT_LOAD_SNAPSHOT,
+    RAFT_LOAD_SNAPSHOT = 1,
 };
 
 /**
@@ -577,17 +576,6 @@ struct raft_load_snapshot
 };
 
 /**
- * Parameters for tasks of type #RAFT_PERSIST_SNAPSHOT.
- */
-struct raft_persist_snapshot
-{
-    struct raft_snapshot_metadata metadata;
-    size_t offset;
-    struct raft_buffer chunk;
-    bool last;
-};
-
-/**
  * Represents a task that can be queued and executed asynchronously.
  */
 struct raft_task
@@ -596,7 +584,6 @@ struct raft_task
     unsigned char reserved[7];
     union {
         struct raft_load_snapshot load_snapshot;
-        struct raft_persist_snapshot persist_snapshot;
     };
 };
 
@@ -604,8 +591,9 @@ struct raft_task
  * Type codes of events to be passed to raft_step().
  */
 enum {
-    RAFT_DONE = 1,          /* A task has been completed. */
-    RAFT_PERSISTED_ENTRIES, /* A batch of entries have been persisted. */
+    RAFT_DONE = 1,           /* A task has been completed. */
+    RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
+    RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
     RAFT_SENT,     /* A message has been sent (either successfully or not). */
     RAFT_RECEIVE,  /* A message has been received. */
     RAFT_SNAPSHOT, /* A snapshot has been taken. */
@@ -637,6 +625,14 @@ struct raft_event
             unsigned n;
             int status;
         } persisted_entries;
+        struct
+        {
+            struct raft_snapshot_metadata metadata;
+            size_t offset;
+            struct raft_buffer chunk;
+            bool last;
+            int status;
+        } persisted_snapshot;
         struct
         {
             struct raft_message message;
