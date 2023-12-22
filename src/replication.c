@@ -165,7 +165,6 @@ int replicationSendInstallSnapshotDone(struct raft *r,
     }
 
     configurationClose(&message->install_snapshot.conf);
-    raft_free(message->install_snapshot.data.base);
 
     return 0;
 }
@@ -249,16 +248,38 @@ out:
 /* Send the latest snapshot to the i'th server */
 static int sendSnapshot(struct raft *r, const unsigned i)
 {
+    struct raft_message message;
+    struct raft_install_snapshot *args = &message.install_snapshot;
+    struct raft_server *server;
     int rv;
 
     progressToSnapshot(r, i);
+    progressUpdateSnapshotLastSend(r, i);
 
-    rv = TaskLoadSnapshot(r, logSnapshotIndex(r->log), 0);
+    server = &r->configuration.servers[i];
+
+    message.type = RAFT_IO_INSTALL_SNAPSHOT;
+    message.server_id = server->id;
+    message.server_address = server->address;
+
+    args->term = r->current_term;
+    args->last_index = logSnapshotIndex(r->log);
+    args->last_term = logTermOf(r->log, args->last_index);
+    args->conf_index = r->configuration_last_snapshot_index;
+
+    rv = configurationCopy(&r->configuration_last_snapshot, &args->conf);
     if (rv != 0) {
         goto err;
     }
 
-    progressUpdateSnapshotLastSend(r, i);
+    tracef("sending snapshot with last index %llu to %llu", args->last_index,
+           server->id);
+
+    rv = TaskSendMessage(r, &message);
+    if (rv != 0) {
+        goto err;
+    }
+
     return 0;
 
 err:

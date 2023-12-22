@@ -26,6 +26,7 @@ static void ioTaskDone(struct raft *r, struct raft_task *task, int status)
 struct ioForwardSendMessage
 {
     struct raft_io_send send;
+    struct raft_io_snapshot_get get;
     struct raft *r;
     struct raft_message message;
 };
@@ -34,17 +35,23 @@ static void ioSendMessageCb(struct raft_io_send *send, int status)
 {
     struct ioForwardSendMessage *req = send->data;
     struct raft *r = req->r;
-    struct raft_message message = req->message;
     struct raft_event event;
 
-    raft_free(req);
+    if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        raft_free(req->message.install_snapshot.data.base);
+    }
 
     event.type = RAFT_SENT;
     event.time = r->io->time(r->io);
-    event.sent.message = message;
+    event.sent.message = req->message;
     event.sent.status = status;
+
+    raft_free(req);
+
     LegacyForwardToRaftIo(r, &event);
 }
+
+static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req);
 
 static int ioSendMessage(struct raft *r, struct raft_message *message)
 {
@@ -59,9 +66,15 @@ static int ioSendMessage(struct raft *r, struct raft_message *message)
     req->message = *message;
     req->send.data = req;
 
-    message = &req->message;
+    if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        rv = ioForwardLoadSnapshot(req);
+        if (rv != 0) {
+            return rv;
+        }
+        return 0;
+    }
 
-    rv = r->io->send(r->io, &req->send, message, ioSendMessageCb);
+    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
@@ -210,60 +223,68 @@ err:
     return rv;
 }
 
-struct ioForwardLoadSnapshot
-{
-    struct raft_io_snapshot_get get;
-    struct raft *r;
-    struct raft_task task;
-};
-
 static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
                                     struct raft_snapshot *snapshot,
                                     int status)
 {
-    struct ioForwardLoadSnapshot *req = get->data;
+    struct ioForwardSendMessage *req = get->data;
     struct raft *r = req->r;
-    struct raft_task task = req->task;
-    struct raft_load_snapshot *params = &task.load_snapshot;
-
-    if (status == 0) {
-        /* The old raft_io interface makes no guarantee about the index of the
-         * loaded snapshot. */
-        if (snapshot->index != params->index) {
-            assert(snapshot->index > params->index);
-            params->index = snapshot->index;
-        }
-
-        assert(snapshot->n_bufs == 1);
-        params->chunk = snapshot->bufs[0];
-        configurationClose(&snapshot->configuration);
-        raft_free(snapshot->bufs);
-        raft_free(snapshot);
-    }
-
-    raft_free(req);
-    ioTaskDone(r, &task, status);
-}
-
-static int ioForwardLoadSnapshot(struct raft *r, struct raft_task *task)
-{
-    struct raft_load_snapshot *params = &task->load_snapshot;
-    struct ioForwardLoadSnapshot *req;
+    struct raft_install_snapshot *params = &req->message.install_snapshot;
+    struct raft_event event;
     int rv;
 
-    req = raft_malloc(sizeof *req);
-    if (req == NULL) {
-        return RAFT_NOMEM;
+    if (status != 0) {
+        goto abort;
     }
-    req->r = r;
-    req->task = *task;
+
+    /* The old raft_io interface makes no guarantee about the index of the
+     * loaded snapshot. */
+    if (snapshot->index != params->last_index) {
+        assert(snapshot->index > params->last_index);
+        params->last_index = snapshot->index;
+    }
+
+    assert(snapshot->n_bufs == 1);
+    params->data = snapshot->bufs[0];
+
+    configurationClose(&snapshot->configuration);
+    raft_free(snapshot->bufs);
+    raft_free(snapshot);
+
+    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
+    if (rv != 0) {
+        ErrMsgTransferf(r->io->errmsg, r->errmsg,
+                        "send message of type %d to %llu", req->message.type,
+                        req->message.server_id);
+        status = rv;
+        goto abort;
+    }
+
+    return;
+
+abort:
+    event.type = RAFT_SENT;
+    event.time = r->io->time(r->io);
+    event.sent.message = req->message;
+    event.sent.status = status;
+
+    raft_free(req);
+
+    LegacyForwardToRaftIo(r, &event);
+}
+
+static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req)
+{
+    struct raft *r = req->r;
+    int rv;
+
     req->get.data = req;
 
     rv = r->io->snapshot_get(r->io, &req->get, ioForwardLoadSnapshotCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
-                        params->index);
+                        req->message.install_snapshot.last_index);
         return rv;
     }
 
@@ -608,9 +629,6 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
 
         switch (task->type) {
-            case RAFT_LOAD_SNAPSHOT:
-                rv = ioForwardLoadSnapshot(r, task);
-                break;
             default:
                 rv = RAFT_INVALID;
                 assert(0);
