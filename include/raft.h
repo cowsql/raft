@@ -671,6 +671,7 @@ struct raft_update
 #define RAFT_UPDATE_ENTRIES 1 << 2
 #define RAFT_UPDATE_SNAPSHOT 1 << 3
 #define RAFT_UPDATE_MESSAGES 1 << 4
+#define RAFT_UPDATE_STATE 1 << 5
 
 /**
  * version field MUST be filled out by user.

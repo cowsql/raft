@@ -22,6 +22,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
      * respect to the paper we have an additional "unavailable" state, which is
      * the initial or final state. */
     tracef("old_state:%u new_state:%u", r->state, new_state);
+    assert(r->state != new_state);
     assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
            (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
            (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
@@ -31,6 +32,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
            (r->state == RAFT_CANDIDATE && new_state == RAFT_UNAVAILABLE) ||
            (r->state == RAFT_LEADER && new_state == RAFT_UNAVAILABLE));
     r->state = new_state;
+    r->update->flags |= RAFT_UPDATE_STATE;
 }
 
 /* Clear follower state. */
