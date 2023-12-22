@@ -118,11 +118,8 @@ int raft_init(struct raft *r,
     }
     r->updates = 0;
     r->messages = NULL;
-    r->n_messages = 0;
     r->n_messages_cap = 0;
-    r->entries_index = 0;
     r->entries = NULL;
-    r->n_entries = 0;
     r->tasks = NULL;
     r->n_tasks = 0;
     r->n_tasks_cap = 0;
@@ -260,9 +257,8 @@ int raft_step(struct raft *r,
     assert(update != NULL);
 
     assert(r->updates == 0);
-    assert(r->n_messages == 0);
-    assert(r->entries_index == 0);
 
+    r->n_messages = 0;
     r->now = event->time;
 
     switch (event->type) {
@@ -309,11 +305,17 @@ int raft_step(struct raft *r,
     }
 
     update->flags = r->updates;
-    update->messages.batch = r->messages;
-    update->messages.n = r->n_messages;
-    update->entries.index = r->entries_index;
-    update->entries.batch = r->entries;
-    update->entries.n = r->n_entries;
+
+    if (update->flags & RAFT_UPDATE_ENTRIES) {
+        update->entries.index = r->entries_index;
+        update->entries.batch = r->entries;
+        update->entries.n = r->n_entries;
+    }
+
+    if (update->flags & RAFT_UPDATE_MESSAGES) {
+        update->messages.batch = r->messages;
+        update->messages.n = r->n_messages;
+    }
 
     *commit_index = r->commit_index;
 
@@ -324,8 +326,6 @@ int raft_step(struct raft *r,
 
 out:
     r->updates = 0;
-    r->n_messages = 0;
-    r->entries_index = 0;
     r->n_tasks = 0;
 
     if (rv != 0) {

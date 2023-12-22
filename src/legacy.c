@@ -555,7 +555,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
-    if (update.entries.index != 0) {
+    if (update.flags & RAFT_UPDATE_ENTRIES) {
         rv = ioForwardPersistEntries(r, update.entries.index,
                                      update.entries.batch, update.entries.n);
         if (rv != 0) {
@@ -563,10 +563,12 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
-    for (j = 0; j < update.messages.n; j++) {
-        rv = ioSendMessage(r, &update.messages.batch[j]);
-        if (rv != 0) {
-            goto err;
+    if (update.flags & RAFT_UPDATE_MESSAGES) {
+        for (j = 0; j < update.messages.n; j++) {
+            rv = ioSendMessage(r, &update.messages.batch[j]);
+            if (rv != 0) {
+                goto err;
+            }
         }
     }
 

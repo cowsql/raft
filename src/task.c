@@ -65,6 +65,8 @@ int TaskSendMessage(struct raft *r, struct raft_message *message)
     struct raft_message *next;
     int rv;
 
+    r->updates |= RAFT_UPDATE_MESSAGES;
+
     next = messageAppend(r);
     if (next == NULL) {
         rv = RAFT_NOMEM;
@@ -85,7 +87,9 @@ int TaskPersistEntries(struct raft *r,
                        struct raft_entry entries[],
                        unsigned n)
 {
-    assert(r->entries_index == 0);
+    assert(!(r->updates & RAFT_UPDATE_ENTRIES));
+
+    r->updates |= RAFT_UPDATE_ENTRIES;
 
     r->entries_index = index;
     r->entries = entries;

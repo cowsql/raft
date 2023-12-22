@@ -679,11 +679,6 @@ struct raft_update
     unsigned flags;
     struct
     {
-        struct raft_message *batch;
-        unsigned n;
-    } messages;
-    struct
-    {
         raft_index index; /* 0 if no change */
         struct raft_entry *batch;
         unsigned n;
@@ -695,10 +690,18 @@ struct raft_update
         struct raft_buffer chunk;
         bool last;
     } snapshot;
+    struct
+    {
+        struct raft_message *batch;
+        unsigned n;
+    } messages;
 };
 
 #define RAFT_UPDATE_CURRENT_TERM 1 << 0
 #define RAFT_UPDATE_VOTED_FOR 1 << 1
+#define RAFT_UPDATE_ENTRIES 1 << 2
+#define RAFT_UPDATE_SNAPSHOT 1 << 3
+#define RAFT_UPDATE_MESSAGES 1 << 4
 
 /**
  * version field MUST be filled out by user.
