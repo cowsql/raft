@@ -156,15 +156,16 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
     assert(r->update == NULL);
-    if (r->state != RAFT_UNAVAILABLE) {
-        convertToUnavailable(r);
-        if (r->io != NULL) {
-            LegacyFailPendingRequests(r);
-            LegacyFireCompletedRequests(r);
-        }
-    }
-    r->close_cb = cb;
+
     if (r->io != NULL) {
+        struct raft_event event;
+        event.time = r->io->time(r->io);
+        event.type = RAFT_STOP;
+
+        LegacyForwardToRaftIo(r, &event);
+
+        r->close_cb = cb;
+
         r->io->close(r->io, ioCloseCb);
     } else {
         finalClose(r);
@@ -310,6 +311,16 @@ int raft_step(struct raft *r,
             rv = stepStart(r, event->start.term, event->start.voted_for,
                            event->start.metadata, event->start.start_index,
                            event->start.entries, event->start.n_entries);
+            break;
+        case RAFT_STOP:
+            if (r->state != RAFT_UNAVAILABLE) {
+                convertToUnavailable(r);
+                if (r->io != NULL) {
+                    LegacyFailPendingRequests(r);
+                    LegacyFireCompletedRequests(r);
+                }
+            }
+            rv = 0;
             break;
         case RAFT_PERSISTED_ENTRIES:
             rv = replicationPersistEntriesDone(

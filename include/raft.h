@@ -561,6 +561,7 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  */
 enum {
     RAFT_START = 1, /* Initial event starting the engine with persisted data. */
+    RAFT_STOP,
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
     RAFT_SENT,     /* A message has been sent (either successfully or not). */
