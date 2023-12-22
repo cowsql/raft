@@ -529,13 +529,15 @@ static void persistEntries(struct raft *r,
                            struct raft_entry entries[],
                            unsigned n)
 {
-    assert(!(r->updates & RAFT_UPDATE_ENTRIES));
+    /* This must be the first time during this raft_step() call where we set new
+     * entries to be persisted. */
+    assert(!(r->update->flags & RAFT_UPDATE_ENTRIES));
 
-    r->updates |= RAFT_UPDATE_ENTRIES;
+    r->update->flags |= RAFT_UPDATE_ENTRIES;
 
-    r->entries_index = index;
-    r->entries = entries;
-    r->n_entries = n;
+    r->update->entries.index = index;
+    r->update->entries.batch = entries;
+    r->update->entries.n = n;
 }
 
 /* Submit a disk write for all entries from the given index onward. */
@@ -1268,14 +1270,14 @@ int replicationInstallSnapshot(struct raft *r,
     metadata.configuration_index = args->conf_index;
     metadata.configuration = args->conf;
 
-    assert(!(r->updates & RAFT_UPDATE_SNAPSHOT));
+    assert(!(r->update->flags & RAFT_UPDATE_SNAPSHOT));
 
-    r->updates |= RAFT_UPDATE_SNAPSHOT;
+    r->update->flags |= RAFT_UPDATE_SNAPSHOT;
 
-    r->snapshot_metadata = metadata;
-    r->snapshot_offset = 0;
-    r->snapshot_chunk = args->data;
-    r->snapshot_last = true;
+    r->update->snapshot.metadata = metadata;
+    r->update->snapshot.offset = 0;
+    r->update->snapshot.chunk = args->data;
+    r->update->snapshot.last = true;
 
     return 0;
 }

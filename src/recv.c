@@ -134,7 +134,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     tracef("%s", msg);
 
     /* Mark both the current term and vote as changed. */
-    r->updates |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
+    r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
 
     /* Update our cache too. */
     r->current_term = term;

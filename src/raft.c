@@ -116,10 +116,9 @@ int raft_init(struct raft *r,
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
     }
-    r->updates = 0;
+    r->update = NULL;
     r->messages = NULL;
     r->n_messages_cap = 0;
-    r->entries = NULL;
     return 0;
 
 err_after_address_alloc:
@@ -152,7 +151,7 @@ static void ioCloseCb(struct raft_io *io)
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
-    assert(r->updates == 0);
+    assert(r->update == NULL);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
         if (r->io != NULL) {
@@ -209,9 +208,13 @@ int raft_step(struct raft *r,
     assert(event != NULL);
     assert(update != NULL);
 
-    assert(r->updates == 0);
+    assert(r->update == NULL);
 
-    r->n_messages = 0;
+    r->update = update;
+    r->update->flags = 0;
+    r->update->messages.batch = r->messages;
+    r->update->messages.n = 0;
+
     r->now = event->time;
 
     switch (event->type) {
@@ -262,28 +265,8 @@ int raft_step(struct raft *r,
         goto out;
     }
 
-    update->flags = r->updates;
-
-    if (update->flags & RAFT_UPDATE_ENTRIES) {
-        update->entries.index = r->entries_index;
-        update->entries.batch = r->entries;
-        update->entries.n = r->n_entries;
-    }
-
-    if (update->flags & RAFT_UPDATE_SNAPSHOT) {
-        update->snapshot.metadata = r->snapshot_metadata;
-        update->snapshot.offset = r->snapshot_offset;
-        update->snapshot.chunk = r->snapshot_chunk;
-        update->snapshot.last = r->snapshot_last;
-    }
-
-    if (update->flags & RAFT_UPDATE_MESSAGES) {
-        update->messages.batch = r->messages;
-        update->messages.n = r->n_messages;
-    }
-
 out:
-    r->updates = 0;
+    r->update = NULL;
 
     if (rv != 0) {
         return rv;

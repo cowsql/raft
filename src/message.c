@@ -9,7 +9,9 @@
 static struct raft_message *messageAppend(struct raft *r)
 {
     struct raft_message *messages;
-    unsigned n_messages = r->n_messages + 1;
+    unsigned n_messages = r->update->messages.n + 1;
+
+    assert(r->update->messages.batch == r->messages);
 
     if (n_messages > r->n_messages_cap) {
         unsigned n_messages_cap = r->n_messages_cap;
@@ -25,11 +27,12 @@ static struct raft_message *messageAppend(struct raft *r)
         }
         r->messages = messages;
         r->n_messages_cap = n_messages_cap;
+        r->update->messages.batch = r->messages;
     }
 
-    r->n_messages = n_messages;
+    r->update->messages.n = n_messages;
 
-    return &r->messages[r->n_messages - 1];
+    return &r->update->messages.batch[r->update->messages.n - 1];
 }
 
 int MessageEnqueue(struct raft *r, struct raft_message *message)
@@ -37,7 +40,7 @@ int MessageEnqueue(struct raft *r, struct raft_message *message)
     struct raft_message *next;
     int rv;
 
-    r->updates |= RAFT_UPDATE_MESSAGES;
+    r->update->flags |= RAFT_UPDATE_MESSAGES;
 
     next = messageAppend(r);
     if (next == NULL) {
