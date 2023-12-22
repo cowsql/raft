@@ -575,7 +575,8 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         goto err;
     }
 
-    if (r->legacy.prev_state != r->state) {
+    if (update.flags & RAFT_UPDATE_STATE) {
+        assert(r->legacy.prev_state != r->state);
         if (r->legacy.prev_state == RAFT_LEADER) {
             LegacyFailPendingRequests(r);
             assert(QUEUE_IS_EMPTY(&r->legacy.pending));
