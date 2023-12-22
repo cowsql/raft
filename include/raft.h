@@ -557,15 +557,6 @@ typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
 typedef void (*raft_io_close_cb)(struct raft_io *io);
 
 /**
- * Represents a task that can be queued and executed asynchronously.
- */
-struct raft_task
-{
-    unsigned char type;
-    unsigned char reserved[7];
-};
-
-/**
  * Type codes of events to be passed to raft_step().
  */
 enum {
@@ -590,11 +581,6 @@ struct raft_event
     unsigned char reserved[7];
     raft_time time;
     union {
-        struct
-        {
-            struct raft_task task;
-            int status;
-        } done;
         struct
         {
             raft_index index;
@@ -809,9 +795,6 @@ struct raft_log;
         size_t snapshot_offset;                                               \
         struct raft_buffer snapshot_chunk;                                    \
         bool snapshot_last;                                                   \
-        struct raft_task *tasks; /* Queue of pending raft_task operations */  \
-        unsigned n_tasks;        /* Length of the task queue */               \
-        unsigned n_tasks_cap;    /* Capacity of the task queue */             \
         /* Index of the last snapshot that was taken */                       \
         raft_index configuration_last_snapshot_index;                         \
         /* Fields used by the v0 compatibility code */                        \
@@ -1103,9 +1086,7 @@ RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
                        struct raft_update *update,
                        raft_index *commit_index,
-                       raft_time *timeout,
-                       struct raft_task **tasks,
-                       unsigned *n_tasks);
+                       raft_time *timeout);
 
 /**
  * Return the current term of this server.

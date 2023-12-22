@@ -120,9 +120,6 @@ int raft_init(struct raft *r,
     r->messages = NULL;
     r->n_messages_cap = 0;
     r->entries = NULL;
-    r->tasks = NULL;
-    r->n_tasks = 0;
-    r->n_tasks_cap = 0;
     return 0;
 
 err_after_address_alloc:
@@ -141,9 +138,6 @@ static void finalClose(struct raft *r)
     if (r->messages != NULL) {
         raft_free(r->messages);
     }
-    if (r->tasks != NULL) {
-        raft_free(r->tasks);
-    }
 }
 
 static void ioCloseCb(struct raft_io *io)
@@ -159,7 +153,6 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
     assert(r->updates == 0);
-    assert(r->n_tasks == 0);
     if (r->state != RAFT_UNAVAILABLE) {
         convertToUnavailable(r);
         if (r->io != NULL) {
@@ -211,9 +204,7 @@ int raft_step(struct raft *r,
               struct raft_event *event,
               struct raft_update *update,
               raft_index *commit_index,
-              raft_time *timeout,
-              struct raft_task **tasks,
-              unsigned *n_tasks)
+              raft_time *timeout)
 {
     int rv;
 
@@ -297,12 +288,8 @@ int raft_step(struct raft *r,
 
     (void)timeout;
 
-    *tasks = r->tasks;
-    *n_tasks = r->n_tasks;
-
 out:
     r->updates = 0;
-    r->n_tasks = 0;
 
     if (rv != 0) {
         return rv;
