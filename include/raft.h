@@ -534,7 +534,7 @@ struct raft_tracer_info
     union {
         struct
         {
-            int level;
+            int level; /* 1 Error, 2 Warning, 3 Info, 4 Debug, 5 Trace */
             const char *message;
             const char *file;
             int line;
@@ -580,9 +580,9 @@ enum {
  */
 struct raft_event
 {
+    raft_time time;
     unsigned char type;
     unsigned char reserved[7];
-    raft_time time;
     union {
         struct
         {
@@ -1114,6 +1114,11 @@ RAFT_API raft_id raft_voted_for(struct raft *r);
  * Return the commit index of this server.
  */
 RAFT_API raft_index raft_commit_index(struct raft *r);
+
+/**
+ * Return the time at which the next RAFT_TIMEOUT event should be fired.
+ */
+RAFT_API raft_time raft_timeout(struct raft *r);
 
 /**
  * Return information about the progress of a server that is catching up with

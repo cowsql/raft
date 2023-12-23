@@ -37,6 +37,8 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
+#define infof(...) Infof(r->tracer, "> " __VA_ARGS__)
+
 int raft_version_number(void)
 {
     return RAFT_VERSION_NUMBER;
@@ -202,6 +204,36 @@ static int maybeSelfElect(struct raft *r)
     return 0;
 }
 
+/* Emit a start message containing information about the current state. */
+static void stepStartEmitMessage(struct raft *r)
+{
+    char msg[512];
+
+    sprintf(msg, "term %llu, vote %llu, ", r->current_term, r->voted_for);
+
+    if (logSnapshotIndex(r->log) > 0) {
+        char msg_snapshot[64];
+        sprintf(msg_snapshot, "snapshot %llu/%llu, ", logSnapshotIndex(r->log),
+                logSnapshotTerm(r->log));
+        strcat(msg, msg_snapshot);
+    } else {
+        strcat(msg, "no snapshot, ");
+    }
+
+    if (logNumEntries(r->log)) {
+        char msg_entries[64];
+        raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
+        raft_index last = logLastIndex(r->log);
+        sprintf(msg_entries, "entries %llu/%llu to %llu/%llu", first,
+                logTermOf(r->log, first), last, logTermOf(r->log, last));
+        strcat(msg, msg_entries);
+    } else {
+        strcat(msg, "no entries");
+    }
+
+    infof("%s", msg);
+}
+
 /* Handle a RAFT_START event. */
 static int stepStart(struct raft *r,
                      raft_term term,
@@ -241,14 +273,14 @@ static int stepStart(struct raft *r,
 
     /* Append the entries to the log, possibly restoring the last
      * configuration. */
-    tracef("restore %u entries starting at %llu", n_entries, start_index);
-
     rv = RestoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
                         n_entries);
     if (rv != 0) {
         entryBatchesDestroy(entries, n_entries);
         return rv;
     }
+
+    stepStartEmitMessage(r);
 
     /* By default we start as followers. */
     convertToFollower(r);
@@ -399,6 +431,27 @@ raft_term raft_voted_for(struct raft *r)
 raft_index raft_commit_index(struct raft *r)
 {
     return r->commit_index;
+}
+
+raft_time raft_timeout(struct raft *r)
+{
+    raft_time timeout;
+    switch (r->state) {
+        case RAFT_FOLLOWER:
+            /* fallthrough */
+        case RAFT_CANDIDATE:
+            timeout = electionTimerExpiration(r);
+            break;
+        case RAFT_LEADER:
+            /* TODO: keep track of the last heartbeat timestamp */
+            timeout = r->now + r->heartbeat_timeout;
+            break;
+        default:
+            timeout = 0;
+            break;
+    }
+
+    return timeout;
 }
 
 int raft_catch_up(struct raft *r, raft_id id, int *status)

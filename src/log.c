@@ -656,6 +656,11 @@ raft_index logSnapshotIndex(struct raft_log *l)
     return l->snapshot.last_index;
 }
 
+raft_term logSnapshotTerm(struct raft_log *l)
+{
+    return l->snapshot.last_term;
+}
+
 raft_term logLastTerm(struct raft_log *l)
 {
     raft_index last_index;

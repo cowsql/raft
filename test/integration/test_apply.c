@@ -17,7 +17,7 @@ static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
     struct fixture *f = munit_malloc(sizeof *f);
     SETUP_CLUSTER(2);
     CLUSTER_BOOTSTRAP;
-    CLUSTER_START;
+    CLUSTER_START();
     CLUSTER_ELECT(0);
     return f;
 }

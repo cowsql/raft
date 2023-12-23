@@ -16,6 +16,20 @@
 
 static bool v1 = false;
 
+#define TEST_V1(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)         \
+    static void *setUp__##S##_##C(const MunitParameter params[], \
+                                  void *user_data)               \
+    {                                                            \
+        v1 = true;                                               \
+        return SETUP(params, user_data);                         \
+    }                                                            \
+    static void tearDown__##S##_##C(void *data)                  \
+    {                                                            \
+        TEAR_DOWN(data);                                         \
+        v1 = false;                                              \
+    }                                                            \
+    TEST(S, C, setUp__##S##_##C, tearDown__##S##_##C, OPTIONS, PARAMS)
+
 #define FIXTURE_CLUSTER                                     \
     FIXTURE_HEAP;                                           \
     union {                                                 \
@@ -188,12 +202,33 @@ static bool v1 = false;
         raft_configuration_close(&configuration_);                         \
     }
 
+/* Start the server with the given ID, using the state persisted on its disk. */
+#define CLUSTER_START_V1(ID) test_cluster_start(&f->cluster_, ID)
+
 /* Start all servers in the test cluster. */
-#define CLUSTER_START                         \
+#define CLUSTER_START_V0()                    \
     {                                         \
         int rc;                               \
         rc = raft_fixture_start(&f->cluster); \
         munit_assert_int(rc, ==, 0);          \
+    }
+
+#define FUNC_CHOOSER(_f1, _f2, ...) _f2
+#define FUNC_RECOMPOSER(argsWithParentheses) FUNC_CHOOSER argsWithParentheses
+
+#define CLUSTER_START__ARG_COUNT(...) \
+    FUNC_RECOMPOSER((__VA_ARGS__, CLUSTER_START_V1, ))
+
+#define CLUSTER_START__NO_ARG() , CLUSTER_START_V0
+
+#define CLUSTER_START__CHOOSER(...) \
+    CLUSTER_START__ARG_COUNT(CLUSTER_START__NO_ARG __VA_ARGS__())
+
+#define CLUSTER_START(...) CLUSTER_START__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+
+#define CLUSTER_TRACE(EXPECTED)                        \
+    if (!test_cluster_trace(&f->cluster_, EXPECTED)) { \
+        munit_error("trace does not match");           \
     }
 
 /* Step the cluster. */
@@ -504,5 +539,14 @@ struct test_cluster
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
 void test_cluster_tear_down(struct test_cluster *c);
+
+/* Start the server with the given @id, using the current state persisted on its
+ * disk. */
+void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Compare the trace of all messages emitted by all servers with the given
+ * expected trace. If they don't match, print the last line which differs and
+ * return #false. */
+bool test_cluster_trace(struct test_cluster *c, const char *expected);
 
 #endif /* TEST_CLUSTER_H */

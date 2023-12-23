@@ -112,7 +112,7 @@ TEST(election, twoVoters, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     (void)params;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server eventually times out and converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -142,7 +142,7 @@ TEST(election, grantAgain, setUp, tearDown, 0, NULL)
     (void)params;
     raft_fixture_set_randomized_election_timeout(&f->cluster, 1, 10000);
     raft_set_election_timeout(CLUSTER_RAFT(1), 10000);
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -187,7 +187,7 @@ TEST(election, grantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
     CLUSTER_ADD_ENTRY(1, &entry2);
     CLUSTER_SET_TERM(1, 2);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -214,7 +214,7 @@ TEST(election, grantIfLastIndexIsHigher, setUp, tearDown, 0, NULL)
     CLUSTER_ADD_ENTRY(0, &entry);
     CLUSTER_SET_TERM(1, 2);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -236,7 +236,7 @@ TEST(election, waitQuorum, setUp, tearDown, 0, cluster_5_params)
 {
     struct fixture *f = data;
     (void)params;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -270,7 +270,7 @@ TEST(election, rejectIfHigherTerm, setUp, tearDown, 0, NULL)
     (void)params;
 
     CLUSTER_SET_TERM(1, 3);
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server converts to candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -296,7 +296,7 @@ TEST(election, rejectIfHasLeader, setUp, tearDown, 0, cluster_3_params)
 {
     struct fixture *f = data;
     (void)params;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 wins the elections. */
     STEP_UNTIL_LEADER(0);
@@ -324,7 +324,7 @@ TEST(election, rejectIfAlreadyVoted, setUp, tearDown, 0, cluster_3_params)
     raft_fixture_set_randomized_election_timeout(&f->cluster, 1, 1000);
     CLUSTER_SATURATE_BOTHWAYS(0, 1);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 and server 1 both become candidates. */
     STEP_UNTIL_CANDIDATE(0);
@@ -365,7 +365,7 @@ TEST(election, rejectIfLastTermIsLower, setUp, tearDown, 0, NULL)
     CLUSTER_ADD_ENTRY(0, &entry1);
     CLUSTER_ADD_ENTRY(1, &entry2);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server becomes candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -404,7 +404,7 @@ TEST(election, rejectIfLastIndexIsLower, setUp, tearDown, 0, NULL)
 
     CLUSTER_ADD_ENTRY(1, &entry);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server becomes candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -447,7 +447,7 @@ TEST(election, rejectIfNotVoter, setUp, tearDown, 0, reject_not_voting_params)
      * (since there are only 2 voting servers). */
     CLUSTER_SATURATE_BOTHWAYS(0, 1);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 becomes candidate. */
     STEP_UNTIL_CANDIDATE(0);
@@ -483,7 +483,7 @@ TEST(election, receiveRejectResult, setUp, tearDown, 0, cluster_5_params)
     CLUSTER_SATURATE_BOTHWAYS(4, 2);
     CLUSTER_SATURATE_BOTHWAYS(4, 3);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The server 0 becomes candidate, server 4 one is still follower. */
     STEP_UNTIL_CANDIDATE(0);
@@ -528,7 +528,7 @@ TEST(election, ioErrorConvert, setUp, tearDown, 0, ioErrorConvert)
     struct fixture *f = data;
     const char *delay = munit_parameters_get(params, "delay");
     return MUNIT_SKIP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server fails to convert to candidate. */
     CLUSTER_IO_FAULT(0, atoi(delay), 1);
@@ -543,7 +543,7 @@ TEST(election, ioErrorSendVoteRequest, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     return MUNIT_SKIP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server fails to send a RequestVote RPC. */
     CLUSTER_IO_FAULT(0, 2, 1);
@@ -561,7 +561,7 @@ TEST(election, ioErrorPersistVote, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     return MUNIT_SKIP;
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server becomes candidate. */
     CLUSTER_STEP;
@@ -582,7 +582,7 @@ TEST(election, preVote, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     raft_set_pre_vote(CLUSTER_RAFT(0), true);
     raft_set_pre_vote(CLUSTER_RAFT(1), true);
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server eventually times out and converts to candidate, but it
      * does not increment its term yet.*/
@@ -624,7 +624,7 @@ TEST(election, preVoteWithcandidateCrash, setUp, tearDown, 0, cluster_3_params)
     raft_set_pre_vote(CLUSTER_RAFT(0), true);
     raft_set_pre_vote(CLUSTER_RAFT(1), true);
     raft_set_pre_vote(CLUSTER_RAFT(2), true);
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server eventually times out and converts to candidate, but it
      * does not increment its term yet.*/
@@ -719,7 +719,7 @@ TEST(election, preVoteNoStaleVotes, setUp, tearDown, 0, cluster_3_params)
     /* Server 2 is 1 term ahead of the other servers, this will allow it to send
      * stale pre-vote responses that pass the term checks. */
     CLUSTER_SET_TERM(2, 2);
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* The first server eventually times out and converts to candidate, but it
      * does not increment its term yet.*/
@@ -812,7 +812,7 @@ TEST(election,
     CLUSTER_SATURATE(0, 1);
     CLUSTER_SATURATE(1, 0);
 
-    CLUSTER_START;
+    CLUSTER_START();
 
     /* Server 0 wins elections for term 2, with vote from server 2. */
     CLUSTER_STEP_UNTIL_HAS_LEADER(1500);

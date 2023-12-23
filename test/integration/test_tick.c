@@ -23,7 +23,7 @@ static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
     }
     SETUP_CLUSTER(n);
     CLUSTER_BOOTSTRAP_N_VOTING(n_voting);
-    CLUSTER_START;
+    CLUSTER_START();
     return f;
 }
 
