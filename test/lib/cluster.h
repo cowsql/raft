@@ -12,14 +12,36 @@
 #include "munit.h"
 #include "snapshot.h"
 
-#define FIXTURE_CLUSTER                             \
-    FIXTURE_HEAP;                                   \
-    struct raft_fsm fsms[RAFT_FIXTURE_MAX_SERVERS]; \
-    struct raft_fixture cluster
+#define TEST_CLUSTER_N_SERVERS 8
+
+static bool v1 = false;
+
+#define FIXTURE_CLUSTER                                     \
+    FIXTURE_HEAP;                                           \
+    union {                                                 \
+        struct                                              \
+        { /* v0 */                                          \
+            struct raft_fsm fsms[RAFT_FIXTURE_MAX_SERVERS]; \
+            struct raft_fixture cluster;                    \
+        };                                                  \
+        struct                                              \
+        { /* v1 */                                          \
+            struct test_cluster cluster_;                   \
+        };                                                  \
+    }
+
+#define SETUP_CLUSTER(N)     \
+    if (v1) {                \
+        SETUP_CLUSTER_V1();  \
+    } else {                 \
+        SETUP_CLUSTER_V0(N); \
+    }
+
+#define SETUP_CLUSTER_V1() test_cluster_setup(params, &f->cluster_)
 
 /* N is the default number of servers, but can be tweaked with the cluster-n
  * parameter. */
-#define SETUP_CLUSTER(DEFAULT_N)                                               \
+#define SETUP_CLUSTER_V0(DEFAULT_N)                                            \
     SET_UP_HEAP;                                                               \
     do {                                                                       \
         unsigned _n = DEFAULT_N;                                               \
@@ -59,7 +81,16 @@
         }                                                                      \
     } while (0)
 
-#define TEAR_DOWN_CLUSTER                 \
+#define TEAR_DOWN_CLUSTER     \
+    if (v1) {                 \
+        TEAR_DOWN_CLUSTER_V1; \
+    } else {                  \
+        TEAR_DOWN_CLUSTER_V0; \
+    }
+
+#define TEAR_DOWN_CLUSTER_V1 test_cluster_tear_down(&f->cluster_)
+
+#define TEAR_DOWN_CLUSTER_V0              \
     do {                                  \
         unsigned i;                       \
         raft_fixture_close(&f->cluster);  \
@@ -425,5 +456,53 @@
 void cluster_randomize_init(struct raft_fixture *f);
 void cluster_randomize(struct raft_fixture *f,
                        struct raft_fixture_event *event);
+
+/* Test snapshot that is just persisted in-memory. */
+struct test_snapshot
+{
+    struct raft_snapshot_metadata metadata;
+    struct raft_buffer data;
+};
+
+/* Persisted state of a single node.
+ *
+ * The data contained in this struct is passed to raft_step() as RAFT_START
+ * event when starting a server, and is updated as the server makes progress. */
+struct test_disk
+{
+    raft_term term;
+    raft_id voted_for;
+    struct test_snapshot *snapshot;
+    raft_index start_index;
+    struct raft_entry *entries;
+    unsigned n_entries;
+};
+
+/* Wrap a @raft instance and maintain disk and network state. */
+struct test_cluster;
+struct test_server
+{
+    struct test_disk disk;        /* Persisted data */
+    struct raft_tracer tracer;    /* Custom tracer */
+    struct raft raft;             /* Raft instance */
+    struct test_cluster *cluster; /* Parent cluster */
+    raft_time timeout;            /* Next scheduled timeout */
+    unsigned network_latency;     /* Network latency */
+    unsigned disk_latency;        /* Disk latency */
+    bool running;                 /* Whether the server is running */
+};
+
+/* Cluster of test raft servers instances with fake disk and network I/O. */
+struct test_cluster
+{
+    struct test_server servers[TEST_CLUSTER_N_SERVERS]; /* Cluster servers */
+    raft_time time;                                     /* Global time */
+    char trace[8192];                                   /* Captured messages */
+    void *operations[2];                                /* In-flight I/O */
+    void *disconnect[2];                                /* Network faults */
+};
+
+void test_cluster_setup(const MunitParameter params[], struct test_cluster *c);
+void test_cluster_tear_down(struct test_cluster *c);
 
 #endif /* TEST_CLUSTER_H */
