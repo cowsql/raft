@@ -131,12 +131,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
     return 0;
 }
 
-static void convertInitialBarrierCb(struct raft_barrier *req, int status)
-{
-    (void)status;
-    raft_free(req);
-}
-
 int convertToLeader(struct raft *r)
 {
     int rv;
@@ -176,18 +170,7 @@ int convertToLeader(struct raft *r)
          * which those are. To find out, it needs to commit an entry from its
          * term. Raft handles this by having each leader commit a blank no-op
          * entry into the log at the start of its term. */
-        struct raft_barrier *req = raft_malloc(sizeof(*req));
         struct raft_entry entry;
-        raft_index index;
-
-        if (req == NULL) {
-            return RAFT_NOMEM;
-        }
-
-        index = logLastIndex(r->log) + 1;
-        req->type = RAFT_BARRIER;
-        req->index = index;
-        req->cb = convertInitialBarrierCb;
 
         entry.type = RAFT_BARRIER;
         entry.term = r->current_term;
@@ -195,7 +178,6 @@ int convertToLeader(struct raft *r)
         entry.buf.base = raft_malloc(entry.buf.len);
 
         if (entry.buf.base == NULL) {
-            raft_free(req);
             return RAFT_NOMEM;
         }
 
@@ -206,11 +188,8 @@ int convertToLeader(struct raft *r)
                 "%d",
                 rv);
             raft_free(entry.buf.base);
-            raft_free(req);
             goto out;
         }
-
-        QUEUE_PUSH(&r->legacy.pending, &req->queue);
     }
 
 out:
