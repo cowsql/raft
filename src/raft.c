@@ -213,7 +213,7 @@ static void stepStartEmitMessage(struct raft *r)
 
     if (logSnapshotIndex(r->log) > 0) {
         char msg_snapshot[64];
-        sprintf(msg_snapshot, "snapshot %llu/%llu, ", logSnapshotIndex(r->log),
+        sprintf(msg_snapshot, "snapshot %llu.%llu, ", logSnapshotIndex(r->log),
                 logSnapshotTerm(r->log));
         strcat(msg, msg_snapshot);
     } else {
@@ -224,7 +224,7 @@ static void stepStartEmitMessage(struct raft *r)
         char msg_entries[64];
         raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
         raft_index last = logLastIndex(r->log);
-        sprintf(msg_entries, "entries %llu/%llu to %llu/%llu", first,
+        sprintf(msg_entries, "entries %llu.%llu to %llu.%llu", first,
                 logTermOf(r->log, first), last, logTermOf(r->log, last));
         strcat(msg, msg_entries);
     } else {
