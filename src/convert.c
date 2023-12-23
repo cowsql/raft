@@ -22,6 +22,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
      * respect to the paper we have an additional "unavailable" state, which is
      * the initial or final state. */
     tracef("old_state:%u new_state:%u", r->state, new_state);
+    assert(r->state != new_state);
     assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
            (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
            (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
@@ -31,6 +32,7 @@ static void convertSetState(struct raft *r, unsigned short new_state)
            (r->state == RAFT_CANDIDATE && new_state == RAFT_UNAVAILABLE) ||
            (r->state == RAFT_LEADER && new_state == RAFT_UNAVAILABLE));
     r->state = new_state;
+    r->update->flags |= RAFT_UPDATE_STATE;
 }
 
 /* Clear follower state. */
@@ -54,33 +56,6 @@ static void convertClearCandidate(struct raft *r)
     }
 }
 
-static void convertFailApply(struct raft *r, struct raft_apply *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        req->status = RAFT_LEADERSHIPLOST;
-        req->result = NULL;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
-static void convertFailBarrier(struct raft *r, struct raft_barrier *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        req->status = RAFT_LEADERSHIPLOST;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
-static void convertFailChange(struct raft *r, struct raft_change *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        /* XXX: set the type here, since it's not done in client.c */
-        req->type = RAFT_CHANGE;
-        req->status = RAFT_LEADERSHIPLOST;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
 /* Clear leader state. */
 static void convertClearLeader(struct raft *r)
 {
@@ -88,31 +63,6 @@ static void convertClearLeader(struct raft *r)
     if (r->leader_state.progress != NULL) {
         raft_free(r->leader_state.progress);
         r->leader_state.progress = NULL;
-    }
-
-    /* Fail all outstanding requests */
-    while (!QUEUE_IS_EMPTY(&r->leader_state.requests)) {
-        struct request *req;
-        queue *head;
-        head = QUEUE_HEAD(&r->leader_state.requests);
-        QUEUE_REMOVE(head);
-        req = QUEUE_DATA(head, struct request, queue);
-        assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
-        switch (req->type) {
-            case RAFT_COMMAND:
-                convertFailApply(r, (struct raft_apply *)req);
-                break;
-            case RAFT_BARRIER:
-                convertFailBarrier(r, (struct raft_barrier *)req);
-                break;
-        };
-    }
-
-    /* Fail any promote request that is still outstanding because the server is
-     * still catching up and no entry was submitted. */
-    if (r->leader_state.change != NULL) {
-        convertFailChange(r, r->leader_state.change);
-        r->leader_state.change = NULL;
     }
 }
 
@@ -181,12 +131,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
     return 0;
 }
 
-static void convertInitialBarrierCb(struct raft_barrier *req, int status)
-{
-    (void)status;
-    raft_free(req);
-}
-
 int convertToLeader(struct raft *r)
 {
     int rv;
@@ -199,16 +143,11 @@ int convertToLeader(struct raft *r)
     /* Reset timers */
     r->election_timer_start = r->now;
 
-    /* Reset apply requests queue */
-    QUEUE_INIT(&r->leader_state.requests);
-
     /* Allocate and initialize the progress array. */
     rv = progressBuildArray(r);
     if (rv != 0) {
         return rv;
     }
-
-    r->leader_state.change = NULL;
 
     /* Reset promotion state. */
     r->leader_state.promotee_id = 0;
@@ -223,7 +162,7 @@ int convertToLeader(struct raft *r)
         tracef("apply log entries after self election %llu %llu",
                r->last_stored, r->commit_index);
         r->commit_index = r->last_stored;
-        rv = replicationApply(r);
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     } else if (n_voters > 1) {
         /* Raft Dissertation, paragraph 6.4:
          * The Leader Completeness Property guarantees that a leader has all
@@ -231,18 +170,7 @@ int convertToLeader(struct raft *r)
          * which those are. To find out, it needs to commit an entry from its
          * term. Raft handles this by having each leader commit a blank no-op
          * entry into the log at the start of its term. */
-        struct raft_barrier *req = raft_malloc(sizeof(*req));
         struct raft_entry entry;
-        raft_index index;
-
-        if (req == NULL) {
-            return RAFT_NOMEM;
-        }
-
-        index = logLastIndex(r->log) + 1;
-        req->type = RAFT_BARRIER;
-        req->index = index;
-        req->cb = convertInitialBarrierCb;
 
         entry.type = RAFT_BARRIER;
         entry.term = r->current_term;
@@ -250,7 +178,6 @@ int convertToLeader(struct raft *r)
         entry.buf.base = raft_malloc(entry.buf.len);
 
         if (entry.buf.base == NULL) {
-            raft_free(req);
             return RAFT_NOMEM;
         }
 
@@ -261,15 +188,11 @@ int convertToLeader(struct raft *r)
                 "%d",
                 rv);
             raft_free(entry.buf.base);
-            raft_free(req);
-            goto out;
+            return rv;
         }
-
-        QUEUE_PUSH(&r->leader_state.requests, &req->queue);
     }
 
-out:
-    return rv;
+    return 0;
 }
 
 void convertToUnavailable(struct raft *r)

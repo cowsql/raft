@@ -1,5 +1,6 @@
 #include "legacy.h"
 #include "assert.h"
+#include "client.h"
 #include "configuration.h"
 #include "err.h"
 #include "log.h"
@@ -163,6 +164,19 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
     event.persisted_snapshot.chunk = req->chunk;
     event.persisted_snapshot.last = req->last;
     event.persisted_snapshot.status = status;
+
+    /* If we successfully persisted the snapshot, keep the snapshot data around,
+     * since we'll then need it immediately after calling raft_step(), in order
+     * to restore the FSM state.
+     *
+     * Otherwise, discard the snapshot data altogether. */
+    if (status == 0) {
+        assert(r->legacy.snapshot_index == 0);
+        r->legacy.snapshot_index = req->metadata.index;
+        r->legacy.snapshot_chunk = req->chunk;
+    } else {
+        raft_free(req->chunk.base);
+    }
 
     raft_free(req);
 
@@ -468,6 +482,57 @@ abort:
     return;
 }
 
+static void legacyFailApply(struct raft *r, struct raft_apply *req)
+{
+    if (req != NULL && req->cb != NULL) {
+        req->status = RAFT_LEADERSHIPLOST;
+        req->result = NULL;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+static void legacyFailBarrier(struct raft *r, struct raft_barrier *req)
+{
+    if (req != NULL && req->cb != NULL) {
+        req->status = RAFT_LEADERSHIPLOST;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+void LegacyFailPendingRequests(struct raft *r)
+{
+    /* Fail any promote request that is still outstanding because the server is
+     * still catching up and no entry was submitted. */
+    if (r->legacy.change != NULL) {
+        struct raft_change *req = r->legacy.change;
+        if (req != NULL && req->cb != NULL) {
+            /* XXX: set the type here, since it's not done in client.c */
+            req->type = RAFT_CHANGE;
+            req->status = RAFT_LEADERSHIPLOST;
+            QUEUE_PUSH(&r->legacy.requests, &req->queue);
+        }
+        r->legacy.change = NULL;
+    }
+
+    /* Fail all outstanding requests */
+    while (!QUEUE_IS_EMPTY(&r->legacy.pending)) {
+        struct request *req;
+        queue *head;
+        head = QUEUE_HEAD(&r->legacy.pending);
+        QUEUE_REMOVE(head);
+        req = QUEUE_DATA(head, struct request, queue);
+        assert(req->type == RAFT_COMMAND || req->type == RAFT_BARRIER);
+        switch (req->type) {
+            case RAFT_COMMAND:
+                legacyFailApply(r, (struct raft_apply *)req);
+                break;
+            case RAFT_BARRIER:
+                legacyFailBarrier(r, (struct raft_barrier *)req);
+                break;
+        };
+    }
+}
+
 static void legacyFireApply(struct raft_apply *req)
 {
     req->cb(req, req->status, req->result);
@@ -517,25 +582,317 @@ void LegacyFireCompletedRequests(struct raft *r)
     }
 }
 
-int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
+/* Check whether a raft_change request has been completed, and put it in the
+ * completed requests queue if so. */
+static void legacyCheckChangeRequest(struct raft *r,
+                                     struct raft_entry *entry,
+                                     struct raft_event **events,
+                                     unsigned *n_events)
 {
+    struct raft_change *change;
+    int status;
+    int rv;
+
+    if (r->legacy.change == NULL) {
+        return;
+    }
+
+    if (r->legacy.change->catch_up_id == 0) {
+        return;
+    }
+
+    change = r->legacy.change;
+
+    /* A raft_catch_up() call can fail only if the server is not the
+     * leader or if the given ID is invalid. If the server was not the
+     * leader then r->legacy.change would be NULL, and we know that the
+     * ID is valid, otherwise the request couldn't have been submitted.
+     */
+    rv = raft_catch_up(r, r->legacy.change->catch_up_id, &status);
+    assert(rv == 0);
+
+    if (status == RAFT_CATCH_UP_ABORTED) {
+        r->legacy.change = NULL;
+        if (change->cb != NULL) {
+            change->type = RAFT_CHANGE;
+            change->status = RAFT_NOCONNECTION;
+            QUEUE_PUSH(&r->legacy.requests, &change->queue);
+        }
+    }
+
+    if (status == RAFT_CATCH_UP_FINISHED) {
+        struct raft_configuration configuration;
+        struct raft_server *server;
+        struct raft_event *event;
+        unsigned i;
+
+        i = configurationIndexOf(&r->configuration, change->catch_up_id);
+        assert(i < r->configuration.n);
+
+        server = &r->configuration.servers[i];
+        assert(server->role != RAFT_VOTER);
+
+        change->catch_up_id = 0;
+
+        /* Update our current configuration. */
+        rv = configurationCopy(&r->configuration, &configuration);
+        assert(rv == 0);
+
+        configuration.servers[i].role = RAFT_VOTER;
+
+        entry->type = RAFT_CHANGE;
+        entry->term = r->current_term;
+
+        /* Encode the configuration. */
+        rv = configurationEncode(&configuration, &entry->buf);
+        assert(rv == 0);
+
+        *n_events += 1;
+        *events = raft_realloc(*events, *n_events * sizeof **events);
+        assert(*events != NULL);
+
+        event = &(*events)[*n_events - 1];
+        event->time = r->io->time(r->io);
+        event->type = RAFT_SUBMIT;
+        event->submit.entries = entry;
+        event->submit.n = 1;
+
+        configurationClose(&configuration);
+    }
+}
+
+/* Get the request matching the given @index and @type, if any.
+ * The type check is skipped when @type == -1. */
+static struct request *legacyGetRequest(struct raft *r,
+                                        const raft_index index,
+                                        int type)
+{
+    queue *head;
+    struct request *req;
+
+    QUEUE_FOREACH (head, &r->legacy.pending) {
+        req = QUEUE_DATA(head, struct request, queue);
+        if (req->index == index) {
+            if (type != -1) {
+                assert(req->type == type);
+            }
+            QUEUE_REMOVE(&req->queue);
+            return req;
+        }
+    }
+    return NULL;
+}
+
+/* Apply a RAFT_COMMAND entry that has been committed. */
+static int applyCommand(struct raft *r,
+                        const raft_index index,
+                        const struct raft_buffer *buf)
+{
+    struct raft_apply *req;
+    void *result;
+    int rv;
+    rv = r->fsm->apply(r->fsm, buf, &result);
+    if (rv != 0) {
+        return rv;
+    }
+
+    r->last_applied = index;
+
+    req = (struct raft_apply *)legacyGetRequest(r, index, RAFT_COMMAND);
+    if (req != NULL && req->cb != NULL) {
+        req->status = 0;
+        req->result = result;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+    return 0;
+}
+
+/* Fire the callback of a barrier request whose entry has been committed. */
+static void applyBarrier(struct raft *r, const raft_index index)
+{
+    r->last_applied = index;
+
+    struct raft_barrier *req;
+    req = (struct raft_barrier *)legacyGetRequest(r, index, RAFT_BARRIER);
+    if (req != NULL && req->cb != NULL) {
+        req->status = 0;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+/* Apply a RAFT_CHANGE entry that has been committed. */
+static void applyChange(struct raft *r, const raft_index index)
+{
+    struct raft_change *req;
+
+    assert(index > 0);
+
+    r->last_applied = index;
+
+    if (r->state == RAFT_LEADER) {
+        req = r->legacy.change;
+        r->legacy.change = NULL;
+
+        if (req != NULL && req->cb != NULL) {
+            /* XXX: set the type here, since it's not done in client.c */
+            req->type = RAFT_CHANGE;
+            req->status = 0;
+            QUEUE_PUSH(&r->legacy.requests, &req->queue);
+        }
+    }
+}
+
+static int legacyApply(struct raft *r,
+                       struct raft_event **events,
+                       unsigned *n_events)
+{
+    raft_index index;
+    struct raft_event *event;
+    int rv = 0;
+
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+    assert(r->last_applied <= r->commit_index);
+
+    if (r->last_applied == r->commit_index) {
+        /* Nothing to do. */
+        return 0;
+    }
+
+    for (index = r->last_applied + 1; index <= r->commit_index; index++) {
+        const struct raft_entry *entry = logGet(r->log, index);
+        if (entry == NULL) {
+            /* This can happen while installing a snapshot */
+            tracef("replicationApply - ENTRY NULL");
+            return 0;
+        }
+
+        assert(entry->type == RAFT_COMMAND || entry->type == RAFT_BARRIER ||
+               entry->type == RAFT_CHANGE);
+
+        switch (entry->type) {
+            case RAFT_COMMAND:
+                rv = applyCommand(r, index, &entry->buf);
+                break;
+            case RAFT_BARRIER:
+                applyBarrier(r, index);
+                rv = 0;
+                break;
+            case RAFT_CHANGE:
+                applyChange(r, index);
+
+                *n_events += 1;
+                *events = raft_realloc(*events, *n_events * sizeof **events);
+                assert(*events != NULL);
+                event = &(*events)[*n_events - 1];
+                event->time = r->io->time(r->io);
+                event->type = RAFT_CONFIGURATION;
+                event->configuration.index = index;
+
+                rv = 0;
+                break;
+            default:
+                rv = 0; /* For coverity. This case can't be taken. */
+                break;
+        }
+
+        if (rv != 0) {
+            break;
+        }
+    }
+
+    return rv;
+}
+
+static void legacyPersistedEntriesFailure(struct raft *r,
+                                          struct raft_event *event)
+{
+    raft_index index = event->persisted_entries.index;
+    unsigned n = event->persisted_entries.n;
+    int status = event->persisted_entries.status;
+
+    for (unsigned i = 0; i < n; i++) {
+        struct request *req = legacyGetRequest(r, index + i, -1);
+        if (!req) {
+            tracef("no request found at index %llu", index + i);
+            continue;
+        }
+        switch (req->type) {
+            case RAFT_COMMAND: {
+                struct raft_apply *apply = (struct raft_apply *)req;
+                if (apply->cb) {
+                    apply->status = status;
+                    apply->result = NULL;
+                    QUEUE_PUSH(&r->legacy.requests, &apply->queue);
+                }
+                break;
+            }
+            case RAFT_BARRIER: {
+                struct raft_barrier *barrier = (struct raft_barrier *)req;
+                if (barrier->cb) {
+                    barrier->status = status;
+                    QUEUE_PUSH(&r->legacy.requests, &barrier->queue);
+                }
+                break;
+            }
+            case RAFT_CHANGE: {
+                struct raft_change *change = (struct raft_change *)req;
+                if (change->cb) {
+                    change->status = status;
+                    QUEUE_PUSH(&r->legacy.requests, &change->queue);
+                }
+                break;
+            }
+            default:
+                tracef("unknown request type, shutdown.");
+                assert(false);
+                break;
+        }
+    }
+}
+
+/* Handle a single event, possibly adding more events. */
+static int legacyHandleEvent(struct raft *r,
+                             struct raft_entry *entry,
+                             struct raft_event **events,
+                             unsigned *n_events,
+                             unsigned i)
+{
+    struct raft_event *event;
     struct raft_update update;
     unsigned j;
     queue *head;
     struct request *req;
     bool has_pending_no_space_failure = false;
-
     int rv;
 
-    if (r->io == NULL) {
-        /* No legacy raft_io implementation, just do nothing. */
-        return 0;
-    }
+    event = &(*events)[i];
 
     rv = raft_step(r, event, &update);
     if (rv != 0) {
         goto err;
     }
+
+    if (update.flags & RAFT_UPDATE_STATE) {
+        assert(r->legacy.prev_state != r->state);
+        if (r->legacy.prev_state == RAFT_LEADER) {
+            /* If we're stepping down because of disk write failure, fail
+             * requests using the same status code as the write failure.*/
+            if (event->type == RAFT_PERSISTED_ENTRIES &&
+                event->persisted_entries.status != 0) {
+                legacyPersistedEntriesFailure(r, event);
+            }
+
+            LegacyFailPendingRequests(r);
+            assert(QUEUE_IS_EMPTY(&r->legacy.pending));
+        }
+        if (raft_state(r) == RAFT_LEADER) {
+            assert(r->legacy.change == NULL);
+        }
+        r->legacy.prev_state = r->state;
+    }
+
+    /* Check whether a raft_change request has been completed. */
+    legacyCheckChangeRequest(r, entry, events, n_events);
 
     /* Check if there's a client request in the completion queue which has
      * failed due to a RAFT_NOSPACE error. In that case we will not call the
@@ -602,9 +959,71 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
     }
 
+    if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
+        raft_index commit_index = raft_commit_index(r);
+
+        /* If the new commit index matches the index of a snapshot we have just
+         * persisted, then restore the FSM state using its cached data. */
+        if (commit_index != 0 && commit_index == r->legacy.snapshot_index) {
+            /* From Figure 5.3:
+             *
+             *   8. Reset state machine using snapshot contents.
+             */
+            r->legacy.snapshot_index = 0;
+            rv = r->fsm->restore(r->fsm, &r->legacy.snapshot_chunk);
+            if (rv != 0) {
+                tracef("restore snapshot: %s", errCodeToString(rv));
+                goto err;
+            }
+        }
+
+        rv = legacyApply(r, events, n_events);
+        if (rv != 0) {
+            goto err;
+        }
+    }
+
+    return 0;
+
+err:
+    return rv;
+}
+
+int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
+{
+    struct raft_event *events;
+    unsigned n_events;
+    unsigned i;
+    struct raft_entry entry; /* Used for actual promotion of RAFT_CHANGE reqs */
+    int rv;
+
+    if (r->io == NULL) {
+        /* No legacy raft_io implementation, just do nothing. */
+        return 0;
+    }
+
+    /* Initially the set of events contains only the event passed as argument,
+     * but might grow if some further events get generated by the handling
+     * code. */
+    events = raft_malloc(sizeof *events);
+    if (events == NULL) {
+        return RAFT_NOMEM;
+    }
+    events[0] = *event;
+    n_events = 1;
+
+    for (i = 0; i < n_events; i++) {
+        rv = legacyHandleEvent(r, &entry, &events, &n_events, i);
+        if (rv != 0) {
+            goto err;
+        }
+    }
+
+    raft_free(events);
     return 0;
 
 err:
     assert(rv != 0);
+    raft_free(events);
     return rv;
 }

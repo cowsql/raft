@@ -358,31 +358,6 @@ static size_t updateLastStored(struct raft *r,
     return i;
 }
 
-/* Get the request matching the given @index and @type, if any.
- * The type check is skipped when @type == -1. */
-static struct request *getRequest(struct raft *r,
-                                  const raft_index index,
-                                  int type)
-{
-    queue *head;
-    struct request *req;
-
-    if (r->state != RAFT_LEADER) {
-        return NULL;
-    }
-    QUEUE_FOREACH (head, &r->leader_state.requests) {
-        req = QUEUE_DATA(head, struct request, queue);
-        if (req->index == index) {
-            if (type != -1) {
-                assert(req->type == type);
-            }
-            QUEUE_REMOVE(&req->queue);
-            return req;
-        }
-    }
-    return NULL;
-}
-
 /* Invoked once a disk write request for new entries has been completed. */
 static int leaderPersistEntriesDone(struct raft *r,
                                     raft_index index,
@@ -391,61 +366,17 @@ static int leaderPersistEntriesDone(struct raft *r,
                                     int status)
 {
     size_t server_index;
-    int rv;
 
     assert(r->state == RAFT_LEADER);
 
     tracef("leader: written %u entries starting at %lld: status %d", n, index,
            status);
 
-    /* In case of a failed disk write, if we were the leader creating these
-     * entries in the first place, truncate our log too (since we have appended
-     * these entries to it) and fire the request callbacks.
-     *
-     * Afterward, convert immediately to follower state, giving the cluster a
-     * chance to elect another leader that doesn't have a full disk (or whatever
-     * caused our write error). */
+    /* In case of a failed disk write, convert immediately to follower state,
+     * giving the cluster a chance to elect another leader that doesn't have a
+     * full disk (or whatever caused our write error). */
     if (status != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-
-        for (unsigned i = 0; i < n; i++) {
-            struct request *req = getRequest(r, index + i, -1);
-            if (!req) {
-                tracef("no request found at index %llu", index + i);
-                continue;
-            }
-            switch (req->type) {
-                case RAFT_COMMAND: {
-                    struct raft_apply *apply = (struct raft_apply *)req;
-                    if (apply->cb) {
-                        apply->status = status;
-                        apply->result = NULL;
-                        QUEUE_PUSH(&r->legacy.requests, &apply->queue);
-                    }
-                    break;
-                }
-                case RAFT_BARRIER: {
-                    struct raft_barrier *barrier = (struct raft_barrier *)req;
-                    if (barrier->cb) {
-                        barrier->status = status;
-                        QUEUE_PUSH(&r->legacy.requests, &barrier->queue);
-                    }
-                    break;
-                }
-                case RAFT_CHANGE: {
-                    struct raft_change *change = (struct raft_change *)req;
-                    if (change->cb) {
-                        change->status = status;
-                        QUEUE_PUSH(&r->legacy.requests, &change->queue);
-                    }
-                    break;
-                }
-                default:
-                    tracef("unknown request type, shutdown.");
-                    assert(false);
-                    break;
-            }
-        }
         convertToFollower(r);
         goto out;
     }
@@ -469,11 +400,6 @@ static int leaderPersistEntriesDone(struct raft *r,
 
     /* Check if we can commit some new entries. */
     replicationQuorum(r, r->last_stored);
-
-    rv = replicationApply(r);
-    if (rv != 0) {
-        /* TODO: just log the error? */
-    }
 
 out:
     return 0;
@@ -590,66 +516,6 @@ int replicationTrigger(struct raft *r, raft_index index)
     return triggerAll(r);
 }
 
-/* Helper to be invoked after a promotion of a non-voting server has been
- * requested via @raft_assign and that server has caught up with logs.
- *
- * This function changes the local configuration marking the server being
- * promoted as actually voting, appends the a RAFT_CHANGE entry with the new
- * configuration to the local log and triggers its replication. */
-static int triggerActualPromotion(struct raft *r)
-{
-    raft_index index;
-    raft_term term = r->current_term;
-    size_t server_index;
-    struct raft_server *server;
-    int old_role;
-    int rv;
-
-    assert(r->state == RAFT_LEADER);
-    assert(r->leader_state.promotee_id != 0);
-
-    server_index =
-        configurationIndexOf(&r->configuration, r->leader_state.promotee_id);
-    assert(server_index < r->configuration.n);
-
-    server = &r->configuration.servers[server_index];
-
-    assert(server->role != RAFT_VOTER);
-
-    /* Update our current configuration. */
-    old_role = server->role;
-    server->role = RAFT_VOTER;
-
-    /* Index of the entry being appended. */
-    index = logLastIndex(r->log) + 1;
-
-    /* Encode the new configuration and append it to the log. */
-    rv = logAppendConfiguration(r->log, term, &r->configuration);
-    if (rv != 0) {
-        goto err;
-    }
-
-    /* Start writing the new log entry to disk and send it to the followers. */
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    r->leader_state.promotee_id = 0;
-    r->configuration_uncommitted_index = logLastIndex(r->log);
-
-    return 0;
-
-err_after_log_append:
-    logTruncate(r->log, index);
-
-err:
-    server->role = old_role;
-
-    assert(rv != 0);
-    return rv;
-}
-
 int replicationUpdate(struct raft *r,
                       const struct raft_server *server,
                       const struct raft_append_entries_result *result)
@@ -729,49 +595,30 @@ int replicationUpdate(struct raft *r,
     if (is_being_promoted) {
         bool is_up_to_date = membershipUpdateCatchUpRound(r);
         if (is_up_to_date) {
-            rv = triggerActualPromotion(r);
+            r->leader_state.promotee_id = 0;
+        }
+    }
+
+    /* If we are transferring leadership to this follower, check if its log
+     * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
+     * already did). */
+    if (r->transfer != NULL && r->transfer->id == server->id) {
+        if (progressIsUpToDate(r, i) && r->transfer->send.data == NULL) {
+            rv = membershipLeadershipTransferStart(r);
             if (rv != 0) {
-                return rv;
+                membershipLeadershipTransferClose(r);
             }
         }
+    }
+
+    /* If this follower is in pipeline mode, send it more entries. */
+    if (progressState(r, i) == PROGRESS__PIPELINE) {
+        replicationProgress(r, i);
     }
 
     /* Check if we can commit some new entries. */
     replicationQuorum(r, last_index);
 
-    rv = replicationApply(r);
-    if (rv != 0) {
-        /* TODO: just log the error? */
-    }
-
-    /* Abort here we have been removed and we are not leaders anymore. */
-    if (r->state != RAFT_LEADER) {
-        goto out;
-    }
-
-    /* Get again the server index since it might have been removed from the
-     * configuration. */
-    i = configurationIndexOf(&r->configuration, server->id);
-
-    if (i < r->configuration.n) {
-        /* If we are transferring leadership to this follower, check if its log
-         * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
-         * already did). */
-        if (r->transfer != NULL && r->transfer->id == server->id) {
-            if (progressIsUpToDate(r, i) && r->transfer->send.data == NULL) {
-                rv = membershipLeadershipTransferStart(r);
-                if (rv != 0) {
-                    membershipLeadershipTransferClose(r);
-                }
-            }
-        }
-        /* If this follower is in pipeline mode, send it more entries. */
-        if (progressState(r, i) == PROGRESS__PIPELINE) {
-            replicationProgress(r, i);
-        }
-    }
-
-out:
     return 0;
 }
 
@@ -874,12 +721,6 @@ static int followerPersistEntriesDone(struct raft *r,
                 return rv;
             }
         }
-    }
-
-    /* Apply to the FSM any newly stored entry that is also committed. */
-    rv = replicationApply(r);
-    if (rv != 0) {
-        goto out;
     }
 
     result.rejected = 0;
@@ -1079,25 +920,9 @@ int replicationAppend(struct raft *r,
     if (args->leader_commit > r->commit_index &&
         r->last_stored >= r->commit_index) {
         r->commit_index = min(args->leader_commit, r->last_stored);
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
-    /* If this is an empty AppendEntries, there's nothing to write. However we
-     * still want to check if we can commit some entry. However, don't commit
-     * anything while a snapshot install is busy, r->last_stored will be 0 in
-     * that case.
-     *
-     * From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (!replicationInstallSnapshotBusy(r)) {
-        rv = replicationApply(r);
-        if (rv != 0) {
-            return rv;
-        }
-    }
     if (n == 0) {
         return 0;
     }
@@ -1154,6 +979,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     (void)offset;
     (void)last;
+    (void)chunk;
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
@@ -1180,16 +1006,8 @@ int replicationPersistSnapshotDone(struct raft *r,
     /* From Figure 5.3:
      *
      *   7. Discard the entire log
-     *   8. Reset state machine using snapshot contents (and load lastConfig
-     *      as cluster configuration).
+     *   8. ... load lastConfig as cluster configuration
      */
-    rv = r->fsm->restore(r->fsm, chunk);
-    if (rv != 0) {
-        tracef("restore snapshot %llu: %s", metadata->index,
-               errCodeToString(rv));
-        goto discard;
-    }
-
     rv = RestoreSnapshot(r, metadata);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", metadata->index,
@@ -1205,7 +1023,6 @@ discard:
     /* In case of error we must also free the snapshot data buffer and free the
      * configuration. */
     result.rejected = metadata->index;
-    raft_free(chunk->base);
     raft_configuration_close(&metadata->configuration);
 
 respond:
@@ -1282,48 +1099,8 @@ int replicationInstallSnapshot(struct raft *r,
     return 0;
 }
 
-/* Apply a RAFT_COMMAND entry that has been committed. */
-static int applyCommand(struct raft *r,
-                        const raft_index index,
-                        const struct raft_buffer *buf)
+int replicationApplyConfigurationChange(struct raft *r, raft_index index)
 {
-    struct raft_apply *req;
-    void *result;
-    int rv;
-    rv = r->fsm->apply(r->fsm, buf, &result);
-    if (rv != 0) {
-        return rv;
-    }
-
-    r->last_applied = index;
-
-    req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-    if (req != NULL && req->cb != NULL) {
-        req->status = 0;
-        req->result = result;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-    return 0;
-}
-
-/* Fire the callback of a barrier request whose entry has been committed. */
-static void applyBarrier(struct raft *r, const raft_index index)
-{
-    r->last_applied = index;
-
-    struct raft_barrier *req;
-    req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-    if (req != NULL && req->cb != NULL) {
-        req->status = 0;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
-/* Apply a RAFT_CHANGE entry that has been committed. */
-static void applyChange(struct raft *r, const raft_index index)
-{
-    struct raft_change *req;
-
     assert(index > 0);
 
     /* If this is an uncommitted configuration that we had already applied when
@@ -1336,12 +1113,9 @@ static void applyChange(struct raft *r, const raft_index index)
     }
 
     r->configuration_committed_index = index;
-    r->last_applied = index;
 
     if (r->state == RAFT_LEADER) {
         const struct raft_server *server;
-        req = r->leader_state.change;
-        r->leader_state.change = NULL;
 
         /* If we are leader but not part of this new configuration, step
          * down.
@@ -1357,14 +1131,9 @@ static void applyChange(struct raft *r, const raft_index index)
                    (void *)server);
             convertToFollower(r);
         }
-
-        if (req != NULL && req->cb != NULL) {
-            /* XXX: set the type here, since it's not done in client.c */
-            req->type = RAFT_CHANGE;
-            req->status = 0;
-            QUEUE_PUSH(&r->legacy.requests, &req->queue);
-        }
     }
+
+    return 0;
 }
 
 int replicationSnapshot(struct raft *r,
@@ -1398,55 +1167,6 @@ int replicationSnapshot(struct raft *r,
     configurationClose(&metadata->configuration);
 
     return 0;
-}
-
-int replicationApply(struct raft *r)
-{
-    raft_index index;
-    int rv = 0;
-
-    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
-    assert(r->last_applied <= r->commit_index);
-
-    if (r->last_applied == r->commit_index) {
-        /* Nothing to do. */
-        return 0;
-    }
-
-    for (index = r->last_applied + 1; index <= r->commit_index; index++) {
-        const struct raft_entry *entry = logGet(r->log, index);
-        if (entry == NULL) {
-            /* This can happen while installing a snapshot */
-            tracef("replicationApply - ENTRY NULL");
-            return 0;
-        }
-
-        assert(entry->type == RAFT_COMMAND || entry->type == RAFT_BARRIER ||
-               entry->type == RAFT_CHANGE);
-
-        switch (entry->type) {
-            case RAFT_COMMAND:
-                rv = applyCommand(r, index, &entry->buf);
-                break;
-            case RAFT_BARRIER:
-                applyBarrier(r, index);
-                rv = 0;
-                break;
-            case RAFT_CHANGE:
-                applyChange(r, index);
-                rv = 0;
-                break;
-            default:
-                rv = 0; /* For coverity. This case can't be taken. */
-                break;
-        }
-
-        if (rv != 0) {
-            break;
-        }
-    }
-
-    return rv;
 }
 
 void replicationQuorum(struct raft *r, const raft_index index)
@@ -1488,6 +1208,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
     if (votes > configurationVoterCount(&r->configuration) / 2) {
         r->commit_index = index;
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         tracef("new commit index %llu", r->commit_index);
     }
 

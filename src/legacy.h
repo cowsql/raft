@@ -9,6 +9,9 @@
  * legacy raft_io interface. */
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event);
 
+/* Fail all pending client requests with RAFT_LEADERSHIPLOST. */
+void LegacyFailPendingRequests(struct raft *r);
+
 /* Fire the callbacks of all completed client requests. */
 void LegacyFireCompletedRequests(struct raft *r);
 

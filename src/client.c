@@ -140,7 +140,7 @@ int raft_apply(struct raft *r,
         return rv;
     }
 
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+    QUEUE_PUSH(&r->legacy.pending, &req->queue);
 
     return 0;
 }
@@ -178,7 +178,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         goto err_after_buf_alloc;
     }
 
-    QUEUE_PUSH(&r->leader_state.requests, &req->queue);
+    QUEUE_PUSH(&r->legacy.pending, &req->queue);
 
     return 0;
 
@@ -189,20 +189,14 @@ err:
     return rv;
 }
 
-static int clientChangeConfiguration(
-    struct raft *r,
-    struct raft_change *req,
-    const struct raft_configuration *configuration)
+int ClientChangeConfiguration(struct raft *r,
+                              const struct raft_configuration *configuration)
 {
-    raft_index index;
     struct raft_entry entry;
     struct raft_event event;
     int rv;
 
-    (void)req;
-
-    /* Index of the entry being appended. */
-    index = logLastIndex(r->log) + 1;
+    assert(r->state == RAFT_LEADER);
 
     entry.type = RAFT_CHANGE;
     entry.term = r->current_term;
@@ -210,7 +204,7 @@ static int clientChangeConfiguration(
     /* Encode the configuration. */
     rv = configurationEncode(configuration, &entry.buf);
     if (rv != 0) {
-        goto err;
+        return rv;
     }
 
     event.time = r->io->time(r->io);
@@ -220,17 +214,10 @@ static int clientChangeConfiguration(
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
-        goto err_after_log_append;
+        return rv;
     }
 
     return 0;
-
-err_after_log_append:
-    logTruncate(r->log, index);
-
-err:
-    assert(rv != 0);
-    return rv;
 }
 
 int raft_add(struct raft *r,
@@ -262,14 +249,15 @@ int raft_add(struct raft *r,
     }
 
     req->cb = cb;
+    req->catch_up_id = 0;
 
-    rv = clientChangeConfiguration(r, req, &configuration);
+    rv = ClientChangeConfiguration(r, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     raft_configuration_close(&configuration);
 
@@ -302,6 +290,8 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
     r->leader_state.round_number = 1;
     r->leader_state.round_index = last_index;
     r->leader_state.round_start = r->now;
+
+    progressCatchUpStart(r, server_index);
 
     /* Immediately initiate an AppendEntries request. */
     rv = replicationProgress(r, server_index);
@@ -374,9 +364,10 @@ int raft_assign(struct raft *r,
     last_index = logLastIndex(r->log);
 
     req->cb = cb;
+    req->catch_up_id = 0;
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     /* If we are not promoting to the voter role or if the log of this server is
      * already up-to-date, we can submit the configuration change
@@ -386,9 +377,9 @@ int raft_assign(struct raft *r,
         int old_role = r->configuration.servers[server_index].role;
         r->configuration.servers[server_index].role = role;
 
-        rv = clientChangeConfiguration(r, req, &r->configuration);
+        rv = ClientChangeConfiguration(r, &r->configuration);
         if (rv != 0) {
-            tracef("clientChangeConfiguration failed %d", rv);
+            tracef("ClientChangeConfiguration failed %d", rv);
             r->configuration.servers[server_index].role = old_role;
             return rv;
         }
@@ -399,7 +390,13 @@ int raft_assign(struct raft *r,
     event.time = r->now;
     event.type = RAFT_CATCH_UP;
     event.catch_up.server_id = server->id;
-    LegacyForwardToRaftIo(r, &event);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        return rv;
+    }
+
+    req->catch_up_id = server->id;
 
     return 0;
 
@@ -443,14 +440,15 @@ int raft_remove(struct raft *r,
     }
 
     req->cb = cb;
+    req->catch_up_id = 0;
 
-    rv = clientChangeConfiguration(r, req, &configuration);
+    rv = ClientChangeConfiguration(r, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     raft_configuration_close(&configuration);
 

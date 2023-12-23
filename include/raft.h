@@ -561,15 +561,17 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  */
 enum {
     RAFT_START = 1, /* Initial event starting the engine with persisted data. */
+    RAFT_STOP,
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
-    RAFT_SENT,     /* A message has been sent (either successfully or not). */
-    RAFT_RECEIVE,  /* A message has been received. */
-    RAFT_SNAPSHOT, /* A snapshot has been taken. */
-    RAFT_TIMEOUT,  /* The timeout has expired. */
-    RAFT_SUBMIT,   /* New entries have been submitted. */
-    RAFT_CATCH_UP, /* Start catching-up a server. */
-    RAFT_TRANSFER  /* Submission of leadership trasfer request */
+    RAFT_SENT,    /* A message has been sent (either successfully or not). */
+    RAFT_RECEIVE, /* A message has been received. */
+    RAFT_CONFIGURATION, /* A new committed configuration must be applied. */
+    RAFT_SNAPSHOT,      /* A snapshot has been taken. */
+    RAFT_TIMEOUT,       /* The timeout has expired. */
+    RAFT_SUBMIT,        /* New entries have been submitted. */
+    RAFT_CATCH_UP,      /* Start catching-up a server. */
+    RAFT_TRANSFER       /* Submission of leadership trasfer request */
 };
 
 /**
@@ -617,6 +619,10 @@ struct raft_event
             const char *address;
             struct raft_message *message;
         } receive;
+        struct
+        {
+            raft_index index;
+        } configuration;
         struct
         {
             struct raft_snapshot_metadata metadata; /* Snapshot metadata */
@@ -671,6 +677,8 @@ struct raft_update
 #define RAFT_UPDATE_ENTRIES 1 << 2
 #define RAFT_UPDATE_SNAPSHOT 1 << 3
 #define RAFT_UPDATE_MESSAGES 1 << 4
+#define RAFT_UPDATE_STATE 1 << 5
+#define RAFT_UPDATE_COMMIT_INDEX 1 << 6
 
 /**
  * version field MUST be filled out by user.
@@ -789,22 +797,27 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                    \
-    struct                                                                  \
-    {                                                                       \
-        raft_time now;   /* Current time, updated via raft_step() */        \
-        unsigned random; /* Pseudo-random number generator state */         \
-        struct raft_update *update;    /* Pointer passed to raft_step() */  \
-        struct raft_message *messages; /* Pre-allocated message queue */    \
-        unsigned n_messages_cap;       /* Capacity of the message queue */  \
-        /* Index of the last snapshot that was taken */                     \
-        raft_index configuration_last_snapshot_index;                       \
-        /* Fields used by the v0 compatibility code */                      \
-        struct                                                              \
-        {                                                                   \
-            void *requests[2];              /* Completed client requests */ \
-            void (*step_cb)(struct raft *); /* Invoked after raft_step() */ \
-        } legacy;                                                           \
+#define RAFT__EXTENSIONS                                                       \
+    struct                                                                     \
+    {                                                                          \
+        raft_time now;   /* Current time, updated via raft_step() */           \
+        unsigned random; /* Pseudo-random number generator state */            \
+        struct raft_update *update;    /* Pointer passed to raft_step() */     \
+        struct raft_message *messages; /* Pre-allocated message queue */       \
+        unsigned n_messages_cap;       /* Capacity of the message queue */     \
+        /* Index of the last snapshot that was taken */                        \
+        raft_index configuration_last_snapshot_index;                          \
+        /* Fields used by the v0 compatibility code */                         \
+        struct                                                                 \
+        {                                                                      \
+            unsigned short prev_state; /* Used to detect lost leadership */    \
+            void *pending[2];          /* Pending client requests */           \
+            void *requests[2];         /* Completed client requests */         \
+            void (*step_cb)(struct raft *);    /* Invoked after raft_step() */ \
+            struct raft_change *change;        /* Pending membership change */ \
+            raft_index snapshot_index;         /* Last persisted snapshot */   \
+            struct raft_buffer snapshot_chunk; /* Cache of snapshot data */    \
+        } legacy;                                                              \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -980,12 +993,10 @@ struct raft
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
-            struct raft_change *change;     /* Pending membership change. */
             raft_id promotee_id;            /* ID of server being promoted. */
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
-            void *requests[2];              /* Outstanding client requests. */
             uint64_t reserved[8];           /* Future use */
         } leader_state;
     };
@@ -1100,8 +1111,26 @@ RAFT_API raft_term raft_current_term(struct raft *r);
 RAFT_API raft_id raft_voted_for(struct raft *r);
 
 /**
- * Bootstrap this raft instance using the given configuration. The instance must
- * not have been started yet and must be completely pristine, otherwise
+ * Return the commit index of this server.
+ */
+RAFT_API raft_index raft_commit_index(struct raft *r);
+
+/**
+ * Return information about the progress of a server that is catching up with
+ * logs after a #RAFT_CATCH_UP event was fired.
+ */
+enum {
+    RAFT_CATCH_UP_NONE,
+    RAFT_CATCH_UP_RUNNING,
+    RAFT_CATCH_UP_ABORTED,
+    RAFT_CATCH_UP_FINISHED
+};
+
+RAFT_API int raft_catch_up(struct raft *r, raft_id id, int *status);
+
+/**
+ * Bootstrap this raft instance using the given configuration. The instance
+ * must not have been started yet and must be completely pristine, otherwise
  * #RAFT_CANTBOOTSTRAP will be returned.
  */
 RAFT_API int raft_bootstrap(struct raft *r,
@@ -1233,11 +1262,14 @@ RAFT_API raft_index raft_last_applied(struct raft *r);
     }
 
 /* Extended RAFT__REQUEST fields added after the v0.x ABI freeze. */
-#define RAFT__REQUEST_EXTENSIONS                                              \
-    struct                                                                    \
-    {                                                                         \
-        int status;   /* Store the request status code, for delayed firing */ \
-        void *result; /* For raft_apply, store the request result */          \
+#define RAFT__REQUEST_EXTENSIONS                                               \
+    struct                                                                     \
+    {                                                                          \
+        int status; /* Store the request status code, for delayed firing */    \
+        union {                                                                \
+            void *result; /* For raft_apply, store the request result */       \
+            raft_id catch_up_id; /* For raft_change, the catching up server */ \
+        };                                                                     \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__REQUEST_RESERVED, RAFT__REQUEST_EXTENSIONS);

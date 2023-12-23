@@ -16,6 +16,7 @@
 #include "legacy.h"
 #include "log.h"
 #include "membership.h"
+#include "progress.h"
 #include "queue.h"
 #include "recv.h"
 #include "replication.h"
@@ -115,8 +116,12 @@ int raft_init(struct raft *r,
         }
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
+        r->legacy.prev_state = r->state;
+        QUEUE_INIT(&r->legacy.pending);
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
+        r->legacy.change = NULL;
+        r->legacy.snapshot_index = 0;
     }
     r->update = NULL;
     r->messages = NULL;
@@ -154,14 +159,16 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->close_cb == NULL);
     assert(r->update == NULL);
-    if (r->state != RAFT_UNAVAILABLE) {
-        convertToUnavailable(r);
-        if (r->io != NULL) {
-            LegacyFireCompletedRequests(r);
-        }
-    }
-    r->close_cb = cb;
+
     if (r->io != NULL) {
+        struct raft_event event;
+        event.time = r->io->time(r->io);
+        event.type = RAFT_STOP;
+
+        LegacyForwardToRaftIo(r, &event);
+
+        r->close_cb = cb;
+
         r->io->close(r->io, ioCloseCb);
     } else {
         finalClose(r);
@@ -229,6 +236,7 @@ static int stepStart(struct raft *r,
          * the first entry to be the same on all servers. */
         r->commit_index = 1;
         r->last_applied = 1;
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
     /* Append the entries to the log, possibly restoring the last
@@ -308,6 +316,16 @@ int raft_step(struct raft *r,
                            event->start.metadata, event->start.start_index,
                            event->start.entries, event->start.n_entries);
             break;
+        case RAFT_STOP:
+            if (r->state != RAFT_UNAVAILABLE) {
+                convertToUnavailable(r);
+                if (r->io != NULL) {
+                    LegacyFailPendingRequests(r);
+                    LegacyFireCompletedRequests(r);
+                }
+            }
+            rv = 0;
+            break;
         case RAFT_PERSISTED_ENTRIES:
             rv = replicationPersistEntriesDone(
                 r, event->persisted_entries.index,
@@ -328,6 +346,10 @@ int raft_step(struct raft *r,
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.id, event->receive.address,
                              event->receive.message);
+            break;
+        case RAFT_CONFIGURATION:
+            rv = replicationApplyConfigurationChange(
+                r, event->configuration.index);
             break;
         case RAFT_SNAPSHOT:
             rv = replicationSnapshot(r, &event->snapshot.metadata,
@@ -372,6 +394,29 @@ raft_term raft_current_term(struct raft *r)
 raft_term raft_voted_for(struct raft *r)
 {
     return r->voted_for;
+}
+
+raft_index raft_commit_index(struct raft *r)
+{
+    return r->commit_index;
+}
+
+int raft_catch_up(struct raft *r, raft_id id, int *status)
+{
+    unsigned i;
+
+    if (r->state != RAFT_LEADER) {
+        return RAFT_NOTLEADER;
+    }
+
+    i = configurationIndexOf(&r->configuration, id);
+    if (i == r->configuration.n) {
+        return RAFT_BADID;
+    }
+
+    *status = progressCatchUpStatus(r, i);
+
+    return 0;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)

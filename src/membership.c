@@ -126,6 +126,8 @@ bool membershipUpdateCatchUpRound(struct raft *r)
         r->leader_state.round_index = 0;
         r->leader_state.round_start = 0;
 
+        progressCatchUpFinish(r, server_index);
+
         return true;
     }
 

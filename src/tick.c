@@ -174,7 +174,6 @@ static int tickLeader(struct raft *r)
         if (is_too_slow || is_unresponsive) {
             tracef("server_index:%d is_too_slow:%d is_unresponsive:%d",
                    server_index, is_too_slow, is_unresponsive);
-            struct raft_change *change;
 
             r->leader_state.promotee_id = 0;
 
@@ -182,13 +181,7 @@ static int tickLeader(struct raft *r)
             r->leader_state.round_number = 0;
             r->leader_state.round_start = 0;
 
-            change = r->leader_state.change;
-            r->leader_state.change = NULL;
-            if (change != NULL && change->cb != NULL) {
-                change->type = RAFT_CHANGE;
-                change->status = RAFT_NOCONNECTION;
-                QUEUE_PUSH(&r->legacy.requests, &change->queue);
-            }
+            progressCatchUpAbort(r, server_index);
         }
     }
 

@@ -79,11 +79,6 @@ int replicationInstallSnapshot(struct raft *r,
 /* Returns `true` if the raft instance is currently installing a snapshot */
 bool replicationInstallSnapshotBusy(struct raft *r);
 
-/* Apply any committed entry that was not applied yet.
- *
- * It must be called by leaders or followers. */
-int replicationApply(struct raft *r);
-
 /* Check if a quorum has been reached for the given log index, and update the
  * commit index accordingly if so.
  *
@@ -125,5 +120,8 @@ int replicationPersistSnapshotDone(struct raft *r,
 int replicationSnapshot(struct raft *r,
                         struct raft_snapshot_metadata *metadata,
                         unsigned trailing);
+
+/* Apply a RAFT_CHANGE entry that has been committed. */
+int replicationApplyConfigurationChange(struct raft *r, raft_index index);
 
 #endif /* REPLICATION_H_ */

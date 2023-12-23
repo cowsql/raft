@@ -139,6 +139,7 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
     r->commit_index = metadata->index;
     r->last_applied = metadata->index;
     r->last_stored = metadata->index;
+    r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
 
     return 0;
 }
