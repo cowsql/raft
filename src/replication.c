@@ -391,7 +391,6 @@ static int leaderPersistEntriesDone(struct raft *r,
                                     int status)
 {
     size_t server_index;
-    int rv;
 
     assert(r->state == RAFT_LEADER);
 
@@ -469,11 +468,6 @@ static int leaderPersistEntriesDone(struct raft *r,
 
     /* Check if we can commit some new entries. */
     replicationQuorum(r, r->last_stored);
-
-    rv = replicationApply(r);
-    if (rv != 0) {
-        /* TODO: just log the error? */
-    }
 
 out:
     return 0;
@@ -693,11 +687,6 @@ int replicationUpdate(struct raft *r,
     /* Check if we can commit some new entries. */
     replicationQuorum(r, last_index);
 
-    rv = replicationApply(r);
-    if (rv != 0) {
-        /* TODO: just log the error? */
-    }
-
     return 0;
 }
 
@@ -800,12 +789,6 @@ static int followerPersistEntriesDone(struct raft *r,
                 return rv;
             }
         }
-    }
-
-    /* Apply to the FSM any newly stored entry that is also committed. */
-    rv = replicationApply(r);
-    if (rv != 0) {
-        goto out;
     }
 
     result.rejected = 0;
@@ -1005,25 +988,9 @@ int replicationAppend(struct raft *r,
     if (args->leader_commit > r->commit_index &&
         r->last_stored >= r->commit_index) {
         r->commit_index = min(args->leader_commit, r->last_stored);
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
-    /* If this is an empty AppendEntries, there's nothing to write. However we
-     * still want to check if we can commit some entry. However, don't commit
-     * anything while a snapshot install is busy, r->last_stored will be 0 in
-     * that case.
-     *
-     * From Figure 3.1:
-     *
-     *   AppendEntries RPC: Receiver implementation: If leaderCommit >
-     *   commitIndex, set commitIndex = min(leaderCommit, index of last new
-     *   entry).
-     */
-    if (!replicationInstallSnapshotBusy(r)) {
-        rv = replicationApply(r);
-        if (rv != 0) {
-            return rv;
-        }
-    }
     if (n == 0) {
         return 0;
     }
@@ -1200,48 +1167,8 @@ int replicationInstallSnapshot(struct raft *r,
     return 0;
 }
 
-/* Apply a RAFT_COMMAND entry that has been committed. */
-static int applyCommand(struct raft *r,
-                        const raft_index index,
-                        const struct raft_buffer *buf)
+int replicationApplyConfigurationChange(struct raft *r, raft_index index)
 {
-    struct raft_apply *req;
-    void *result;
-    int rv;
-    rv = r->fsm->apply(r->fsm, buf, &result);
-    if (rv != 0) {
-        return rv;
-    }
-
-    r->last_applied = index;
-
-    req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
-    if (req != NULL && req->cb != NULL) {
-        req->status = 0;
-        req->result = result;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-    return 0;
-}
-
-/* Fire the callback of a barrier request whose entry has been committed. */
-static void applyBarrier(struct raft *r, const raft_index index)
-{
-    r->last_applied = index;
-
-    struct raft_barrier *req;
-    req = (struct raft_barrier *)getRequest(r, index, RAFT_BARRIER);
-    if (req != NULL && req->cb != NULL) {
-        req->status = 0;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
-/* Apply a RAFT_CHANGE entry that has been committed. */
-static void applyChange(struct raft *r, const raft_index index)
-{
-    struct raft_change *req;
-
     assert(index > 0);
 
     /* If this is an uncommitted configuration that we had already applied when
@@ -1254,12 +1181,9 @@ static void applyChange(struct raft *r, const raft_index index)
     }
 
     r->configuration_committed_index = index;
-    r->last_applied = index;
 
     if (r->state == RAFT_LEADER) {
         const struct raft_server *server;
-        req = r->legacy.change;
-        r->legacy.change = NULL;
 
         /* If we are leader but not part of this new configuration, step
          * down.
@@ -1275,14 +1199,9 @@ static void applyChange(struct raft *r, const raft_index index)
                    (void *)server);
             convertToFollower(r);
         }
-
-        if (req != NULL && req->cb != NULL) {
-            /* XXX: set the type here, since it's not done in client.c */
-            req->type = RAFT_CHANGE;
-            req->status = 0;
-            QUEUE_PUSH(&r->legacy.requests, &req->queue);
-        }
     }
+
+    return 0;
 }
 
 int replicationSnapshot(struct raft *r,
@@ -1316,55 +1235,6 @@ int replicationSnapshot(struct raft *r,
     configurationClose(&metadata->configuration);
 
     return 0;
-}
-
-int replicationApply(struct raft *r)
-{
-    raft_index index;
-    int rv = 0;
-
-    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
-    assert(r->last_applied <= r->commit_index);
-
-    if (r->last_applied == r->commit_index) {
-        /* Nothing to do. */
-        return 0;
-    }
-
-    for (index = r->last_applied + 1; index <= r->commit_index; index++) {
-        const struct raft_entry *entry = logGet(r->log, index);
-        if (entry == NULL) {
-            /* This can happen while installing a snapshot */
-            tracef("replicationApply - ENTRY NULL");
-            return 0;
-        }
-
-        assert(entry->type == RAFT_COMMAND || entry->type == RAFT_BARRIER ||
-               entry->type == RAFT_CHANGE);
-
-        switch (entry->type) {
-            case RAFT_COMMAND:
-                rv = applyCommand(r, index, &entry->buf);
-                break;
-            case RAFT_BARRIER:
-                applyBarrier(r, index);
-                rv = 0;
-                break;
-            case RAFT_CHANGE:
-                applyChange(r, index);
-                rv = 0;
-                break;
-            default:
-                rv = 0; /* For coverity. This case can't be taken. */
-                break;
-        }
-
-        if (rv != 0) {
-            break;
-        }
-    }
-
-    return rv;
 }
 
 void replicationQuorum(struct raft *r, const raft_index index)

@@ -163,7 +163,6 @@ int convertToLeader(struct raft *r)
                r->last_stored, r->commit_index);
         r->commit_index = r->last_stored;
         r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
-        rv = replicationApply(r);
     } else if (n_voters > 1) {
         /* Raft Dissertation, paragraph 6.4:
          * The Leader Completeness Property guarantees that a leader has all
@@ -189,12 +188,11 @@ int convertToLeader(struct raft *r)
                 "%d",
                 rv);
             raft_free(entry.buf.base);
-            goto out;
+            return rv;
         }
     }
 
-out:
-    return rv;
+    return 0;
 }
 
 void convertToUnavailable(struct raft *r)

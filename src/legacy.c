@@ -661,6 +661,151 @@ static void legacyCheckChangeRequest(struct raft *r,
     }
 }
 
+/* Get the request matching the given @index and @type, if any.
+ * The type check is skipped when @type == -1. */
+static struct request *legacyGetRequest(struct raft *r,
+                                        const raft_index index,
+                                        int type)
+{
+    queue *head;
+    struct request *req;
+
+    if (r->state != RAFT_LEADER) {
+        return NULL;
+    }
+    QUEUE_FOREACH (head, &r->legacy.pending) {
+        req = QUEUE_DATA(head, struct request, queue);
+        if (req->index == index) {
+            if (type != -1) {
+                assert(req->type == type);
+            }
+            QUEUE_REMOVE(&req->queue);
+            return req;
+        }
+    }
+    return NULL;
+}
+
+/* Apply a RAFT_COMMAND entry that has been committed. */
+static int applyCommand(struct raft *r,
+                        const raft_index index,
+                        const struct raft_buffer *buf)
+{
+    struct raft_apply *req;
+    void *result;
+    int rv;
+    rv = r->fsm->apply(r->fsm, buf, &result);
+    if (rv != 0) {
+        return rv;
+    }
+
+    r->last_applied = index;
+
+    req = (struct raft_apply *)legacyGetRequest(r, index, RAFT_COMMAND);
+    if (req != NULL && req->cb != NULL) {
+        req->status = 0;
+        req->result = result;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+    return 0;
+}
+
+/* Fire the callback of a barrier request whose entry has been committed. */
+static void applyBarrier(struct raft *r, const raft_index index)
+{
+    r->last_applied = index;
+
+    struct raft_barrier *req;
+    req = (struct raft_barrier *)legacyGetRequest(r, index, RAFT_BARRIER);
+    if (req != NULL && req->cb != NULL) {
+        req->status = 0;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
+/* Apply a RAFT_CHANGE entry that has been committed. */
+static void applyChange(struct raft *r, const raft_index index)
+{
+    struct raft_change *req;
+
+    assert(index > 0);
+
+    r->last_applied = index;
+
+    if (r->state == RAFT_LEADER) {
+        req = r->legacy.change;
+        r->legacy.change = NULL;
+
+        if (req != NULL && req->cb != NULL) {
+            /* XXX: set the type here, since it's not done in client.c */
+            req->type = RAFT_CHANGE;
+            req->status = 0;
+            QUEUE_PUSH(&r->legacy.requests, &req->queue);
+        }
+    }
+}
+
+static int legacyApply(struct raft *r,
+                       struct raft_event **events,
+                       unsigned *n_events)
+{
+    raft_index index;
+    struct raft_event *event;
+    int rv = 0;
+
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+    assert(r->last_applied <= r->commit_index);
+
+    if (r->last_applied == r->commit_index) {
+        /* Nothing to do. */
+        return 0;
+    }
+
+    for (index = r->last_applied + 1; index <= r->commit_index; index++) {
+        const struct raft_entry *entry = logGet(r->log, index);
+        if (entry == NULL) {
+            /* This can happen while installing a snapshot */
+            tracef("replicationApply - ENTRY NULL");
+            return 0;
+        }
+
+        assert(entry->type == RAFT_COMMAND || entry->type == RAFT_BARRIER ||
+               entry->type == RAFT_CHANGE);
+
+        switch (entry->type) {
+            case RAFT_COMMAND:
+                rv = applyCommand(r, index, &entry->buf);
+                break;
+            case RAFT_BARRIER:
+                applyBarrier(r, index);
+                rv = 0;
+                break;
+            case RAFT_CHANGE:
+                applyChange(r, index);
+
+                *n_events += 1;
+                *events = raft_realloc(*events, *n_events * sizeof **events);
+                assert(*events != NULL);
+                event = &(*events)[*n_events - 1];
+                event->time = r->io->time(r->io);
+                event->type = RAFT_CONFIGURATION;
+                event->configuration.index = index;
+
+                rv = 0;
+                break;
+            default:
+                rv = 0; /* For coverity. This case can't be taken. */
+                break;
+        }
+
+        if (rv != 0) {
+            break;
+        }
+    }
+
+    return rv;
+}
+
 /* Handle a single event, possibly adding more events. */
 static int legacyHandleEvent(struct raft *r,
                              struct raft_entry *entry,
@@ -768,7 +913,7 @@ static int legacyHandleEvent(struct raft *r,
 
         /* If the new commit index matches the index of a snapshot we have just
          * persisted, then restore the FSM state using its cached data. */
-        if (commit_index == r->legacy.snapshot_index) {
+        if (commit_index != 0 && commit_index == r->legacy.snapshot_index) {
             /* From Figure 5.3:
              *
              *   8. Reset state machine using snapshot contents.
@@ -779,6 +924,11 @@ static int legacyHandleEvent(struct raft *r,
                 tracef("restore snapshot: %s", errCodeToString(rv));
                 goto err;
             }
+        }
+
+        rv = legacyApply(r, events, n_events);
+        if (rv != 0) {
+            goto err;
         }
     }
 

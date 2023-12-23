@@ -1729,6 +1729,7 @@ static bool hasAppliedIndex(struct raft_fixture *f, void *arg)
             n++;
         }
     }
+
     return n == f->n;
 }
 

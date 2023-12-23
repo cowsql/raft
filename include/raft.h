@@ -564,13 +564,14 @@ enum {
     RAFT_STOP,
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
-    RAFT_SENT,     /* A message has been sent (either successfully or not). */
-    RAFT_RECEIVE,  /* A message has been received. */
-    RAFT_SNAPSHOT, /* A snapshot has been taken. */
-    RAFT_TIMEOUT,  /* The timeout has expired. */
-    RAFT_SUBMIT,   /* New entries have been submitted. */
-    RAFT_CATCH_UP, /* Start catching-up a server. */
-    RAFT_TRANSFER  /* Submission of leadership trasfer request */
+    RAFT_SENT,    /* A message has been sent (either successfully or not). */
+    RAFT_RECEIVE, /* A message has been received. */
+    RAFT_CONFIGURATION, /* A new committed configuration must be applied. */
+    RAFT_SNAPSHOT,      /* A snapshot has been taken. */
+    RAFT_TIMEOUT,       /* The timeout has expired. */
+    RAFT_SUBMIT,        /* New entries have been submitted. */
+    RAFT_CATCH_UP,      /* Start catching-up a server. */
+    RAFT_TRANSFER       /* Submission of leadership trasfer request */
 };
 
 /**
@@ -618,6 +619,10 @@ struct raft_event
             const char *address;
             struct raft_message *message;
         } receive;
+        struct
+        {
+            raft_index index;
+        } configuration;
         struct
         {
             struct raft_snapshot_metadata metadata; /* Snapshot metadata */
