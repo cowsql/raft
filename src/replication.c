@@ -590,12 +590,6 @@ int replicationTrigger(struct raft *r, raft_index index)
     return triggerAll(r);
 }
 
-/* Helper to be invoked after a promotion of a non-voting server has been
- * requested via @raft_assign and that server has caught up with logs.
- *
- * This function changes the local configuration marking the server being
- * promoted as actually voting, appends the a RAFT_CHANGE entry with the new
- * configuration to the local log and triggers its replication. */
 int replicationUpdate(struct raft *r,
                       const struct raft_server *server,
                       const struct raft_append_entries_result *result)
@@ -679,6 +673,23 @@ int replicationUpdate(struct raft *r,
         }
     }
 
+    /* If we are transferring leadership to this follower, check if its log
+     * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
+     * already did). */
+    if (r->transfer != NULL && r->transfer->id == server->id) {
+        if (progressIsUpToDate(r, i) && r->transfer->send.data == NULL) {
+            rv = membershipLeadershipTransferStart(r);
+            if (rv != 0) {
+                membershipLeadershipTransferClose(r);
+            }
+        }
+    }
+
+    /* If this follower is in pipeline mode, send it more entries. */
+    if (progressState(r, i) == PROGRESS__PIPELINE) {
+        replicationProgress(r, i);
+    }
+
     /* Check if we can commit some new entries. */
     replicationQuorum(r, last_index);
 
@@ -687,34 +698,6 @@ int replicationUpdate(struct raft *r,
         /* TODO: just log the error? */
     }
 
-    /* Abort here we have been removed and we are not leaders anymore. */
-    if (r->state != RAFT_LEADER) {
-        goto out;
-    }
-
-    /* Get again the server index since it might have been removed from the
-     * configuration. */
-    i = configurationIndexOf(&r->configuration, server->id);
-
-    if (i < r->configuration.n) {
-        /* If we are transferring leadership to this follower, check if its log
-         * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
-         * already did). */
-        if (r->transfer != NULL && r->transfer->id == server->id) {
-            if (progressIsUpToDate(r, i) && r->transfer->send.data == NULL) {
-                rv = membershipLeadershipTransferStart(r);
-                if (rv != 0) {
-                    membershipLeadershipTransferClose(r);
-                }
-            }
-        }
-        /* If this follower is in pipeline mode, send it more entries. */
-        if (progressState(r, i) == PROGRESS__PIPELINE) {
-            replicationProgress(r, i);
-        }
-    }
-
-out:
     return 0;
 }
 
