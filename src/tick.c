@@ -135,6 +135,7 @@ static int tickLeader(struct raft *r)
             return 0;
         }
         r->election_timer_start = r->now;
+        r->update->flags |= RAFT_UPDATE_TIMEOUT;
     }
 
     /* Possibly send heartbeats.

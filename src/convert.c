@@ -142,6 +142,7 @@ int convertToLeader(struct raft *r)
 
     /* Reset timers */
     r->election_timer_start = r->now;
+    r->update->flags |= RAFT_UPDATE_TIMEOUT;
 
     /* Allocate and initialize the progress array. */
     rv = progressBuildArray(r);

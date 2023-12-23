@@ -307,8 +307,11 @@ static void serverStart(struct test_server *s)
     munit_assert_true(raft_state(r) == RAFT_FOLLOWER ||
                       raft_state(r) == RAFT_LEADER);
 
-    s->running = true;
+    /* The timeout must have changed. */
+    munit_assert_true(update.flags & RAFT_UPDATE_TIMEOUT);
     s->timeout = raft_timeout(&s->raft);
+
+    s->running = true;
 }
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)

@@ -679,6 +679,7 @@ struct raft_update
 #define RAFT_UPDATE_MESSAGES 1 << 4
 #define RAFT_UPDATE_STATE 1 << 5
 #define RAFT_UPDATE_COMMIT_INDEX 1 << 6
+#define RAFT_UPDATE_TIMEOUT 1 << 7
 
 /**
  * version field MUST be filled out by user.
