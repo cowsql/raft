@@ -45,6 +45,44 @@ static void diskClose(struct test_disk *d)
     diskDestroySnapshotIfPresent(d);
 }
 
+/* Set the persisted term. */
+static void diskSetTerm(struct test_disk *d, raft_term term)
+{
+    d->term = term;
+}
+
+/* Set the persisted snapshot. */
+static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
+{
+    diskDestroySnapshotIfPresent(d);
+    d->snapshot = snapshot;
+
+    /* If there are no entries, set the start index to the snapshot's last
+     * index. */
+    if (d->n_entries == 0) {
+        d->start_index = snapshot->metadata.index + 1;
+    }
+}
+
+static void entryCopy(const struct raft_entry *src, struct raft_entry *dst)
+{
+    dst->term = src->term;
+    dst->type = src->type;
+    dst->buf.len = src->buf.len;
+    dst->buf.base = munit_malloc(dst->buf.len);
+    memcpy(dst->buf.base, src->buf.base, dst->buf.len);
+    dst->batch = NULL;
+}
+
+/* Append a new entry to the log. */
+static void diskAddEntry(struct test_disk *d, const struct raft_entry *entry)
+{
+    d->n_entries++;
+    d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
+    munit_assert_ptr_not_null(d->entries);
+    entryCopy(entry, &d->entries[d->n_entries - 1]);
+}
+
 /* Deep copy configuration object @src to @dst. */
 static void confCopy(const struct raft_configuration *src,
                      struct raft_configuration *dst)
@@ -97,8 +135,7 @@ static void diskLoad(struct test_disk *d,
     *term = d->term;
     *voted_for = d->voted_for;
     if (d->snapshot != NULL) {
-        *metadata = raft_malloc(sizeof **metadata);
-        munit_assert_ptr_not_null(*metadata);
+        *metadata = munit_malloc(sizeof **metadata);
         diskLoadSnapshotMetadata(d, *metadata);
     } else {
         *metadata = NULL;
@@ -222,6 +259,10 @@ static void serverStart(struct test_server *s)
     rv = raft_step(r, &event, &update);
     munit_assert_int(rv, ==, 0);
 
+    if (event.start.metadata != NULL) {
+        free(event.start.metadata);
+    }
+
     /* Upon startup we don't expect any new state to be persisted or messages
      * being sent. */
     munit_assert_false(update.flags & RAFT_UPDATE_CURRENT_TERM);
@@ -269,6 +310,37 @@ void test_cluster_tear_down(struct test_cluster *c)
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
         serverClose(&c->servers[i]);
     }
+}
+
+struct raft *test_cluster_raft(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    return &server->raft;
+}
+
+void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetTerm(&server->disk, term);
+}
+
+void test_cluster_set_snapshot(struct test_cluster *c,
+                               raft_id id,
+                               struct test_snapshot *snapshot)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetSnapshot(&server->disk, snapshot);
+}
+
+void test_cluster_add_entry(struct test_cluster *c,
+                            raft_id id,
+                            const struct raft_entry *entry)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskAddEntry(&server->disk, entry);
 }
 
 void test_cluster_start(struct test_cluster *c, raft_id id)
