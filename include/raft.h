@@ -1103,6 +1103,11 @@ RAFT_API raft_term raft_current_term(struct raft *r);
 RAFT_API raft_id raft_voted_for(struct raft *r);
 
 /**
+ * Return the commit index of this server.
+ */
+RAFT_API raft_index raft_commit_index(struct raft *r);
+
+/**
  * Return information about the progress of a server that is catching up with
  * logs after a #RAFT_CATCH_UP event was fired.
  */

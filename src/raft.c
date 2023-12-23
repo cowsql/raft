@@ -390,6 +390,11 @@ raft_term raft_voted_for(struct raft *r)
     return r->voted_for;
 }
 
+raft_index raft_commit_index(struct raft *r)
+{
+    return r->commit_index;
+}
+
 int raft_catch_up(struct raft *r, raft_id id, int *status)
 {
     unsigned i;
