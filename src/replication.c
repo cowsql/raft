@@ -358,31 +358,6 @@ static size_t updateLastStored(struct raft *r,
     return i;
 }
 
-/* Get the request matching the given @index and @type, if any.
- * The type check is skipped when @type == -1. */
-static struct request *getRequest(struct raft *r,
-                                  const raft_index index,
-                                  int type)
-{
-    queue *head;
-    struct request *req;
-
-    if (r->state != RAFT_LEADER) {
-        return NULL;
-    }
-    QUEUE_FOREACH (head, &r->legacy.pending) {
-        req = QUEUE_DATA(head, struct request, queue);
-        if (req->index == index) {
-            if (type != -1) {
-                assert(req->type == type);
-            }
-            QUEUE_REMOVE(&req->queue);
-            return req;
-        }
-    }
-    return NULL;
-}
-
 /* Invoked once a disk write request for new entries has been completed. */
 static int leaderPersistEntriesDone(struct raft *r,
                                     raft_index index,
@@ -397,54 +372,11 @@ static int leaderPersistEntriesDone(struct raft *r,
     tracef("leader: written %u entries starting at %lld: status %d", n, index,
            status);
 
-    /* In case of a failed disk write, if we were the leader creating these
-     * entries in the first place, truncate our log too (since we have appended
-     * these entries to it) and fire the request callbacks.
-     *
-     * Afterward, convert immediately to follower state, giving the cluster a
-     * chance to elect another leader that doesn't have a full disk (or whatever
-     * caused our write error). */
+    /* In case of a failed disk write, convert immediately to follower state,
+     * giving the cluster a chance to elect another leader that doesn't have a
+     * full disk (or whatever caused our write error). */
     if (status != 0) {
         ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-
-        for (unsigned i = 0; i < n; i++) {
-            struct request *req = getRequest(r, index + i, -1);
-            if (!req) {
-                tracef("no request found at index %llu", index + i);
-                continue;
-            }
-            switch (req->type) {
-                case RAFT_COMMAND: {
-                    struct raft_apply *apply = (struct raft_apply *)req;
-                    if (apply->cb) {
-                        apply->status = status;
-                        apply->result = NULL;
-                        QUEUE_PUSH(&r->legacy.requests, &apply->queue);
-                    }
-                    break;
-                }
-                case RAFT_BARRIER: {
-                    struct raft_barrier *barrier = (struct raft_barrier *)req;
-                    if (barrier->cb) {
-                        barrier->status = status;
-                        QUEUE_PUSH(&r->legacy.requests, &barrier->queue);
-                    }
-                    break;
-                }
-                case RAFT_CHANGE: {
-                    struct raft_change *change = (struct raft_change *)req;
-                    if (change->cb) {
-                        change->status = status;
-                        QUEUE_PUSH(&r->legacy.requests, &change->queue);
-                    }
-                    break;
-                }
-                default:
-                    tracef("unknown request type, shutdown.");
-                    assert(false);
-                    break;
-            }
-        }
         convertToFollower(r);
         goto out;
     }
