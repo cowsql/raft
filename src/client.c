@@ -262,7 +262,7 @@ int raft_add(struct raft *r,
     }
 
     req->cb = cb;
-    req->server_id = id;
+    req->catch_up_id = 0;
 
     rv = clientChangeConfiguration(r, req, &configuration);
     if (rv != 0) {
@@ -377,7 +377,7 @@ int raft_assign(struct raft *r,
     last_index = logLastIndex(r->log);
 
     req->cb = cb;
-    req->server_id = id;
+    req->catch_up_id = 0;
 
     assert(r->legacy.change == NULL);
     r->legacy.change = req;
@@ -408,6 +408,8 @@ int raft_assign(struct raft *r,
     if (rv != 0) {
         return rv;
     }
+
+    req->catch_up_id = server->id;
 
     return 0;
 
@@ -451,7 +453,7 @@ int raft_remove(struct raft *r,
     }
 
     req->cb = cb;
-    req->server_id = id;
+    req->catch_up_id = 0;
 
     rv = clientChangeConfiguration(r, req, &configuration);
     if (rv != 0) {

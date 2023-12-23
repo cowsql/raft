@@ -1249,14 +1249,14 @@ RAFT_API raft_index raft_last_applied(struct raft *r);
     }
 
 /* Extended RAFT__REQUEST fields added after the v0.x ABI freeze. */
-#define RAFT__REQUEST_EXTENSIONS                                              \
-    struct                                                                    \
-    {                                                                         \
-        int status; /* Store the request status code, for delayed firing */   \
-        union {                                                               \
-            void *result;      /* For raft_apply, store the request result */ \
-            raft_id server_id; /* For raft_change, store the server ID */     \
-        };                                                                    \
+#define RAFT__REQUEST_EXTENSIONS                                               \
+    struct                                                                     \
+    {                                                                          \
+        int status; /* Store the request status code, for delayed firing */    \
+        union {                                                                \
+            void *result; /* For raft_apply, store the request result */       \
+            raft_id catch_up_id; /* For raft_change, the catching up server */ \
+        };                                                                     \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__REQUEST_RESERVED, RAFT__REQUEST_EXTENSIONS);

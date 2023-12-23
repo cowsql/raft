@@ -568,6 +568,39 @@ void LegacyFireCompletedRequests(struct raft *r)
     }
 }
 
+/* Check whether a raft_change request has been completed, and put it in the
+ * completed requests queue if so. */
+static void legacyCheckChangeRequest(struct raft *r)
+{
+    struct raft_change *change;
+    int status;
+    int rv;
+
+    if (r->legacy.change == NULL) {
+        return;
+    }
+
+    if (r->legacy.change->catch_up_id != 0) {
+        /* A raft_catch_up() call can fail only if the server is not the
+         * leader or if the given ID is invalid. If the server was not the
+         * leader then r->legacy.change would be NULL, and we know that the
+         * ID is valid, otherwise the request couldn't have been submitted.
+         */
+        rv = raft_catch_up(r, r->legacy.change->catch_up_id, &status);
+        assert(rv == 0);
+
+        if (status == RAFT_CATCH_UP_ABORTED) {
+            change = r->legacy.change;
+            r->legacy.change = NULL;
+            if (change != NULL && change->cb != NULL) {
+                change->type = RAFT_CHANGE;
+                change->status = RAFT_NOCONNECTION;
+                QUEUE_PUSH(&r->legacy.requests, &change->queue);
+            }
+        }
+    }
+}
+
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
 {
     struct raft_update update;
@@ -599,6 +632,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         }
         r->legacy.prev_state = r->state;
     }
+
+    /* Check whether a raft_change request has been completed. */
+    legacyCheckChangeRequest(r);
 
     /* Check if there's a client request in the completion queue which has
      * failed due to a RAFT_NOSPACE error. In that case we will not call the
