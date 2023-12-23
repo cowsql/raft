@@ -189,20 +189,14 @@ err:
     return rv;
 }
 
-static int clientChangeConfiguration(
-    struct raft *r,
-    struct raft_change *req,
-    const struct raft_configuration *configuration)
+int ClientChangeConfiguration(struct raft *r,
+                              const struct raft_configuration *configuration)
 {
-    raft_index index;
     struct raft_entry entry;
     struct raft_event event;
     int rv;
 
-    (void)req;
-
-    /* Index of the entry being appended. */
-    index = logLastIndex(r->log) + 1;
+    assert(r->state == RAFT_LEADER);
 
     entry.type = RAFT_CHANGE;
     entry.term = r->current_term;
@@ -210,7 +204,7 @@ static int clientChangeConfiguration(
     /* Encode the configuration. */
     rv = configurationEncode(configuration, &entry.buf);
     if (rv != 0) {
-        goto err;
+        return rv;
     }
 
     event.time = r->io->time(r->io);
@@ -220,17 +214,10 @@ static int clientChangeConfiguration(
 
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
-        goto err_after_log_append;
+        return rv;
     }
 
     return 0;
-
-err_after_log_append:
-    logTruncate(r->log, index);
-
-err:
-    assert(rv != 0);
-    return rv;
 }
 
 int raft_add(struct raft *r,
@@ -264,7 +251,7 @@ int raft_add(struct raft *r,
     req->cb = cb;
     req->catch_up_id = 0;
 
-    rv = clientChangeConfiguration(r, req, &configuration);
+    rv = ClientChangeConfiguration(r, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }
@@ -390,9 +377,9 @@ int raft_assign(struct raft *r,
         int old_role = r->configuration.servers[server_index].role;
         r->configuration.servers[server_index].role = role;
 
-        rv = clientChangeConfiguration(r, req, &r->configuration);
+        rv = ClientChangeConfiguration(r, &r->configuration);
         if (rv != 0) {
-            tracef("clientChangeConfiguration failed %d", rv);
+            tracef("ClientChangeConfiguration failed %d", rv);
             r->configuration.servers[server_index].role = old_role;
             return rv;
         }
@@ -455,7 +442,7 @@ int raft_remove(struct raft *r,
     req->cb = cb;
     req->catch_up_id = 0;
 
-    rv = clientChangeConfiguration(r, req, &configuration);
+    rv = ClientChangeConfiguration(r, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }

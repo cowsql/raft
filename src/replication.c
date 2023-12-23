@@ -596,60 +596,6 @@ int replicationTrigger(struct raft *r, raft_index index)
  * This function changes the local configuration marking the server being
  * promoted as actually voting, appends the a RAFT_CHANGE entry with the new
  * configuration to the local log and triggers its replication. */
-static int triggerActualPromotion(struct raft *r)
-{
-    raft_index index;
-    raft_term term = r->current_term;
-    size_t server_index;
-    struct raft_server *server;
-    int old_role;
-    int rv;
-
-    assert(r->state == RAFT_LEADER);
-    assert(r->leader_state.promotee_id != 0);
-
-    server_index =
-        configurationIndexOf(&r->configuration, r->leader_state.promotee_id);
-    assert(server_index < r->configuration.n);
-
-    server = &r->configuration.servers[server_index];
-
-    assert(server->role != RAFT_VOTER);
-
-    /* Update our current configuration. */
-    old_role = server->role;
-    server->role = RAFT_VOTER;
-
-    /* Index of the entry being appended. */
-    index = logLastIndex(r->log) + 1;
-
-    /* Encode the new configuration and append it to the log. */
-    rv = logAppendConfiguration(r->log, term, &r->configuration);
-    if (rv != 0) {
-        goto err;
-    }
-
-    /* Start writing the new log entry to disk and send it to the followers. */
-    rv = replicationTrigger(r, index);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    r->leader_state.promotee_id = 0;
-    r->configuration_uncommitted_index = logLastIndex(r->log);
-
-    return 0;
-
-err_after_log_append:
-    logTruncate(r->log, index);
-
-err:
-    server->role = old_role;
-
-    assert(rv != 0);
-    return rv;
-}
-
 int replicationUpdate(struct raft *r,
                       const struct raft_server *server,
                       const struct raft_append_entries_result *result)
@@ -729,10 +675,7 @@ int replicationUpdate(struct raft *r,
     if (is_being_promoted) {
         bool is_up_to_date = membershipUpdateCatchUpRound(r);
         if (is_up_to_date) {
-            rv = triggerActualPromotion(r);
-            if (rv != 0) {
-                return rv;
-            }
+            r->leader_state.promotee_id = 0;
         }
     }
 

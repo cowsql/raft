@@ -1,5 +1,6 @@
 #include "legacy.h"
 #include "assert.h"
+#include "client.h"
 #include "configuration.h"
 #include "err.h"
 #include "log.h"
@@ -570,7 +571,10 @@ void LegacyFireCompletedRequests(struct raft *r)
 
 /* Check whether a raft_change request has been completed, and put it in the
  * completed requests queue if so. */
-static void legacyCheckChangeRequest(struct raft *r)
+static void legacyCheckChangeRequest(struct raft *r,
+                                     struct raft_entry *entry,
+                                     struct raft_event **events,
+                                     unsigned *n_events)
 {
     struct raft_change *change;
     int status;
@@ -580,41 +584,86 @@ static void legacyCheckChangeRequest(struct raft *r)
         return;
     }
 
-    if (r->legacy.change->catch_up_id != 0) {
-        /* A raft_catch_up() call can fail only if the server is not the
-         * leader or if the given ID is invalid. If the server was not the
-         * leader then r->legacy.change would be NULL, and we know that the
-         * ID is valid, otherwise the request couldn't have been submitted.
-         */
-        rv = raft_catch_up(r, r->legacy.change->catch_up_id, &status);
+    if (r->legacy.change->catch_up_id == 0) {
+        return;
+    }
+
+    change = r->legacy.change;
+
+    /* A raft_catch_up() call can fail only if the server is not the
+     * leader or if the given ID is invalid. If the server was not the
+     * leader then r->legacy.change would be NULL, and we know that the
+     * ID is valid, otherwise the request couldn't have been submitted.
+     */
+    rv = raft_catch_up(r, r->legacy.change->catch_up_id, &status);
+    assert(rv == 0);
+
+    if (status == RAFT_CATCH_UP_ABORTED) {
+        r->legacy.change = NULL;
+        if (change->cb != NULL) {
+            change->type = RAFT_CHANGE;
+            change->status = RAFT_NOCONNECTION;
+            QUEUE_PUSH(&r->legacy.requests, &change->queue);
+        }
+    }
+
+    if (status == RAFT_CATCH_UP_FINISHED) {
+        struct raft_configuration configuration;
+        struct raft_server *server;
+        struct raft_event *event;
+        unsigned i;
+
+        i = configurationIndexOf(&r->configuration, change->catch_up_id);
+        assert(i < r->configuration.n);
+
+        server = &r->configuration.servers[i];
+        assert(server->role != RAFT_VOTER);
+
+        change->catch_up_id = 0;
+
+        /* Update our current configuration. */
+        rv = configurationCopy(&r->configuration, &configuration);
         assert(rv == 0);
 
-        if (status == RAFT_CATCH_UP_ABORTED) {
-            change = r->legacy.change;
-            r->legacy.change = NULL;
-            if (change != NULL && change->cb != NULL) {
-                change->type = RAFT_CHANGE;
-                change->status = RAFT_NOCONNECTION;
-                QUEUE_PUSH(&r->legacy.requests, &change->queue);
-            }
-        }
+        configuration.servers[i].role = RAFT_VOTER;
+
+        entry->type = RAFT_CHANGE;
+        entry->term = r->current_term;
+
+        /* Encode the configuration. */
+        rv = configurationEncode(&configuration, &entry->buf);
+        assert(rv == 0);
+
+        *n_events += 1;
+        *events = raft_realloc(*events, *n_events * sizeof **events);
+        assert(*events != NULL);
+
+        event = &(*events)[*n_events - 1];
+        event->time = r->io->time(r->io);
+        event->type = RAFT_SUBMIT;
+        event->submit.entries = entry;
+        event->submit.n = 1;
+
+        configurationClose(&configuration);
     }
 }
 
-int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
+/* Handle a single event, possibly adding more events. */
+static int legacyHandleEvent(struct raft *r,
+                             struct raft_entry *entry,
+                             struct raft_event **events,
+                             unsigned *n_events,
+                             unsigned i)
 {
+    struct raft_event *event;
     struct raft_update update;
     unsigned j;
     queue *head;
     struct request *req;
     bool has_pending_no_space_failure = false;
-
     int rv;
 
-    if (r->io == NULL) {
-        /* No legacy raft_io implementation, just do nothing. */
-        return 0;
-    }
+    event = &(*events)[i];
 
     rv = raft_step(r, event, &update);
     if (rv != 0) {
@@ -634,7 +683,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     }
 
     /* Check whether a raft_change request has been completed. */
-    legacyCheckChangeRequest(r);
+    legacyCheckChangeRequest(r, entry, events, n_events);
 
     /* Check if there's a client request in the completion queue which has
      * failed due to a RAFT_NOSPACE error. In that case we will not call the
@@ -704,6 +753,44 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     return 0;
 
 err:
+    return rv;
+}
+
+int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
+{
+    struct raft_event *events;
+    unsigned n_events;
+    unsigned i;
+    struct raft_entry entry; /* Used for actual promotion of RAFT_CHANGE reqs */
+    int rv;
+
+    if (r->io == NULL) {
+        /* No legacy raft_io implementation, just do nothing. */
+        return 0;
+    }
+
+    /* Initially the set of events contains only the event passed as argument,
+     * but might grow if some further events get generated by the handling
+     * code. */
+    events = raft_malloc(sizeof *events);
+    if (events == NULL) {
+        return RAFT_NOMEM;
+    }
+    events[0] = *event;
+    n_events = 1;
+
+    for (i = 0; i < n_events; i++) {
+        rv = legacyHandleEvent(r, &entry, &events, &n_events, i);
+        if (rv != 0) {
+            goto err;
+        }
+    }
+
+    raft_free(events);
+    return 0;
+
+err:
     assert(rv != 0);
+    raft_free(events);
     return rv;
 }
