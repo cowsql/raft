@@ -679,6 +679,7 @@ struct raft_update
 #define RAFT_UPDATE_MESSAGES 1 << 4
 #define RAFT_UPDATE_STATE 1 << 5
 #define RAFT_UPDATE_COMMIT_INDEX 1 << 6
+#define RAFT_UPDATE_TIMEOUT 1 << 7
 
 /**
  * version field MUST be filled out by user.
@@ -1435,6 +1436,22 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
+
+/**
+ * Generate a pseudo-random number between @min and @max, using @state as
+ * generator state.
+ */
+RAFT_API unsigned raft_random(unsigned *state, unsigned min, unsigned max);
+
+/**
+ * Return the name of state with the given code.
+ */
+RAFT_API const char *raft_state_name(int state);
+
+/**
+ * Return the name of role with the given code.
+ */
+RAFT_API const char *raft_role_name(int state);
 
 /**
  * User-definable dynamic memory allocation functions.

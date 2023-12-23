@@ -10,6 +10,25 @@
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
+enum operation_type { OPERATION_IO = 0, OPERATION_TRANSMIT };
+
+/* Track pending async operations. */
+struct operation
+{
+    enum operation_type type; /* Either OPERATION_IO or OPERATION_TRANSMIT */
+    raft_id id;               /* Target server ID. */
+    raft_time completion;     /* When the operation should complete */
+    union {
+        struct raft_io *io;
+        struct
+        {
+            raft_id from;
+            struct raft_message message;
+        } transmit;
+    };
+    queue queue;
+};
+
 /* Initialize an empty disk with no persisted data. */
 static void diskInit(struct test_disk *d)
 {
@@ -231,6 +250,9 @@ static void serverInit(struct test_server *s,
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
+
+    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT + (id - 1) * 10;
+    s->randomized_election_timeout_prev = 0;
 }
 
 /* Release all resources used by a server object. */
@@ -240,12 +262,37 @@ static void serverClose(struct test_server *s)
     diskClose(&s->disk);
 }
 
+/* Set the state of raft's internal pseudo random number generator so that the
+ * next time RandomWithinRange() is run it will return the value configured by
+ * the test server, which is stored in the randomized_election_timeout field. */
+static void serverSeed(struct test_server *s)
+{
+    unsigned timeout = s->raft.election_timeout;
+
+    if (s->randomized_election_timeout == s->randomized_election_timeout_prev) {
+        goto done;
+    }
+
+    s->seed = s->raft.random;
+    while (1) {
+        unsigned random = s->seed;
+        unsigned n = raft_random(&random, timeout, timeout * 2);
+        if (n == s->randomized_election_timeout) {
+            goto done;
+        }
+        s->seed = random;
+    }
+
+done:
+    raft_seed(&s->raft, s->seed);
+    s->randomized_election_timeout_prev = s->randomized_election_timeout;
+}
+
 /* Start the server by passing to raft_step() a RAFT_START event with the
  * current disk state. */
 static void serverStart(struct test_server *s)
 {
     struct raft_event event;
-    struct raft_update update;
     struct raft *r = &s->raft;
     int rv;
 
@@ -255,8 +302,9 @@ static void serverStart(struct test_server *s)
     diskLoad(&s->disk, &event.start.term, &event.start.voted_for,
              &event.start.metadata, &event.start.start_index,
              &event.start.entries, &event.start.n_entries);
+    serverSeed(s);
 
-    rv = raft_step(r, &event, &update);
+    rv = raft_step(r, &event, &s->update);
     munit_assert_int(rv, ==, 0);
 
     if (event.start.metadata != NULL) {
@@ -265,20 +313,75 @@ static void serverStart(struct test_server *s)
 
     /* Upon startup we don't expect any new state to be persisted or messages
      * being sent. */
-    munit_assert_false(update.flags & RAFT_UPDATE_CURRENT_TERM);
-    munit_assert_false(update.flags & RAFT_UPDATE_VOTED_FOR);
-    munit_assert_false(update.flags & RAFT_UPDATE_ENTRIES);
-    munit_assert_false(update.flags & RAFT_UPDATE_SNAPSHOT);
-    munit_assert_false(update.flags & RAFT_UPDATE_MESSAGES);
+    munit_assert_false(s->update.flags & RAFT_UPDATE_CURRENT_TERM);
+    munit_assert_false(s->update.flags & RAFT_UPDATE_VOTED_FOR);
+    munit_assert_false(s->update.flags & RAFT_UPDATE_ENTRIES);
+    munit_assert_false(s->update.flags & RAFT_UPDATE_SNAPSHOT);
+    munit_assert_false(s->update.flags & RAFT_UPDATE_MESSAGES);
 
     /* The state must have transitioned either to follower or leader (when
      * self-electing). */
-    munit_assert_true(update.flags & RAFT_UPDATE_STATE);
+    munit_assert_true(s->update.flags & RAFT_UPDATE_STATE);
     munit_assert_true(raft_state(r) == RAFT_FOLLOWER ||
                       raft_state(r) == RAFT_LEADER);
 
-    s->running = true;
+    /* The timeout must have changed. */
+    munit_assert_true(s->update.flags & RAFT_UPDATE_TIMEOUT);
     s->timeout = raft_timeout(&s->raft);
+
+    s->running = true;
+}
+
+/* Handle the updates from the last raft_step() call. */
+static void serverHandleUpdate(struct test_server *s)
+{
+    struct raft *r = &s->raft;
+
+    if (!s->running) {
+        return;
+    }
+
+    if (s->update.flags & RAFT_UPDATE_CURRENT_TERM) {
+        diskSetTerm(&s->disk, raft_current_term(r));
+    }
+
+    if (s->update.flags & RAFT_UPDATE_VOTED_FOR) {
+        diskSetTerm(&s->disk, raft_voted_for(r));
+    }
+
+    s->update.flags = 0;
+}
+
+/* Fire a RAFT_TIMEOUT event. */
+static int serverTimeout(struct test_server *s)
+{
+    struct raft_event event;
+    int rv;
+    s->cluster->time = s->timeout;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_TIMEOUT;
+
+    rv = raft_step(&s->raft, &event, &s->update);
+
+    return rv;
+}
+
+/* Complete either a @raft_io or transmit operation. */
+static int serverCompleteOperation(struct test_server *s,
+                                   struct operation *operation)
+{
+    int rv;
+    s->cluster->time = operation->completion;
+    QUEUE_REMOVE(&operation->queue);
+    switch (operation->type) {
+        default:
+            rv = -1;
+            munit_errorf("unexpected operation type %d", operation->type);
+            break;
+    }
+    free(operation);
+    return rv;
 }
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
@@ -349,6 +452,83 @@ void test_cluster_start(struct test_cluster *c, raft_id id)
     serverStart(server);
 }
 
+/* Update the PNRG seed of each server, to match the expected randomized
+ * election timeout. */
+static void clusterSeed(struct test_cluster *c)
+{
+    unsigned i;
+    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        struct test_server *server = &c->servers[i];
+        serverSeed(server);
+    }
+}
+
+/* Pull all messages currently pending in the #io queues of all
+ * running servers and push them to our internal I/O queue. */
+static void clusterHandleUpdate(struct test_cluster *c)
+{
+    unsigned i;
+    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        struct test_server *server = &c->servers[i];
+        serverHandleUpdate(server);
+    }
+}
+
+/* Return the operation with the lowest completion time. */
+static struct operation *clusterGetOperationWithEarliestCompletion(
+    struct test_cluster *c)
+{
+    struct operation *operation = NULL;
+    queue *head;
+    QUEUE_FOREACH (head, &c->operations) {
+        struct operation *other = QUEUE_DATA(head, struct operation, queue);
+        if (operation == NULL || other->completion < operation->completion) {
+            operation = other;
+        }
+    }
+
+    return operation;
+}
+
+/* Return the server with the earliest raft_timeout() value. */
+static struct test_server *clusterGetServerWithEarliestTimeout(
+    struct test_cluster *c)
+{
+    struct test_server *server = NULL;
+    unsigned i;
+    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        struct test_server *other = &c->servers[i];
+        if (!other->running) {
+            continue;
+        }
+        if (server == NULL || other->timeout < server->timeout) {
+            server = other;
+        }
+    }
+    return server;
+}
+
+void test_cluster_step(struct test_cluster *c)
+{
+    struct test_server *server;
+    struct operation *operation;
+    int rv;
+
+    clusterHandleUpdate(c);
+    server = clusterGetServerWithEarliestTimeout(c);
+    operation = clusterGetOperationWithEarliestCompletion(c);
+
+    if (operation == NULL || server->timeout < operation->completion) {
+        rv = serverTimeout(server);
+    } else {
+        server = clusterGetServer(c, operation->id);
+        rv = serverCompleteOperation(server, operation);
+    }
+    munit_assert_int(rv, ==, 0);
+
+    clusterSeed(c);
+}
+
 bool test_cluster_trace(struct test_cluster *c, const char *expected)
 {
     size_t n1;
@@ -384,6 +564,7 @@ consume:
         }
         c->trace[0] = 0;
         expected += i;
+        test_cluster_step(c);
         goto consume;
     }
 

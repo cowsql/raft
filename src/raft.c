@@ -18,6 +18,7 @@
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
+#include "random.h"
 #include "recv.h"
 #include "replication.h"
 #include "restore.h"
@@ -388,6 +389,7 @@ int raft_step(struct raft *r,
                                      event->snapshot.trailing);
             break;
         case RAFT_TIMEOUT:
+            infof("timeout as %s", raft_state_name(r->state));
             rv = Tick(r);
             break;
         case RAFT_SUBMIT:
@@ -600,6 +602,54 @@ unsigned long long raft_digest(const char *text, unsigned long long n)
     memcpy(&digest, value + (sizeof value - sizeof digest), sizeof digest);
 
     return byteFlip64(digest);
+}
+
+unsigned raft_random(unsigned *state, unsigned min, unsigned max)
+{
+    return RandomWithinRange(state, min, max);
+}
+
+const char *raft_state_name(int state)
+{
+    const char *name;
+    switch (state) {
+        case RAFT_UNAVAILABLE:
+            name = "unavailable";
+            break;
+        case RAFT_FOLLOWER:
+            name = "follower";
+            break;
+        case RAFT_CANDIDATE:
+            name = "candidate";
+            break;
+        case RAFT_LEADER:
+            name = "leader";
+            break;
+        default:
+            name = NULL;
+            break;
+    }
+    return name;
+}
+
+const char *raft_role_name(int role)
+{
+    const char *name;
+    switch (role) {
+        case RAFT_STANDBY:
+            name = "stand-by";
+            break;
+        case RAFT_VOTER:
+            name = "voter";
+            break;
+        case RAFT_SPARE:
+            name = "spare";
+            break;
+        default:
+            name = NULL;
+            break;
+    }
+    return name;
 }
 
 static int ioFsmVersionCheck(struct raft *r,

@@ -65,6 +65,7 @@ TEST_V1(raft_start, noState, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     CLUSTER_START(1);
     CLUSTER_TRACE("[   0] 1 > term 0, vote 0, no snapshot, no entries\n");
+    munit_assert_int(raft_timeout(CLUSTER_RAFT(1)), ==, 100);
     return MUNIT_OK;
 }
 

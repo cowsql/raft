@@ -12,6 +12,8 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+
 /* Apply time-dependent rules for followers (Figure 3.1). */
 static int tickFollower(struct raft *r)
 {
@@ -26,6 +28,7 @@ static int tickFollower(struct raft *r)
     /* If we have been removed from the configuration, or maybe we didn't
      * receive one yet, just stay follower. */
     if (server == NULL) {
+        infof("server not in current configuration -> stay follower");
         return 0;
     }
 
@@ -42,11 +45,14 @@ static int tickFollower(struct raft *r)
      *   If election timeout elapses without receiving AppendEntries RPC from
      *   current leader or granting vote to candidate, convert to candidate.
      */
-    if (electionTimerExpired(r) && server->role == RAFT_VOTER) {
+    if (electionTimerExpired(r)) {
+        if (server->role != RAFT_VOTER) {
+            goto out;
+        }
         if (replicationInstallSnapshotBusy(r)) {
             tracef("installing snapshot -> don't convert to candidate");
             electionResetTimer(r);
-            return 0;
+            goto out;
         }
         tracef("convert to candidate and start new election");
         rv = convertToCandidate(r, false /* disrupt leader */);
@@ -56,6 +62,7 @@ static int tickFollower(struct raft *r)
         }
     }
 
+out:
     return 0;
 }
 
@@ -128,6 +135,7 @@ static int tickLeader(struct raft *r)
             return 0;
         }
         r->election_timer_start = r->now;
+        r->update->flags |= RAFT_UPDATE_TIMEOUT;
     }
 
     /* Possibly send heartbeats.

@@ -608,12 +608,29 @@ struct test_server
 {
     struct test_disk disk;        /* Persisted data */
     struct raft_tracer tracer;    /* Custom tracer */
+    struct raft_update update;    /* Passed to raft_step() */
     struct raft raft;             /* Raft instance */
     struct test_cluster *cluster; /* Parent cluster */
     raft_time timeout;            /* Next scheduled timeout */
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */
     bool running;                 /* Whether the server is running */
+
+    /* The randomized_election_timeout field stores the value that the raft
+     * instance will obtain the next time it calls RandomWithinRange() to obtain
+     * a random number in the [election_timeout, election_timeout * 2] range. We
+     * do that by passing raft_seed() a value that makes the pseudor random
+     * number generator produce exactly randomized_election_timeout. That value
+     * is what we store in the seed field below. Since calculating the seed that
+     * matches the desired randomized_election_timeout is somehow expensive, we
+     * also use randomized_election_timeout_prev to store the previous value of
+     * randomized_election_timeout, in order to re-use the same seed if nothing
+     * has changed.
+     *
+     * See serverSeed for more details. */
+    unsigned randomized_election_timeout;
+    unsigned randomized_election_timeout_prev;
+    unsigned seed;
 };
 
 /* Cluster of test raft servers instances with fake disk and network I/O. */
@@ -648,6 +665,10 @@ void test_cluster_add_entry(struct test_cluster *c,
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Advance the cluster by completing a single asynchronous operation or firing a
+ * timeout. */
+void test_cluster_step(struct test_cluster *c);
 
 /* Compare the trace of all messages emitted by all servers with the given
  * expected trace. If they don't match, print the last line which differs and
