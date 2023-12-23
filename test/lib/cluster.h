@@ -608,6 +608,7 @@ struct test_server
 {
     struct test_disk disk;        /* Persisted data */
     struct raft_tracer tracer;    /* Custom tracer */
+    struct raft_update update;    /* Passed to raft_step() */
     struct raft raft;             /* Raft instance */
     struct test_cluster *cluster; /* Parent cluster */
     raft_time timeout;            /* Next scheduled timeout */
@@ -664,6 +665,10 @@ void test_cluster_add_entry(struct test_cluster *c,
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Advance the cluster by completing a single asynchronous operation or firing a
+ * timeout. */
+void test_cluster_step(struct test_cluster *c);
 
 /* Compare the trace of all messages emitted by all servers with the given
  * expected trace. If they don't match, print the last line which differs and

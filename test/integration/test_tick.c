@@ -22,8 +22,10 @@ static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
         n_voting = atoi(n_voting_param);
     }
     SETUP_CLUSTER(n);
-    CLUSTER_BOOTSTRAP_N_VOTING(n_voting);
-    CLUSTER_START();
+    if (!v1) {
+        CLUSTER_BOOTSTRAP_N_VOTING(n_voting);
+        CLUSTER_START();
+    }
     return f;
 }
 
@@ -130,6 +132,20 @@ static MunitParameterEnum elapse_non_voter_params[] = {
     {"n_voting", elapse_non_voter_n_voting},
     {NULL, NULL},
 };
+
+/* If the election timeout has elapsed, but we're not part of the current
+ * configuration, stay follower. */
+TEST_V1(tick, timeoutWithServerNotInfConfiguration, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_TRACE(
+        "[   0] 1 > term 0, vote 0, no snapshot, no entries\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           server not in current configuration -> stay follower\n");
+    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_FOLLOWER);
+    return MUNIT_OK;
+}
 
 /* If the election timeout has elapsed, but we're not voters, stay follower. */
 TEST(tick, not_voter, setUp, tearDown, 0, elapse_non_voter_params)
