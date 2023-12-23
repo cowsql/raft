@@ -16,6 +16,7 @@
 #include "legacy.h"
 #include "log.h"
 #include "membership.h"
+#include "progress.h"
 #include "queue.h"
 #include "recv.h"
 #include "replication.h"
@@ -386,6 +387,24 @@ raft_term raft_current_term(struct raft *r)
 raft_term raft_voted_for(struct raft *r)
 {
     return r->voted_for;
+}
+
+int raft_catch_up(struct raft *r, raft_id id, int *status)
+{
+    unsigned i;
+
+    if (r->state != RAFT_LEADER) {
+        return RAFT_NOTLEADER;
+    }
+
+    i = configurationIndexOf(&r->configuration, id);
+    if (i == r->configuration.n) {
+        return RAFT_BADID;
+    }
+
+    *status = progressCatchUpStatus(r, i);
+
+    return 0;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)

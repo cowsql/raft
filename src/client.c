@@ -303,6 +303,8 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
     r->leader_state.round_index = last_index;
     r->leader_state.round_start = r->now;
 
+    progressCatchUpStart(r, server_index);
+
     /* Immediately initiate an AppendEntries request. */
     rv = replicationProgress(r, server_index);
     if (rv != 0 && rv != RAFT_NOCONNECTION) {

@@ -1103,8 +1103,21 @@ RAFT_API raft_term raft_current_term(struct raft *r);
 RAFT_API raft_id raft_voted_for(struct raft *r);
 
 /**
- * Bootstrap this raft instance using the given configuration. The instance must
- * not have been started yet and must be completely pristine, otherwise
+ * Return information about the progress of a server that is catching up with
+ * logs after a #RAFT_CATCH_UP event was fired.
+ */
+enum {
+    RAFT_CATCH_UP_NONE,
+    RAFT_CATCH_UP_RUNNING,
+    RAFT_CATCH_UP_ABORTED,
+    RAFT_CATCH_UP_FINISHED
+};
+
+RAFT_API int raft_catch_up(struct raft *r, raft_id id, int *status);
+
+/**
+ * Bootstrap this raft instance using the given configuration. The instance
+ * must not have been started yet and must be completely pristine, otherwise
  * #RAFT_CANTBOOTSTRAP will be returned.
  */
 RAFT_API int raft_bootstrap(struct raft *r,

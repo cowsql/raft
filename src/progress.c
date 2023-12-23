@@ -25,6 +25,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->snapshot.index = 0;
     p->snapshot.last_send = 0;
     p->state = PROGRESS__PROBE;
+    p->catch_up = RAFT_CATCH_UP_NONE;
     p->features = 0;
 }
 
@@ -310,6 +311,33 @@ bool progressSnapshotDone(struct raft *r, const unsigned i)
     struct raft_progress *p = &r->leader_state.progress[i];
     assert(p->state == PROGRESS__SNAPSHOT);
     return p->match_index >= p->snapshot.index;
+}
+
+void progressCatchUpStart(struct raft *r, unsigned i)
+{
+    struct raft_progress *p = &r->leader_state.progress[i];
+    assert(p->catch_up != RAFT_CATCH_UP_RUNNING);
+    p->catch_up = RAFT_CATCH_UP_RUNNING;
+}
+
+void progressCatchUpAbort(struct raft *r, unsigned i)
+{
+    struct raft_progress *p = &r->leader_state.progress[i];
+    assert(p->catch_up == RAFT_CATCH_UP_RUNNING);
+    p->catch_up = RAFT_CATCH_UP_ABORTED;
+}
+
+void progressCatchUpFinish(struct raft *r, unsigned i)
+{
+    struct raft_progress *p = &r->leader_state.progress[i];
+    assert(p->catch_up == RAFT_CATCH_UP_RUNNING);
+    p->catch_up = RAFT_CATCH_UP_FINISHED;
+}
+
+int progressCatchUpStatus(struct raft *r, unsigned i)
+{
+    struct raft_progress *p = &r->leader_state.progress[i];
+    return p->catch_up;
 }
 
 #undef tracef
