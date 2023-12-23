@@ -165,6 +165,19 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
     event.persisted_snapshot.last = req->last;
     event.persisted_snapshot.status = status;
 
+    /* If we successfully persisted the snapshot, keep the snapshot data around,
+     * since we'll then need it immediately after calling raft_step(), in order
+     * to restore the FSM state.
+     *
+     * Otherwise, discard the snapshot data altogether. */
+    if (status == 0) {
+        assert(r->legacy.snapshot_index == 0);
+        r->legacy.snapshot_index = req->metadata.index;
+        r->legacy.snapshot_chunk = req->chunk;
+    } else {
+        raft_free(req->chunk.base);
+    }
+
     raft_free(req);
 
     LegacyForwardToRaftIo(r, &event);
@@ -745,6 +758,25 @@ static int legacyHandleEvent(struct raft *r,
         for (j = 0; j < update.messages.n; j++) {
             rv = ioSendMessage(r, &update.messages.batch[j]);
             if (rv != 0) {
+                goto err;
+            }
+        }
+    }
+
+    if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
+        raft_index commit_index = raft_commit_index(r);
+
+        /* If the new commit index matches the index of a snapshot we have just
+         * persisted, then restore the FSM state using its cached data. */
+        if (commit_index == r->legacy.snapshot_index) {
+            /* From Figure 5.3:
+             *
+             *   8. Reset state machine using snapshot contents.
+             */
+            r->legacy.snapshot_index = 0;
+            rv = r->fsm->restore(r->fsm, &r->legacy.snapshot_chunk);
+            if (rv != 0) {
+                tracef("restore snapshot: %s", errCodeToString(rv));
                 goto err;
             }
         }

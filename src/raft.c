@@ -121,6 +121,7 @@ int raft_init(struct raft *r,
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
         r->legacy.change = NULL;
+        r->legacy.snapshot_index = 0;
     }
     r->update = NULL;
     r->messages = NULL;
@@ -235,6 +236,7 @@ static int stepStart(struct raft *r,
          * the first entry to be the same on all servers. */
         r->commit_index = 1;
         r->last_applied = 1;
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
     /* Append the entries to the log, possibly restoring the last

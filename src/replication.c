@@ -1097,6 +1097,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     (void)offset;
     (void)last;
+    (void)chunk;
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
@@ -1123,16 +1124,8 @@ int replicationPersistSnapshotDone(struct raft *r,
     /* From Figure 5.3:
      *
      *   7. Discard the entire log
-     *   8. Reset state machine using snapshot contents (and load lastConfig
-     *      as cluster configuration).
+     *   8. ... load lastConfig as cluster configuration
      */
-    rv = r->fsm->restore(r->fsm, chunk);
-    if (rv != 0) {
-        tracef("restore snapshot %llu: %s", metadata->index,
-               errCodeToString(rv));
-        goto discard;
-    }
-
     rv = RestoreSnapshot(r, metadata);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", metadata->index,
@@ -1148,7 +1141,6 @@ discard:
     /* In case of error we must also free the snapshot data buffer and free the
      * configuration. */
     result.rejected = metadata->index;
-    raft_free(chunk->base);
     raft_configuration_close(&metadata->configuration);
 
 respond:
@@ -1431,6 +1423,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
 
     if (votes > configurationVoterCount(&r->configuration) / 2) {
         r->commit_index = index;
+        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         tracef("new commit index %llu", r->commit_index);
     }
 

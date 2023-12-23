@@ -673,6 +673,7 @@ struct raft_update
 #define RAFT_UPDATE_SNAPSHOT 1 << 3
 #define RAFT_UPDATE_MESSAGES 1 << 4
 #define RAFT_UPDATE_STATE 1 << 5
+#define RAFT_UPDATE_COMMIT_INDEX 1 << 6
 
 /**
  * version field MUST be filled out by user.
@@ -791,25 +792,27 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                    \
-    struct                                                                  \
-    {                                                                       \
-        raft_time now;   /* Current time, updated via raft_step() */        \
-        unsigned random; /* Pseudo-random number generator state */         \
-        struct raft_update *update;    /* Pointer passed to raft_step() */  \
-        struct raft_message *messages; /* Pre-allocated message queue */    \
-        unsigned n_messages_cap;       /* Capacity of the message queue */  \
-        /* Index of the last snapshot that was taken */                     \
-        raft_index configuration_last_snapshot_index;                       \
-        /* Fields used by the v0 compatibility code */                      \
-        struct                                                              \
-        {                                                                   \
-            unsigned short prev_state; /* Used to detect lost leadership */ \
-            void *pending[2];          /* Pending client requests */        \
-            void *requests[2];         /* Completed client requests */      \
-            void (*step_cb)(struct raft *); /* Invoked after raft_step() */ \
-            struct raft_change *change;     /* Pending membership change */ \
-        } legacy;                                                           \
+#define RAFT__EXTENSIONS                                                       \
+    struct                                                                     \
+    {                                                                          \
+        raft_time now;   /* Current time, updated via raft_step() */           \
+        unsigned random; /* Pseudo-random number generator state */            \
+        struct raft_update *update;    /* Pointer passed to raft_step() */     \
+        struct raft_message *messages; /* Pre-allocated message queue */       \
+        unsigned n_messages_cap;       /* Capacity of the message queue */     \
+        /* Index of the last snapshot that was taken */                        \
+        raft_index configuration_last_snapshot_index;                          \
+        /* Fields used by the v0 compatibility code */                         \
+        struct                                                                 \
+        {                                                                      \
+            unsigned short prev_state; /* Used to detect lost leadership */    \
+            void *pending[2];          /* Pending client requests */           \
+            void *requests[2];         /* Completed client requests */         \
+            void (*step_cb)(struct raft *);    /* Invoked after raft_step() */ \
+            struct raft_change *change;        /* Pending membership change */ \
+            raft_index snapshot_index;         /* Last persisted snapshot */   \
+            struct raft_buffer snapshot_chunk; /* Cache of snapshot data */    \
+        } legacy;                                                              \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
