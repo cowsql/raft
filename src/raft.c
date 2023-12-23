@@ -120,6 +120,7 @@ int raft_init(struct raft *r,
         QUEUE_INIT(&r->legacy.pending);
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
+        r->legacy.change = NULL;
     }
     r->update = NULL;
     r->messages = NULL;

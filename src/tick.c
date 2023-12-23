@@ -184,8 +184,8 @@ static int tickLeader(struct raft *r)
 
             progressCatchUpAbort(r, server_index);
 
-            change = r->leader_state.change;
-            r->leader_state.change = NULL;
+            change = r->legacy.change;
+            r->legacy.change = NULL;
             if (change != NULL && change->cb != NULL) {
                 change->type = RAFT_CHANGE;
                 change->status = RAFT_NOCONNECTION;

@@ -487,6 +487,19 @@ static void legacyFailBarrier(struct raft *r, struct raft_barrier *req)
 
 void LegacyFailPendingRequests(struct raft *r)
 {
+    /* Fail any promote request that is still outstanding because the server is
+     * still catching up and no entry was submitted. */
+    if (r->legacy.change != NULL) {
+        struct raft_change *req = r->legacy.change;
+        if (req != NULL && req->cb != NULL) {
+            /* XXX: set the type here, since it's not done in client.c */
+            req->type = RAFT_CHANGE;
+            req->status = RAFT_LEADERSHIPLOST;
+            QUEUE_PUSH(&r->legacy.requests, &req->queue);
+        }
+        r->legacy.change = NULL;
+    }
+
     /* Fail all outstanding requests */
     while (!QUEUE_IS_EMPTY(&r->legacy.pending)) {
         struct request *req;
@@ -580,6 +593,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
         if (r->legacy.prev_state == RAFT_LEADER) {
             LegacyFailPendingRequests(r);
             assert(QUEUE_IS_EMPTY(&r->legacy.pending));
+        }
+        if (raft_state(r) == RAFT_LEADER) {
+            assert(r->legacy.change == NULL);
         }
         r->legacy.prev_state = r->state;
     }

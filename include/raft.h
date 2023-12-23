@@ -808,6 +808,7 @@ struct raft_log;
             void *pending[2];          /* Pending client requests */        \
             void *requests[2];         /* Completed client requests */      \
             void (*step_cb)(struct raft *); /* Invoked after raft_step() */ \
+            struct raft_change *change;     /* Pending membership change */ \
         } legacy;                                                           \
     }
 
@@ -984,7 +985,6 @@ struct raft
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
-            struct raft_change *change;     /* Pending membership change. */
             raft_id promotee_id;            /* ID of server being promoted. */
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
@@ -1252,8 +1252,11 @@ RAFT_API raft_index raft_last_applied(struct raft *r);
 #define RAFT__REQUEST_EXTENSIONS                                              \
     struct                                                                    \
     {                                                                         \
-        int status;   /* Store the request status code, for delayed firing */ \
-        void *result; /* For raft_apply, store the request result */          \
+        int status; /* Store the request status code, for delayed firing */   \
+        union {                                                               \
+            void *result;      /* For raft_apply, store the request result */ \
+            raft_id server_id; /* For raft_change, store the server ID */     \
+        };                                                                    \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__REQUEST_RESERVED, RAFT__REQUEST_EXTENSIONS);

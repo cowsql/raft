@@ -262,14 +262,15 @@ int raft_add(struct raft *r,
     }
 
     req->cb = cb;
+    req->server_id = id;
 
     rv = clientChangeConfiguration(r, req, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     raft_configuration_close(&configuration);
 
@@ -376,9 +377,10 @@ int raft_assign(struct raft *r,
     last_index = logLastIndex(r->log);
 
     req->cb = cb;
+    req->server_id = id;
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     /* If we are not promoting to the voter role or if the log of this server is
      * already up-to-date, we can submit the configuration change
@@ -401,7 +403,11 @@ int raft_assign(struct raft *r,
     event.time = r->now;
     event.type = RAFT_CATCH_UP;
     event.catch_up.server_id = server->id;
-    LegacyForwardToRaftIo(r, &event);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        return rv;
+    }
 
     return 0;
 
@@ -445,14 +451,15 @@ int raft_remove(struct raft *r,
     }
 
     req->cb = cb;
+    req->server_id = id;
 
     rv = clientChangeConfiguration(r, req, &configuration);
     if (rv != 0) {
         goto err_after_configuration_copy;
     }
 
-    assert(r->leader_state.change == NULL);
-    r->leader_state.change = req;
+    assert(r->legacy.change == NULL);
+    r->legacy.change = req;
 
     raft_configuration_close(&configuration);
 

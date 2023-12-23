@@ -56,16 +56,6 @@ static void convertClearCandidate(struct raft *r)
     }
 }
 
-static void convertFailChange(struct raft *r, struct raft_change *req)
-{
-    if (req != NULL && req->cb != NULL) {
-        /* XXX: set the type here, since it's not done in client.c */
-        req->type = RAFT_CHANGE;
-        req->status = RAFT_LEADERSHIPLOST;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
-}
-
 /* Clear leader state. */
 static void convertClearLeader(struct raft *r)
 {
@@ -73,13 +63,6 @@ static void convertClearLeader(struct raft *r)
     if (r->leader_state.progress != NULL) {
         raft_free(r->leader_state.progress);
         r->leader_state.progress = NULL;
-    }
-
-    /* Fail any promote request that is still outstanding because the server is
-     * still catching up and no entry was submitted. */
-    if (r->leader_state.change != NULL) {
-        convertFailChange(r, r->leader_state.change);
-        r->leader_state.change = NULL;
     }
 }
 
@@ -171,8 +154,6 @@ int convertToLeader(struct raft *r)
     if (rv != 0) {
         return rv;
     }
-
-    r->leader_state.change = NULL;
 
     /* Reset promotion state. */
     r->leader_state.promotee_id = 0;
