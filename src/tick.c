@@ -54,7 +54,8 @@ static int tickFollower(struct raft *r)
             electionResetTimer(r);
             goto out;
         }
-        tracef("convert to candidate and start new election");
+        infof("convert to candidate and start new election for term %llu",
+              r->current_term + 1);
         rv = convertToCandidate(r, false /* disrupt leader */);
         if (rv != 0) {
             tracef("convert to candidate: %s", raft_strerror(rv));

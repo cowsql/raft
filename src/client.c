@@ -11,6 +11,7 @@
 #include "request.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* This function is called when a new configuration entry is being submitted. It
@@ -71,6 +72,9 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     /* Index of the first entry being appended. */
     index = logLastIndex(r->log) + 1;
 
+    infof("persist %u entries with first index %lld at term %lld", n, index,
+          entries[0].term);
+
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
 
@@ -120,7 +124,6 @@ int raft_apply(struct raft *r,
 
     /* Index of the first entry being appended. */
     index = logLastIndex(r->log) + 1;
-    tracef("%u commands starting at %lld", n, index);
     req->type = RAFT_COMMAND;
     req->index = index;
     req->cb = cb;
@@ -585,4 +588,5 @@ err:
     return rv;
 }
 
+#undef infof
 #undef tracef
