@@ -214,6 +214,28 @@ int progressState(struct raft *r, const unsigned i)
     return p->state;
 }
 
+const char *progressStateName(struct raft *r, unsigned i)
+{
+    struct raft_progress *p = &r->leader_state.progress[i];
+    const char *name;
+    switch (p->state) {
+        case PROGRESS__PROBE:
+            name = "probe";
+            break;
+        case PROGRESS__PIPELINE:
+            name = "pipeline";
+            break;
+        case PROGRESS__SNAPSHOT:
+            name = "snapshot";
+            break;
+        default:
+            assert(0);
+            name = NULL;
+            break;
+    }
+    return name;
+}
+
 bool progressMaybeDecrement(struct raft *r,
                             const unsigned i,
                             raft_index rejected,

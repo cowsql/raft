@@ -103,6 +103,9 @@ void progressAbortSnapshot(struct raft *r, unsigned i);
 /* Return the progress mode code for the i'th server. */
 int progressState(struct raft *r, unsigned i);
 
+/* Return the progress mode name for the i'th server. */
+const char *progressStateName(struct raft *r, unsigned i);
+
 /* Optimistically update the next index of the given server.
  *
  * Called in pipeline mode after sending new entries. */
