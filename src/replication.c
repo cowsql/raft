@@ -377,7 +377,9 @@ static int leaderPersistEntriesDone(struct raft *r,
      * giving the cluster a chance to elect another leader that doesn't have a
      * full disk (or whatever caused our write error). */
     if (status != 0) {
-        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
+        if (r->io != NULL) {
+            ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
+        }
         convertToFollower(r);
         goto out;
     }
