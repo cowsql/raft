@@ -600,22 +600,26 @@ static void serverCompleteSend(struct test_server *s,
 {
     struct raft_event event;
     queue *head;
+    int status = 0;
 
     /* Check if there's a disconnection. */
     QUEUE_FOREACH (head, &s->cluster->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
         if (d->id1 == s->raft.id &&
             d->id2 == operation->send.message.server_id) {
-            return;
+            status = RAFT_NOCONNECTION;
+            break;
         }
     }
 
-    serverEnqueueTransmit(s, &operation->send.message);
+    if (status == 0) {
+        serverEnqueueTransmit(s, &operation->send.message);
+    }
 
     event.time = s->cluster->time;
     event.type = RAFT_SENT;
     event.sent.message = operation->send.message;
-    event.sent.status = 0;
+    event.sent.status = status;
 
     serverStep(s, &event);
 }
@@ -778,6 +782,16 @@ void test_cluster_tear_down(struct test_cluster *c)
         free(operation);
     }
 
+    /* Drop outstanding disconnections */
+    while (!QUEUE_IS_EMPTY(&c->disconnect)) {
+        struct disconnect *disconnect;
+        queue *head;
+        head = QUEUE_HEAD(&c->disconnect);
+        disconnect = QUEUE_DATA(head, struct disconnect, queue);
+        QUEUE_REMOVE(&disconnect->queue);
+        free(disconnect);
+    }
+
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
         serverClose(&c->servers[i]);
     }
@@ -890,6 +904,27 @@ void test_cluster_step(struct test_cluster *c)
     }
 
     clusterSeed(c);
+}
+
+void test_cluster_disconnect(struct test_cluster *c, raft_id id1, raft_id id2)
+{
+    struct disconnect *disconnect = munit_malloc(sizeof *disconnect);
+    disconnect->id1 = id1;
+    disconnect->id2 = id2;
+    QUEUE_PUSH(&c->disconnect, &disconnect->queue);
+}
+
+void test_cluster_reconnect(struct test_cluster *c, raft_id id1, raft_id id2)
+{
+    queue *head;
+    QUEUE_FOREACH (head, &c->disconnect) {
+        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
+        if (d->id1 == id1 && d->id2 == id2) {
+            QUEUE_REMOVE(&d->queue);
+            free(d);
+            return;
+        }
+    }
 }
 
 bool test_cluster_trace(struct test_cluster *c, const char *expected)

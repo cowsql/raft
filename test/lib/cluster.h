@@ -423,10 +423,30 @@ static bool v1 = false;
 #define CLUSTER_DEPOSE raft_fixture_depose(&f->cluster)
 
 /* Disconnect I from J. */
-#define CLUSTER_DISCONNECT(I, J) raft_fixture_disconnect(&f->cluster, I, J)
+#define CLUSTER_DISCONNECT(A, B)     \
+    if (v1) {                        \
+        CLUSTER_DISCONNECT_V1(A, B); \
+    } else {                         \
+        CLUSTER_DISCONNECT_V0(A, B); \
+    }
+
+#define CLUSTER_DISCONNECT_V1(ID1, ID2) \
+    test_cluster_disconnect(&f->cluster_, ID1, ID2)
+
+#define CLUSTER_DISCONNECT_V0(I, J) raft_fixture_disconnect(&f->cluster, I, J)
 
 /* Reconnect I to J. */
-#define CLUSTER_RECONNECT(I, J) raft_fixture_reconnect(&f->cluster, I, J)
+#define CLUSTER_RECONNECT(A, B)     \
+    if (v1) {                       \
+        CLUSTER_RECONNECT_V1(A, B); \
+    } else {                        \
+        CLUSTER_RECONNECT_V0(A, B); \
+    }
+
+#define CLUSTER_RECONNECT_V1(ID1, ID2) \
+    test_cluster_reconnect(&f->cluster_, ID1, ID2)
+
+#define CLUSTER_RECONNECT_V0(I, J) raft_fixture_reconnect(&f->cluster, I, J)
 
 /* Saturate the connection from I to J. */
 #define CLUSTER_SATURATE(I, J) raft_fixture_saturate(&f->cluster, I, J)
@@ -680,6 +700,12 @@ void test_cluster_start(struct test_cluster *c, raft_id id);
 /* Advance the cluster by completing a single asynchronous operation or firing a
  * timeout. */
 void test_cluster_step(struct test_cluster *c);
+
+/* Stop delivering messages from id1 to id2 */
+void test_cluster_disconnect(struct test_cluster *c, raft_id id1, raft_id id2);
+
+/* Resume delivering messages from id1 to id2 */
+void test_cluster_reconnect(struct test_cluster *c, raft_id id1, raft_id id2);
 
 /* Compare the trace of all messages emitted by all servers with the given
  * expected trace. If they don't match, print the last line which differs and
