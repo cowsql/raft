@@ -608,7 +608,6 @@ struct test_server
 {
     struct test_disk disk;        /* Persisted data */
     struct raft_tracer tracer;    /* Custom tracer */
-    struct raft_update update;    /* Passed to raft_step() */
     struct raft raft;             /* Raft instance */
     struct test_cluster *cluster; /* Parent cluster */
     raft_time timeout;            /* Next scheduled timeout */

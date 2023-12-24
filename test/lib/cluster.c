@@ -10,22 +10,43 @@
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
-enum operation_type { OPERATION_IO = 0, OPERATION_TRANSMIT };
+enum operation_type {
+    OPERATION_ENTRIES = 0,
+    OPERATION_SEND,
+    OPERATION_TRANSMIT
+};
 
 /* Track pending async operations. */
 struct operation
 {
-    enum operation_type type; /* Either OPERATION_IO or OPERATION_TRANSMIT */
-    raft_id id;               /* Target server ID. */
-    raft_time completion;     /* When the operation should complete */
+    enum operation_type type;
+    raft_id id;           /* Target server ID. */
+    raft_time completion; /* When the operation should complete */
     union {
-        struct raft_io *io;
+        struct
+        {
+            struct raft_message message;
+        } send;
+        struct
+        {
+            raft_index index;
+            struct raft_entry *batch;
+            unsigned n;
+        } entries;
         struct
         {
             raft_id from;
             struct raft_message message;
         } transmit;
     };
+    queue queue;
+};
+
+/* Mark @id1 as disconnected from @id2. */
+struct disconnect
+{
+    raft_id id1;
+    raft_id id2;
     queue queue;
 };
 
@@ -194,6 +215,34 @@ static void diskLoad(struct test_disk *d,
     }
 }
 
+/* Truncate all entries from the given index onwards. If there are no entries at
+ * the given index, this is a no-op. */
+static void diskTruncateEntries(struct test_disk *d, raft_index index)
+{
+    unsigned i;
+
+    if (index == d->start_index + d->n_entries) {
+        return;
+    }
+
+    munit_assert_ulong(index, >=, d->start_index);
+    munit_assert_ulong(index, <=, d->start_index + d->n_entries);
+
+    for (i = (unsigned)(index - d->start_index); i < d->n_entries; i++) {
+        free(d->entries[i].buf.base);
+        d->n_entries--;
+    }
+}
+
+/* Append a new entry to the log. */
+static void diskPersistEntry(struct test_disk *d, struct raft_entry *entry)
+{
+    d->n_entries++;
+    d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
+    munit_assert_ptr_not_null(d->entries);
+    entryCopy(entry, &d->entries[d->n_entries - 1]);
+}
+
 /* Custom emit tracer function which includes the server ID. */
 static void serverTrace(struct raft_tracer *t, int type, const void *data)
 {
@@ -201,18 +250,40 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     struct test_cluster *cluster;
     const struct raft_tracer_info *info = data;
     char trace[1024];
+    const char *state;
 
     if (type != RAFT_TRACER_DIAGNOSTIC) {
         return;
     }
 
-    server = t->impl;
-    cluster = server->cluster;
     if (info->diagnostic.level > 3) {
         return;
     }
+
+    server = t->impl;
+    cluster = server->cluster;
+
+    switch (raft_state(&server->raft)) {
+        case RAFT_FOLLOWER:
+            state = "F";
+            break;
+        case RAFT_CANDIDATE:
+            state = "C";
+            break;
+        case RAFT_LEADER:
+            state = "L";
+            break;
+        case RAFT_UNAVAILABLE:
+            state = "U";
+            break;
+        default:
+            state = NULL;
+            munit_assert(0);
+            break;
+    }
+
     if (info->diagnostic.message[0] == '>') {
-        snprintf(trace, sizeof trace, "[%4lld] %llu %s", cluster->time,
+        snprintf(trace, sizeof trace, "%4lld %s %llu %s", cluster->time, state,
                  server->raft.id, info->diagnostic.message);
     } else {
         snprintf(trace, sizeof trace, "         %s", info->diagnostic.message);
@@ -251,13 +322,24 @@ static void serverInit(struct test_server *s,
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
 
-    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT + (id - 1) * 10;
+    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT;
+    s->randomized_election_timeout += (id - 1) * 10;
     s->randomized_election_timeout_prev = 0;
 }
 
 /* Release all resources used by a server object. */
 static void serverClose(struct test_server *s)
 {
+    struct raft_event event;
+    struct raft_update update;
+    int rv;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_STOP;
+
+    rv = raft_step(&s->raft, &event, &update);
+    munit_assert_int(rv, ==, 0);
+
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
 }
@@ -288,13 +370,91 @@ done:
     s->randomized_election_timeout_prev = s->randomized_election_timeout;
 }
 
+static void serverProcessEntries(struct test_server *s,
+                                 raft_index first_index,
+                                 struct raft_entry *entries,
+                                 unsigned n)
+{
+    struct operation *operation = munit_malloc(sizeof *operation);
+
+    operation->type = OPERATION_ENTRIES;
+    operation->id = s->raft.id;
+
+    operation->completion = s->cluster->time + s->disk_latency;
+
+    operation->entries.index = first_index;
+    operation->entries.batch = entries;
+    operation->entries.n = n;
+
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+}
+
+static void serverProcessMessages(struct test_server *s,
+                                  struct raft_message *messages,
+                                  unsigned n)
+{
+    unsigned i;
+
+    for (i = 0; i < n; i++) {
+        struct operation *operation = munit_malloc(sizeof *operation);
+
+        operation->type = OPERATION_SEND;
+        operation->id = s->raft.id;
+
+        /* TODO: simulate the presence of an OS send buffer, whose available
+         * size might delay the completion of send requests */
+        operation->completion = s->cluster->time;
+
+        operation->send.message = messages[i];
+
+        QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+    }
+}
+
+/* Fire the given event using raft_step() and process the resulting struct
+ * raft_update object. */
+static void serverStep(struct test_server *s, struct raft_event *event)
+{
+    struct raft *r = &s->raft;
+    struct raft_update update;
+    int rv;
+
+    munit_assert_true(s->running);
+
+    rv = raft_step(r, event, &update);
+    munit_assert_int(rv, ==, 0);
+
+    if (update.flags & RAFT_UPDATE_CURRENT_TERM) {
+        diskSetTerm(&s->disk, raft_current_term(r));
+    }
+
+    if (update.flags & RAFT_UPDATE_VOTED_FOR) {
+        diskSetTerm(&s->disk, raft_voted_for(r));
+    }
+
+    if (update.flags & RAFT_UPDATE_ENTRIES) {
+        serverProcessEntries(s, update.entries.index, update.entries.batch,
+                             update.entries.n);
+    }
+
+    if (update.flags & RAFT_UPDATE_MESSAGES) {
+        serverProcessMessages(s, update.messages.batch, update.messages.n);
+    }
+
+    if (update.flags & RAFT_UPDATE_TIMEOUT) {
+        s->timeout = raft_timeout(&s->raft);
+    }
+}
+
 /* Start the server by passing to raft_step() a RAFT_START event with the
  * current disk state. */
 static void serverStart(struct test_server *s)
 {
     struct raft_event event;
-    struct raft *r = &s->raft;
-    int rv;
+
+    s->running = true;
+
+    serverSeed(s);
 
     event.time = s->cluster->time;
     event.type = RAFT_START;
@@ -302,86 +462,229 @@ static void serverStart(struct test_server *s)
     diskLoad(&s->disk, &event.start.term, &event.start.voted_for,
              &event.start.metadata, &event.start.start_index,
              &event.start.entries, &event.start.n_entries);
-    serverSeed(s);
 
-    rv = raft_step(r, &event, &s->update);
-    munit_assert_int(rv, ==, 0);
+    serverStep(s, &event);
 
     if (event.start.metadata != NULL) {
         free(event.start.metadata);
     }
-
-    /* Upon startup we don't expect any new state to be persisted or messages
-     * being sent. */
-    munit_assert_false(s->update.flags & RAFT_UPDATE_CURRENT_TERM);
-    munit_assert_false(s->update.flags & RAFT_UPDATE_VOTED_FOR);
-    munit_assert_false(s->update.flags & RAFT_UPDATE_ENTRIES);
-    munit_assert_false(s->update.flags & RAFT_UPDATE_SNAPSHOT);
-    munit_assert_false(s->update.flags & RAFT_UPDATE_MESSAGES);
-
-    /* The state must have transitioned either to follower or leader (when
-     * self-electing). */
-    munit_assert_true(s->update.flags & RAFT_UPDATE_STATE);
-    munit_assert_true(raft_state(r) == RAFT_FOLLOWER ||
-                      raft_state(r) == RAFT_LEADER);
-
-    /* The timeout must have changed. */
-    munit_assert_true(s->update.flags & RAFT_UPDATE_TIMEOUT);
-    s->timeout = raft_timeout(&s->raft);
-
-    s->running = true;
-}
-
-/* Handle the updates from the last raft_step() call. */
-static void serverHandleUpdate(struct test_server *s)
-{
-    struct raft *r = &s->raft;
-
-    if (!s->running) {
-        return;
-    }
-
-    if (s->update.flags & RAFT_UPDATE_CURRENT_TERM) {
-        diskSetTerm(&s->disk, raft_current_term(r));
-    }
-
-    if (s->update.flags & RAFT_UPDATE_VOTED_FOR) {
-        diskSetTerm(&s->disk, raft_voted_for(r));
-    }
-
-    s->update.flags = 0;
 }
 
 /* Fire a RAFT_TIMEOUT event. */
-static int serverTimeout(struct test_server *s)
+static void serverTimeout(struct test_server *s)
 {
     struct raft_event event;
-    int rv;
+
     s->cluster->time = s->timeout;
 
     event.time = s->cluster->time;
     event.type = RAFT_TIMEOUT;
 
-    rv = raft_step(&s->raft, &event, &s->update);
+    serverStep(s, &event);
+}
 
-    return rv;
+/* Create a single batch of entries containing a copy of the given entries,
+ * including their data. Use raft_malloc() since memory ownership is going to be
+ * handed over to raft via raft_recv(). */
+static void copyEntries(const struct raft_entry *src,
+                        struct raft_entry **dst,
+                        const size_t n)
+{
+    size_t size = 0;
+    void *batch;
+    uint8_t *cursor;
+    unsigned i;
+
+    if (n == 0) {
+        *dst = NULL;
+        return;
+    }
+
+    /* Calculate the total size of the entries content and allocate the
+     * batch. */
+    for (i = 0; i < n; i++) {
+        size += src[i].buf.len;
+    }
+
+    batch = raft_malloc(size);
+    munit_assert_ptr_not_null(batch);
+
+    /* Copy the entries. */
+    *dst = raft_malloc(n * sizeof **dst);
+    munit_assert_ptr_not_null(*dst);
+
+    cursor = batch;
+
+    for (i = 0; i < n; i++) {
+        (*dst)[i].term = src[i].term;
+        (*dst)[i].type = src[i].type;
+        (*dst)[i].buf.base = cursor;
+        (*dst)[i].buf.len = src[i].buf.len;
+        (*dst)[i].batch = batch;
+        memcpy((*dst)[i].buf.base, src[i].buf.base, src[i].buf.len);
+        cursor += src[i].buf.len;
+    }
+}
+
+static void serverEnqueueTransmit(struct test_server *s,
+                                  struct raft_message *message)
+{
+    struct operation *operation = munit_malloc(sizeof *operation);
+
+    operation->type = OPERATION_TRANSMIT;
+    operation->id = message->server_id;
+
+    operation->completion = s->cluster->time + s->network_latency;
+    operation->transmit.from = s->raft.id;
+    operation->transmit.message = *message;
+
+    switch (message->type) {
+        case RAFT_IO_APPEND_ENTRIES:
+            /* Create a copy of the entries being sent, so the memory of the
+             * original message can be released when raft_done() is called. */
+            copyEntries(message->append_entries.entries,
+                        &operation->transmit.message.append_entries.entries,
+                        message->append_entries.n_entries);
+            break;
+        case RAFT_IO_INSTALL_SNAPSHOT:
+            /* Create a copy of the snapshot being sent, so the memory of the
+             * original message can be released when raft_done() is called. */
+            {
+                struct raft_install_snapshot *src = &message->install_snapshot;
+                struct raft_install_snapshot *dst =
+                    &operation->transmit.message.install_snapshot;
+                dst->last_index = src->last_index;
+                dst->last_term = src->last_term;
+                confCopy(&src->conf, &dst->conf);
+                dst->conf_index = src->conf_index;
+                dst->data.len = src->data.len;
+                dst->data.base = raft_malloc(dst->data.len);
+                munit_assert_ptr_not_null(dst->data.base);
+                memcpy(dst->data.base, src->data.base, src->data.len);
+            }
+            break;
+    }
+
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+}
+
+static int serverCompleteEntries(struct test_server *s,
+                                 struct operation *operation)
+{
+    unsigned i;
+
+    /* Possibly truncate stale entries. */
+    diskTruncateEntries(&s->disk, operation->entries.index);
+
+    for (i = 0; i < operation->entries.n; i++) {
+        diskPersistEntry(&s->disk, &operation->entries.batch[i]);
+    }
+
+    return 0;
+}
+
+static void serverCompleteSend(struct test_server *s,
+                               struct operation *operation)
+{
+    struct raft_event event;
+    queue *head;
+
+    /* Check if there's a disconnection. */
+    QUEUE_FOREACH (head, &s->cluster->disconnect) {
+        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
+        if (d->id1 == s->raft.id &&
+            d->id2 == operation->send.message.server_id) {
+            return;
+        }
+    }
+
+    serverEnqueueTransmit(s, &operation->send.message);
+
+    event.time = s->cluster->time;
+    event.type = RAFT_SENT;
+    event.sent.message = operation->send.message;
+    event.sent.status = 0;
+
+    serverStep(s, &event);
+}
+
+/* Release the memory used by a transmit operation. */
+static void clearTransmitOperation(struct operation *o)
+{
+    switch (o->transmit.message.type) {
+        case RAFT_IO_APPEND_ENTRIES:
+            if (o->transmit.message.append_entries.n_entries > 0) {
+                struct raft_entry *entries =
+                    o->transmit.message.append_entries.entries;
+                raft_free(entries[0].buf.base);
+                raft_free(entries);
+            }
+            break;
+        case RAFT_IO_INSTALL_SNAPSHOT:
+            raft_configuration_close(
+                &o->transmit.message.install_snapshot.conf);
+            raft_free(o->transmit.message.install_snapshot.data.base);
+            break;
+    }
+}
+
+static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id);
+
+static void serverCompleteTransmit(struct test_server *s,
+                                   struct operation *operation)
+{
+    struct test_server *sender;
+    struct raft_event event;
+    queue *head;
+
+    if (!s->running) {
+        clearTransmitOperation(operation);
+        return;
+    }
+
+    /* Check if there's a disconnection. */
+    QUEUE_FOREACH (head, &s->cluster->disconnect) {
+        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
+        if (d->id1 == operation->transmit.from && d->id2 == s->raft.id) {
+            clearTransmitOperation(operation);
+            return;
+        }
+    }
+
+    sender = clusterGetServer(s->cluster, operation->transmit.from);
+
+    event.time = s->cluster->time;
+    event.type = RAFT_RECEIVE;
+    event.receive.id = operation->transmit.from;
+    event.receive.address = sender->raft.address;
+    event.receive.message = &operation->transmit.message;
+
+    serverStep(s, &event);
 }
 
 /* Complete either a @raft_io or transmit operation. */
-static int serverCompleteOperation(struct test_server *s,
-                                   struct operation *operation)
+static void serverCompleteOperation(struct test_server *s,
+                                    struct operation *operation)
 {
-    int rv;
+    munit_assert_ulong(s->raft.id, ==, operation->id);
+
     s->cluster->time = operation->completion;
     QUEUE_REMOVE(&operation->queue);
     switch (operation->type) {
+        case OPERATION_ENTRIES:
+            serverCompleteEntries(s, operation);
+            break;
+        case OPERATION_SEND:
+            serverCompleteSend(s, operation);
+            break;
+        case OPERATION_TRANSMIT:
+            serverCompleteTransmit(s, operation);
+            break;
         default:
-            rv = -1;
             munit_errorf("unexpected operation type %d", operation->type);
             break;
     }
     free(operation);
-    return rv;
 }
 
 void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
@@ -406,9 +709,62 @@ static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id)
     return &c->servers[id - 1];
 }
 
+static void serverCancelSend(struct test_server *s, struct operation *operation)
+{
+    struct raft_event event;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_SENT;
+    event.sent.message = operation->send.message;
+    event.sent.status = RAFT_CANCELED;
+
+    serverStep(s, &event);
+}
+
+static void serverCancelEntries(struct test_server *s,
+                                struct operation *operation)
+{
+    struct raft_event event;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_ENTRIES;
+    event.persisted_entries.index = operation->entries.index;
+    event.persisted_entries.n = operation->entries.n;
+    event.persisted_entries.batch = operation->entries.batch;
+    event.persisted_entries.status = RAFT_CANCELED;
+
+    serverStep(s, &event);
+}
+
 void test_cluster_tear_down(struct test_cluster *c)
 {
     unsigned i;
+
+    /* Drop pending operations */
+    while (!QUEUE_IS_EMPTY(&c->operations)) {
+        struct test_server *server;
+        struct operation *operation;
+        queue *head;
+        head = QUEUE_HEAD(&c->operations);
+        operation = QUEUE_DATA(head, struct operation, queue);
+        switch (operation->type) {
+            case OPERATION_SEND:
+                server = clusterGetServer(c, operation->id);
+                serverCancelSend(server, operation);
+                break;
+            case OPERATION_ENTRIES:
+                server = clusterGetServer(c, operation->id);
+                serverCancelEntries(server, operation);
+                break;
+            case OPERATION_TRANSMIT:
+                clearTransmitOperation(operation);
+                break;
+            default:
+                break;
+        }
+        QUEUE_REMOVE(&operation->queue);
+        free(operation);
+    }
 
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
         serverClose(&c->servers[i]);
@@ -463,17 +819,6 @@ static void clusterSeed(struct test_cluster *c)
     }
 }
 
-/* Pull all messages currently pending in the #io queues of all
- * running servers and push them to our internal I/O queue. */
-static void clusterHandleUpdate(struct test_cluster *c)
-{
-    unsigned i;
-    for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
-        struct test_server *server = &c->servers[i];
-        serverHandleUpdate(server);
-    }
-}
-
 /* Return the operation with the lowest completion time. */
 static struct operation *clusterGetOperationWithEarliestCompletion(
     struct test_cluster *c)
@@ -512,19 +857,16 @@ void test_cluster_step(struct test_cluster *c)
 {
     struct test_server *server;
     struct operation *operation;
-    int rv;
 
-    clusterHandleUpdate(c);
     server = clusterGetServerWithEarliestTimeout(c);
     operation = clusterGetOperationWithEarliestCompletion(c);
 
     if (operation == NULL || server->timeout < operation->completion) {
-        rv = serverTimeout(server);
+        serverTimeout(server);
     } else {
         server = clusterGetServer(c, operation->id);
-        rv = serverCompleteOperation(server, operation);
+        serverCompleteOperation(server, operation);
     }
-    munit_assert_int(rv, ==, 0);
 
     clusterSeed(c);
 }
@@ -556,8 +898,8 @@ consume:
         goto mismatch;
     }
 
-    /* If there's more expected output, check that so far we're good, then step
-     * and repeat. */
+    /* If there's more expected output, check that so far we're good, then
+     * step and repeat. */
     if (n1 < n2) {
         if (i != n1) {
             goto mismatch;
