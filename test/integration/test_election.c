@@ -18,10 +18,12 @@ static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
     struct fixture *f = munit_malloc(sizeof *f);
     unsigned i;
     SETUP_CLUSTER(2);
-    CLUSTER_BOOTSTRAP;
-    for (i = 0; i < CLUSTER_N; i++) {
-        struct raft *raft = CLUSTER_RAFT(i);
-        raft->data = f;
+    if (!v1) {
+        CLUSTER_BOOTSTRAP;
+        for (i = 0; i < CLUSTER_N; i++) {
+            struct raft *raft = CLUSTER_RAFT(i);
+            raft->data = f;
+        }
     }
     return f;
 }
@@ -107,29 +109,38 @@ static MunitParameterEnum cluster_3_params[] = {
 
 SUITE(election)
 
-/* Test an election round with two voters. */
-TEST(election, twoVoters, setUp, tearDown, 0, NULL)
+TEST_V1(election, twoVoters, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    (void)params;
-    CLUSTER_START();
 
-    /* The first server eventually times out and converts to candidate. */
-    STEP_UNTIL_CANDIDATE(0);
-    ASSERT_TIME(1000);
+    CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
 
-    CLUSTER_STEP; /* Server 1 tick */
-    ASSERT_FOLLOWER(1);
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_START(2 /* ID */);
 
-    CLUSTER_STEP; /* Server 0 completes sending a RequestVote RPC */
-    CLUSTER_STEP; /* Server 1 receives RequestVote RPC */
-    ASSERT_VOTED_FOR(1, 1);
-    ASSERT_TIME(1015);
+    CLUSTER_TRACE(
+        "   0 U 1 > term 1, vote 0, no snapshot, entries 1.1 to 1.1\n"
+        "   0 U 2 > term 1, vote 0, no snapshot, entries 1.1 to 1.1\n");
 
-    CLUSTER_STEP; /* Server 1 completes sending RequestVote RPC */
-    CLUSTER_STEP; /* Server 1 receives RequestVote RPC result */
-    ASSERT_LEADER(0);
-    ASSERT_TIME(1030);
+    CLUSTER_TRACE(
+        " 100 F 1 > timeout as follower\n"
+        "           convert to candidate and start new election for term 2\n");
+
+    CLUSTER_TRACE(
+        " 110 F 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log equal or longer (1.1 vs 1.1) -> grant vote\n");
+
+    CLUSTER_TRACE(
+        " 120 C 1 > recv request vote result from server 2\n"
+        "           votes quorum reached -> convert to leader\n"
+        "           persist 1 entries with first index 2 at term 2\n"
+        "           probe server 2 sending 1 entries with first index 2\n");
+
+    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
 
     return MUNIT_OK;
 }
