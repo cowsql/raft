@@ -459,6 +459,9 @@ static bool v1 = false;
         CLUSTER_SET_TERM_V0(__VA_ARGS__); \
     }
 
+#define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
+    test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
+
 /* Set the term persisted on the I'th server. This must be called before
  * starting the cluster. */
 #define CLUSTER_SET_TERM_V0(I, TERM) raft_fixture_set_term(&f->cluster, I, TERM)
@@ -661,6 +664,15 @@ void test_cluster_set_snapshot(struct test_cluster *c,
 void test_cluster_add_entry(struct test_cluster *c,
                             raft_id id,
                             const struct raft_entry *entry);
+
+/* Set a custom election timeout for the given server. Must me called
+ * before starting the server. The randomized timeout will be set to timeout +
+ * delta. */
+void test_cluster_set_election_timeout(struct test_cluster *c,
+                                       raft_id id,
+                                       unsigned timeout,
+                                       unsigned delta);
+
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);

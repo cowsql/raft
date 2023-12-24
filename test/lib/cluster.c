@@ -293,6 +293,20 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     fprintf(stderr, "%s\n", trace);
 }
 
+/* Set the election timeout and the randomized election timeout (timeout +
+ * delta). */
+static void serverSetElectionTimeout(struct test_server *s,
+                                     unsigned timeout,
+                                     unsigned delta)
+{
+    munit_assert_uint(delta, <=, timeout);
+
+    raft_set_election_timeout(&s->raft, timeout);
+
+    s->randomized_election_timeout = timeout;
+    s->randomized_election_timeout += delta;
+}
+
 /* Initialize a new server object. */
 static void serverInit(struct test_server *s,
                        raft_id id,
@@ -306,6 +320,7 @@ static void serverInit(struct test_server *s,
     s->tracer.impl = s;
     s->tracer.version = 2;
     s->tracer.trace = serverTrace;
+    s->randomized_election_timeout_prev = 0;
 
     sprintf(address, "%llu", id);
 
@@ -314,17 +329,14 @@ static void serverInit(struct test_server *s,
 
     s->raft.tracer = &s->tracer;
 
-    raft_set_election_timeout(&s->raft, DEFAULT_ELECTION_TIMEOUT);
+    serverSetElectionTimeout(s, DEFAULT_ELECTION_TIMEOUT,
+                             ((unsigned)id - 1) * 10);
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
 
     s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
-
-    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT;
-    s->randomized_election_timeout += (id - 1) * 10;
-    s->randomized_election_timeout_prev = 0;
 }
 
 /* Release all resources used by a server object. */
@@ -800,6 +812,15 @@ void test_cluster_add_entry(struct test_cluster *c,
     struct test_server *server = clusterGetServer(c, id);
     munit_assert_false(server->running);
     diskAddEntry(&server->disk, entry);
+}
+
+void test_cluster_set_election_timeout(struct test_cluster *c,
+                                       raft_id id,
+                                       unsigned timeout,
+                                       unsigned delta)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    serverSetElectionTimeout(server, timeout, delta);
 }
 
 void test_cluster_start(struct test_cluster *c, raft_id id)
