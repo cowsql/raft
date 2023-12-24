@@ -21,6 +21,7 @@
 #include "restore.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 #ifndef max
@@ -108,9 +109,9 @@ static int sendAppendEntries(struct raft *r,
      */
     args->leader_commit = r->commit_index;
 
-    tracef("send %u entries starting at %llu to server %llu (last index %llu)",
-           args->n_entries, args->prev_log_index, server->id,
-           logLastIndex(r->log));
+    infof("%s server %llu sending %u entries with first index %llu",
+          progressStateName(r, i), server->id, args->n_entries,
+          args->prev_log_index + 1);
 
     message.type = RAFT_IO_APPEND_ENTRIES;
     message.server_id = server->id;
@@ -1220,4 +1221,5 @@ inline bool replicationInstallSnapshotBusy(struct raft *r)
     return r->last_stored == 0 && r->snapshot.persisting;
 }
 
+#undef infof
 #undef tracef

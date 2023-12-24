@@ -8,6 +8,7 @@
 #include "random.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Common fields between follower and candidate state.
@@ -255,7 +256,10 @@ int electionVote(struct raft *r,
 
     if (local_last_index <= args->last_log_index) {
         /* Our log is shorter or equal to the one of the requester. */
-        tracef("remote log equal or longer than local -> granting vote");
+        infof(
+            "remote log equal or longer (%llu.%llu vs %llu.%llu) -> grant vote",
+            args->last_log_index, args->last_log_term, local_last_index,
+            local_last_term);
         goto grant_vote;
     }
 
@@ -302,4 +306,5 @@ bool electionTally(struct raft *r, size_t voter_index)
     return votes >= half + 1;
 }
 
+#undef infof
 #undef tracef

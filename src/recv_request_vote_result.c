@@ -8,6 +8,7 @@
 #include "replication.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvRequestVoteResult(struct raft *r,
@@ -126,7 +127,7 @@ int recvRequestVoteResult(struct raft *r,
                 r->candidate_state.in_pre_vote = false;
                 electionStart(r);
             } else {
-                tracef("votes quorum reached -> convert to leader");
+                infof("votes quorum reached -> convert to leader");
                 rv = convertToLeader(r);
                 if (rv != 0) {
                     return rv;
@@ -144,4 +145,5 @@ int recvRequestVoteResult(struct raft *r,
     return 0;
 }
 
+#undef infof
 #undef tracef

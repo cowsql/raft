@@ -17,6 +17,7 @@
 #include "string.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Dispatch a single RPC message to the appropriate handler. */
@@ -126,12 +127,12 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     assert(r != NULL);
     assert(term > r->current_term);
 
-    sprintf(msg, "remote term %lld is higher than %lld -> bump local term",
-            term, r->current_term);
+    sprintf(msg, "remote term is higher (%lld vs %lld) -> bump term", term,
+            r->current_term);
     if (r->state != RAFT_FOLLOWER) {
         strcat(msg, " and step down");
     }
-    tracef("%s", msg);
+    infof("%s", msg);
 
     /* Mark both the current term and vote as changed. */
     r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
@@ -225,4 +226,5 @@ int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
     return 0;
 }
 
+#undef infof
 #undef tracef
