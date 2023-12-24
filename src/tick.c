@@ -84,7 +84,8 @@ static int tickCandidate(struct raft *r)
      *   incrementing its term and initiating another round of RequestVote RPCs
      */
     if (electionTimerExpired(r)) {
-        tracef("start new election");
+        infof("stay candidate and start new election for term %llu",
+              r->current_term + 1);
         electionStart(r);
     }
 
