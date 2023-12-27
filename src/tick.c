@@ -148,6 +148,7 @@ static int tickLeader(struct raft *r)
      *   timeouts.
      */
     replicationHeartbeat(r);
+    r->update->flags |= RAFT_UPDATE_TIMEOUT;
 
     /* If a server is being promoted, increment the timer of the current
      * round or abort the promotion.
