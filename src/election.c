@@ -208,20 +208,19 @@ void electionVote(struct raft *r,
         return;
     }
 
-    /* Raft Dissertation 9.6:
-     * > In the Pre-Vote algorithm, a candidate
-     * > only increments its term if it first learns from a majority of the
-     * > cluster that they would be willing
-     * > to grant the candidate their votes (if the candidate's log is
-     * > sufficiently up-to-date, and the voters
-     * > have not received heartbeats from a valid leader for at least a
-     * baseline > election timeout) Arriving here means that in a pre-vote
-     * phase, we will cast our vote if the candidate's log is sufficiently
-     * up-to-date, no matter what the candidate's term is. We have already
-     * checked if we currently have a leader upon reception of the RequestVote
-     * RPC, meaning the 2 conditions will be satisfied if the candidate's log is
-     * up-to-date.
-     * */
+    /* From Section 9.6:
+     *
+     *   In the Pre-Vote algorithm, a candidate only increments its term if it
+     *   first learns from a majority of the cluster that they would be willing
+     *   to grant the candidate their votes (if the candidate's log is
+     *   sufficiently up-to-date, and the voters have not received heartbeats
+     *   from a valid leader for at least a baseline election timeout).
+     *
+     * Arriving here means that in a pre-vote phase, we will cast our vote if
+     * the candidate's log is sufficiently up-to-date, no matter what the
+     * candidate's term is. We have already checked if we currently have a
+     * leader upon reception of the RequestVote RPC, meaning the 2 conditions
+     * will be satisfied if the candidate's log is up-to-date. */
     local_last_index = logLastIndex(r->log);
 
     /* Our log is definitely not more up-to-date if it's empty! */
