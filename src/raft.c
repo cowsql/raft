@@ -36,8 +36,6 @@
 #define DEFAULT_MAX_CATCH_UP_ROUNDS 10
 #define DEFAULT_MAX_CATCH_UP_ROUND_DURATION (5 * 1000)
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
-
 #define infof(...) Infof(r->tracer, "> " __VA_ARGS__)
 
 int raft_version_number(void)
