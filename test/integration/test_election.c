@@ -37,62 +37,17 @@ static void tearDown(void *data)
 
 /******************************************************************************
  *
- * Parameters
- *
- *****************************************************************************/
-
-static char *cluster_3[] = {"3", NULL};
-
-static MunitParameterEnum cluster_3_params[] = {
-    {CLUSTER_N_PARAM, cluster_3},
-    {NULL, NULL},
-};
-
-/******************************************************************************
- *
- * Helper macros
- *
- *****************************************************************************/
-
-/* Wait until the I'th server becomes candidate. */
-#define STEP_UNTIL_CANDIDATE(I) \
-    CLUSTER_STEP_UNTIL_STATE_IS(I, RAFT_CANDIDATE, 2000)
-
-/* Wait until the I'th server becomes leader. */
-#define STEP_UNTIL_LEADER(I) CLUSTER_STEP_UNTIL_STATE_IS(I, RAFT_LEADER, 2000)
-
-/******************************************************************************
- *
  * Assertions
  *
  *****************************************************************************/
-
-/* Assert that the I'th server is in follower state. */
-#define ASSERT_FOLLOWER(I) munit_assert_int(CLUSTER_STATE(I), ==, RAFT_FOLLOWER)
 
 /* Assert that the I'th server is in candidate state. */
 #define ASSERT_CANDIDATE(I) \
     munit_assert_int(CLUSTER_STATE(I), ==, RAFT_CANDIDATE)
 
-/* Assert that the I'th server is in leader state. */
-#define ASSERT_LEADER(I) munit_assert_int(CLUSTER_STATE(I), ==, RAFT_LEADER)
-
 /* Assert that the I'th server is unavailable. */
 #define ASSERT_UNAVAILABLE(I) \
     munit_assert_int(CLUSTER_STATE(I), ==, RAFT_UNAVAILABLE)
-
-/* Assert that the I'th server has voted for the server with the given ID. */
-#define ASSERT_VOTED_FOR(I, ID) munit_assert_int(CLUSTER_VOTED_FOR(I), ==, ID)
-
-/* Assert that the I'th server has the given current term. */
-#define ASSERT_TERM(I, TERM)                             \
-    {                                                    \
-        struct raft *raft_ = CLUSTER_RAFT(I);            \
-        munit_assert_int(raft_->current_term, ==, TERM); \
-    }
-
-/* Assert that the fixture time matches the given value */
-#define ASSERT_TIME(TIME) munit_assert_int(CLUSTER_TIME, ==, TIME)
 
 /******************************************************************************
  *
@@ -374,7 +329,8 @@ TEST_V1(election, RejectIfHigherTerm, setUp, tearDown, 0, NULL)
      * follower because it discovers the newer term. */
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
-        "           remote term is higher (3 vs 2) -> bump term, step down\n");
+        "           remote term is higher (3 vs 2) -> bump term, step down\n"
+        "           no longer candidate -> ignore\n");
 
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_FOLLOWER);
 
@@ -383,7 +339,7 @@ TEST_V1(election, RejectIfHigherTerm, setUp, tearDown, 0, NULL)
 
 /* If the server already has a leader, the vote is not granted (even if the
  * request has a higher term). */
-TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, cluster_3_params)
+TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -454,7 +410,7 @@ TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, cluster_3_params)
 }
 
 /* If a server has already voted, vote is not granted. */
-TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, cluster_3_params)
+TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -893,12 +849,7 @@ TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
 }
 
 /* A candidate receives votes then crashes. */
-TEST_V1(election,
-        PreVoteWithcandidateCrash,
-        setUp,
-        tearDown,
-        0,
-        cluster_3_params)
+TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
