@@ -207,8 +207,8 @@ static int sendSnapshot(struct raft *r, const unsigned i)
         goto err;
     }
 
-    tracef("sending snapshot with last index %llu to %llu", args->last_index,
-           server->id);
+    infof("sending snapshot with last index %llu to %llu", args->last_index,
+          server->id);
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
@@ -308,7 +308,7 @@ static int triggerAll(struct raft *r)
 
     /* Trigger replication for servers we didn't hear from recently. */
     for (i = 0; i < r->configuration.n; i++) {
-        struct raft_server *server = &r->configuration.servers[i];
+        const struct raft_server *server = &r->configuration.servers[i];
         if (server->id == r->id) {
             continue;
         }
@@ -565,7 +565,7 @@ int replicationUpdate(struct raft *r,
                                        result->last_log_index);
         if (retry) {
             /* Retry, ignoring errors. */
-            tracef("log mismatch -> send old entries to %llu", server->id);
+            infof("log mismatch -> send old entries");
             replicationProgress(r, i);
         }
         return 0;
@@ -781,7 +781,8 @@ static int checkLogMatchingProperty(struct raft *r,
 
     local_prev_term = logTermOf(r->log, args->prev_log_index);
     if (local_prev_term == 0) {
-        tracef("no entry at index %llu -> reject", args->prev_log_index);
+        infof("missing entry (%llu^%llu) -> reject", args->prev_log_index,
+              args->prev_log_term);
         return 1;
     }
 
@@ -795,7 +796,7 @@ static int checkLogMatchingProperty(struct raft *r,
                 r->commit_index);
             return -1;
         }
-        tracef("previous term mismatch -> reject");
+        infof("previous term mismatch -> reject");
         return 1;
     }
 
@@ -1085,13 +1086,13 @@ int replicationInstallSnapshot(struct raft *r,
      * something smarter. */
     if (r->snapshot.taking || r->snapshot.persisting) {
         *async = true;
-        tracef("already taking or installing snapshot");
+        infof("already taking or installing snapshot");
         return RAFT_BUSY;
     }
 
     /* If our last snapshot is more up-to-date, this is a no-op */
     if (r->log->snapshot.last_index >= args->last_index) {
-        tracef("have more recent snapshot");
+        infof("have more recent snapshot");
         *rejected = 0;
         return 0;
     }
@@ -1099,7 +1100,7 @@ int replicationInstallSnapshot(struct raft *r,
     /* If we already have all entries in the snapshot, this is a no-op */
     local_term = logTermOf(r->log, args->last_index);
     if (local_term != 0 && local_term >= args->last_term) {
-        tracef("have all entries");
+        infof("have all entries");
         *rejected = 0;
         return 0;
     }
