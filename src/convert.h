@@ -50,7 +50,13 @@ int convertToCandidate(struct raft *r, bool disrupt_leader);
  *   The leader maintains a nextIndex for each follower, which is the index
  *   of the next log entry the leader will send to that follower. When a
  *   leader first comes to power, it initializes all nextIndex values to the
- *   index just after the last one in its log. */
+ *   index just after the last one in its log.
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     Memory for the progress array or for the initial no-op entry could
+ *     not be allocated.
+ */
 int convertToLeader(struct raft *r);
 
 void convertToUnavailable(struct raft *r);
