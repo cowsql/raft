@@ -79,9 +79,9 @@ void electionStart(struct raft *r);
  *     up-to-date as receiver's log, grant vote.
  *
  * The outcome of the decision is stored through the @granted pointer. */
-int electionVote(struct raft *r,
-                 const struct raft_request_vote *args,
-                 bool *granted);
+void electionVote(struct raft *r,
+                  const struct raft_request_vote *args,
+                  bool *granted);
 
 /* Update the votes array by adding the vote from the server at the given
  * index. Return true if with this vote the server has reached the majority of

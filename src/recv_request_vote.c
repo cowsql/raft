@@ -105,10 +105,7 @@ int recvRequestVote(struct raft *r,
         assert(r->current_term == args->term);
     }
 
-    rv = electionVote(r, args, &result->vote_granted);
-    if (rv != 0) {
-        return rv;
-    }
+    electionVote(r, args, &result->vote_granted);
 
 reply:
     result->term = r->current_term;

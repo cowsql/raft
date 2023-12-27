@@ -180,9 +180,9 @@ void electionStart(struct raft *r)
     }
 }
 
-int electionVote(struct raft *r,
-                 const struct raft_request_vote *args,
-                 bool *granted)
+void electionVote(struct raft *r,
+                  const struct raft_request_vote *args,
+                  bool *granted)
 {
     const struct raft_server *local_server;
     raft_index local_last_index;
@@ -199,7 +199,7 @@ int electionVote(struct raft *r,
 
     if (local_server == NULL || local_server->role != RAFT_VOTER) {
         infof("local server is not voting -> don't grant vote");
-        return 0;
+        return;
     }
 
     is_transferee =
@@ -208,7 +208,7 @@ int electionVote(struct raft *r,
         r->voted_for != args->candidate_id && !is_transferee) {
         infof("already voted for server %llu -> don't grant vote",
               r->voted_for);
-        return 0;
+        return;
     }
 
     /* Raft Dissertation 9.6:
@@ -240,7 +240,7 @@ int electionVote(struct raft *r,
         infof("remote log older (%llu^%llu vs %llu^%llu) -> don't grant vote",
               args->last_log_index, args->last_log_term, local_last_index,
               local_last_term);
-        return 0;
+        return;
     }
 
     if (args->last_log_term > local_last_term) {
@@ -269,7 +269,7 @@ int electionVote(struct raft *r,
           args->last_log_index, args->last_log_term, local_last_index,
           local_last_term);
 
-    return 0;
+    return;
 
 grant_vote:
     if (!args->pre_vote) {
@@ -284,8 +284,6 @@ grant_vote:
     }
 
     *granted = true;
-
-    return 0;
 }
 
 bool electionTally(struct raft *r,
