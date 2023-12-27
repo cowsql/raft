@@ -121,13 +121,18 @@ int recvRequestVoteResult(struct raft *r,
      *   it becomes leader.
      */
     if (result->vote_granted) {
-        if (electionTally(r, votes_index)) {
+        unsigned votes;
+        unsigned n_voters;
+        if (electionTally(r, votes_index, &votes, &n_voters)) {
             if (r->candidate_state.in_pre_vote) {
-                tracef("votes quorum reached -> pre-vote successful");
+                infof("votes quorum reached -> pre-vote successful");
                 r->candidate_state.in_pre_vote = false;
                 electionStart(r);
             } else {
-                infof("votes quorum reached -> convert to leader");
+                infof(
+                    "quorum reached with %u votes out of %u -> convert to "
+                    "leader",
+                    votes, n_voters);
                 rv = convertToLeader(r);
                 if (rv != 0) {
                     return rv;
@@ -136,10 +141,11 @@ int recvRequestVoteResult(struct raft *r,
                 replicationHeartbeat(r);
             }
         } else {
-            tracef("votes quorum not reached");
+            infof("quorum not reached, only %u votes out of %u", votes,
+                  n_voters);
         }
     } else {
-        tracef("vote was not granted");
+        infof("vote not granted");
     }
 
     return 0;

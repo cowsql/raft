@@ -85,7 +85,13 @@ int electionVote(struct raft *r,
 
 /* Update the votes array by adding the vote from the server at the given
  * index. Return true if with this vote the server has reached the majority of
- * votes and won elections. */
-bool electionTally(struct raft *r, size_t voter_index);
+ * votes and won elections.
+ *
+ * The 'votes' and 'n_voters' output parameters indicate how many votes the
+ * server has and how many voters are there. */
+bool electionTally(struct raft *r,
+                   size_t voter_index,
+                   unsigned *votes,
+                   unsigned *n_voters);
 
 #endif /* ELECTION_H_ */

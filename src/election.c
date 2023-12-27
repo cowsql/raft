@@ -291,25 +291,31 @@ grant_vote:
     return 0;
 }
 
-bool electionTally(struct raft *r, size_t voter_index)
+bool electionTally(struct raft *r,
+                   size_t voter_index,
+                   unsigned *votes,
+                   unsigned *n_voters)
 {
-    size_t n_voters = configurationVoterCount(&r->configuration);
-    size_t votes = 0;
+    size_t half;
     size_t i;
-    size_t half = n_voters / 2;
+
+    *n_voters = configurationVoterCount(&r->configuration);
+    *votes = 0;
+
+    half = *n_voters / 2;
 
     assert(r->state == RAFT_CANDIDATE);
     assert(r->candidate_state.votes != NULL);
 
     r->candidate_state.votes[voter_index] = true;
 
-    for (i = 0; i < n_voters; i++) {
+    for (i = 0; i < *n_voters; i++) {
         if (r->candidate_state.votes[i]) {
-            votes++;
+            *votes += 1;
         }
     }
 
-    return votes >= half + 1;
+    return *votes >= half + 1;
 }
 
 #undef infof
