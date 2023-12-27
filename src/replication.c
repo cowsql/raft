@@ -435,6 +435,8 @@ int replicationPersistEntriesDone(struct raft *r,
 {
     int rv;
 
+    assert(n > 0);
+
     switch (r->state) {
         case RAFT_LEADER:
             rv = leaderPersistEntriesDone(r, index, entries, n, status);
@@ -666,6 +668,10 @@ static void sendAppendEntriesResult(
      */
     if (r->follower_state.current_leader.address == NULL) {
         return;
+    }
+
+    if (result->rejected == 0) {
+        infof("send success result to %llu", id);
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
@@ -939,6 +945,7 @@ int replicationAppend(struct raft *r,
     }
 
     if (n == 0) {
+        infof("no new entries to persist");
         return 0;
     }
 
@@ -963,9 +970,19 @@ int replicationAppend(struct raft *r,
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
 
+    if (n_entries == 1) {
+        infof("start persisting 1 new entry (%llu^%llu)", index,
+              entries[0].term);
+    } else {
+        infof("start persisting %u new entries (%llu^%llu..%llu^%llu)",
+              n_entries, index, entries[0].term, index + n_entries - 1,
+              entries[n_entries - 1].term);
+    }
+
     persistEntries(r, index, entries, n_entries);
 
     entryBatchesDestroy(args->entries, args->n_entries);
+
     return 0;
 
 err_after_log_append:

@@ -10,9 +10,8 @@
 #include "replication.h"
 #include "tracing.h"
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
-
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Apply time-dependent rules for followers (Figure 3.1). */
 static int tickFollower(struct raft *r)
@@ -46,6 +45,7 @@ static int tickFollower(struct raft *r)
      *   current leader or granting vote to candidate, convert to candidate.
      */
     if (electionTimerExpired(r)) {
+        const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
             goto out;
         }
@@ -54,8 +54,8 @@ static int tickFollower(struct raft *r)
             electionResetTimer(r);
             goto out;
         }
-        infof("convert to candidate and start new election for term %llu",
-              r->current_term + 1);
+        infof("convert to candidate, start %selection for term %llu",
+              pre_vote_text, r->current_term + 1);
         rv = convertToCandidate(r, false /* disrupt leader */);
         if (rv != 0) {
             tracef("convert to candidate: %s", raft_strerror(rv));
@@ -84,7 +84,7 @@ static int tickCandidate(struct raft *r)
      *   incrementing its term and initiating another round of RequestVote RPCs
      */
     if (electionTimerExpired(r)) {
-        infof("stay candidate and start new election for term %llu",
+        infof("stay candidate, start election for term %llu",
               r->current_term + 1);
         electionStart(r);
     }
@@ -255,4 +255,5 @@ err:
     convertToUnavailable(r);
 }
 
+#undef infof
 #undef tracef
