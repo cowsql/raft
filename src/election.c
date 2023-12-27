@@ -108,6 +108,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 
@@ -172,8 +173,9 @@ void electionStart(struct raft *r)
         rv = electionSend(r, server);
         if (rv != 0) {
             /* This is not a critical failure, let's just log it. */
-            tracef("failed to send vote request to server %llu: %s", server->id,
-                   raft_strerror(rv));
+            assert(rv == RAFT_NOMEM);
+            infof("can't send vote request to server %llu: %s", server->id,
+                  raft_strerror(rv));
         }
     }
 }
