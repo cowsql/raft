@@ -5,6 +5,11 @@
 
 #include "../include/raft.h"
 
+/* This function must be called after the election timeout value has been
+ * changed and the server is in follower or candidate state. It generates a new
+ * value of the randomized election timeout. */
+void electionUpdateRandomizedTimeout(struct raft *r);
+
 /* Reset the election_timer clock and set randomized_election_timeout to a
  * random value between election_timeout and 2 * election_timeout.
  *

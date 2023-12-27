@@ -512,6 +512,13 @@ void raft_set_election_timeout(struct raft *r, const unsigned msecs)
         r->election_timeout *= 3;
         r->heartbeat_timeout *= 3;
     }
+
+    switch (r->state) {
+        case RAFT_FOLLOWER:
+        case RAFT_CANDIDATE:
+            electionUpdateRandomizedTimeout(r);
+            break;
+    }
 }
 
 void raft_set_heartbeat_timeout(struct raft *r, const unsigned msecs)

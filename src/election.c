@@ -33,7 +33,7 @@ struct followerOrCandidateState *getFollowerOrCandidateState(struct raft *r)
     return state;
 }
 
-void electionResetTimer(struct raft *r)
+void electionUpdateRandomizedTimeout(struct raft *r)
 {
     struct followerOrCandidateState *state = getFollowerOrCandidateState(r);
     unsigned timeout = RandomWithinRange(&r->random, r->election_timeout,
@@ -41,6 +41,11 @@ void electionResetTimer(struct raft *r)
     assert(timeout >= r->election_timeout);
     assert(timeout <= r->election_timeout * 2);
     state->randomized_election_timeout = timeout;
+}
+
+void electionResetTimer(struct raft *r)
+{
+    electionUpdateRandomizedTimeout(r);
     r->election_timer_start = r->now;
     r->update->flags |= RAFT_UPDATE_TIMEOUT;
 }
