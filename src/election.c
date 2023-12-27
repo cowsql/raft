@@ -185,6 +185,8 @@ void electionVote(struct raft *r,
                   bool *granted)
 {
     const struct raft_server *local_server;
+    const char *grant_text;
+    const char *deny_text;
     raft_index local_last_index;
     raft_term local_last_term;
 
@@ -196,15 +198,22 @@ void electionVote(struct raft *r,
 
     *granted = false;
 
+    if (args->pre_vote) {
+        grant_text = "pre-vote ok";
+        deny_text = "deny pre-vote";
+    } else {
+        grant_text = "grant vote";
+        deny_text = "don't grant vote";
+    }
+
     if (local_server == NULL || local_server->role != RAFT_VOTER) {
-        infof("local server is not voting -> don't grant vote");
+        infof("local server is not voting -> %s", deny_text);
         return;
     }
 
     if (!args->pre_vote && r->voted_for != 0 &&
         r->voted_for != args->candidate_id) {
-        infof("already voted for server %llu -> don't grant vote",
-              r->voted_for);
+        infof("already voted for server %llu -> %s", r->voted_for, deny_text);
         return;
     }
 
@@ -225,26 +234,29 @@ void electionVote(struct raft *r,
 
     /* Our log is definitely not more up-to-date if it's empty! */
     if (local_last_index == 0) {
-        tracef("local log is empty -> granting vote");
+        infof("local log is empty -> %s", grant_text);
         goto grant_vote;
     }
 
     local_last_term = logLastTerm(r->log);
 
+    /* If the term of the last entry of the requesting server's log is lower
+     * than the term of the last entry of our log, then our log is more
+     * up-to-date and we don't grant the vote. */
     if (args->last_log_term < local_last_term) {
-        /* The requesting server has last entry's log term lower than ours. */
-        infof("remote log older (%llu^%llu vs %llu^%llu) -> don't grant vote",
+        infof("remote log older (%llu^%llu vs %llu^%llu) -> %s",
               args->last_log_index, args->last_log_term, local_last_index,
-              local_last_term);
+              local_last_term, deny_text);
         return;
     }
 
-    if (args->last_log_term > local_last_term) {
-        /* The requesting server has a more up-to-date log. */
-        tracef(
-            "remote last entry %llu has term %llu higher than %llu -> "
-            "granting vote",
-            args->last_log_index, args->last_log_term, local_last_term);
+    /* If the term of the last entry of our log is lower than the term of the
+     * last entry of the requesting server's log, then the requesting server's
+     * log is more up-to-date and we grant our vote. */
+    if (local_last_term < args->last_log_term) {
+        infof("local log older (%llu^%llu vs %llu^%llu) -> %s",
+              local_last_index, local_last_term, args->last_log_index,
+              args->last_log_term, grant_text);
         goto grant_vote;
     }
 
@@ -254,16 +266,15 @@ void electionVote(struct raft *r,
 
     if (local_last_index <= args->last_log_index) {
         /* Our log is shorter or equal to the one of the requester. */
-        const char *grant_text = args->pre_vote ? "pre-vote ok" : "grant vote";
         infof("remote log equal or longer (%llu^%llu vs %llu^%llu) -> %s",
               args->last_log_index, args->last_log_term, local_last_index,
               local_last_term, grant_text);
         goto grant_vote;
     }
 
-    infof("remote log shorter (%llu^%llu vs %llu^%llu) -> don't grant vote",
+    infof("remote log shorter (%llu^%llu vs %llu^%llu) -> %s",
           args->last_log_index, args->last_log_term, local_last_index,
-          local_last_term);
+          local_last_term, deny_text);
 
     return;
 
