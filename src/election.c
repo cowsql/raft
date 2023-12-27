@@ -84,7 +84,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     /* Fill the RequestVote message.
      *
      * Note that we set last_log_index and last_log_term to the index and term
-     * of the last persisted entry, to the last entry in our in-memory log
+     * of the last persisted entry, not to the last entry in our in-memory log
      * cache, because we must advertise only log entries that can't be lost at
      * restart.
      *
