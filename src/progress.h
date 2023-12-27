@@ -33,7 +33,13 @@ struct raft_progress
 
 /* Create and initialize the array of progress objects used by the leader to
  * track followers. The match index will be set to zero, and the next index to
- * the current last index plus 1. */
+ * the current last index plus 1.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     Memory for the progress array could not be allocated.
+ */
 int progressBuildArray(struct raft *r);
 
 /* Re-build the progress array against a new configuration.
