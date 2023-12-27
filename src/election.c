@@ -187,7 +187,6 @@ void electionVote(struct raft *r,
     const struct raft_server *local_server;
     raft_index local_last_index;
     raft_term local_last_term;
-    bool is_transferee; /* Requester is the target of a leadership transfer */
 
     assert(r != NULL);
     assert(args != NULL);
@@ -202,10 +201,8 @@ void electionVote(struct raft *r,
         return;
     }
 
-    is_transferee =
-        r->transfer != NULL && r->transfer->id == args->candidate_id;
     if (!args->pre_vote && r->voted_for != 0 &&
-        r->voted_for != args->candidate_id && !is_transferee) {
+        r->voted_for != args->candidate_id) {
         infof("already voted for server %llu -> don't grant vote",
               r->voted_for);
         return;
