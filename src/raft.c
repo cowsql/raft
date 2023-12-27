@@ -480,6 +480,8 @@ int raft_step(struct raft *r,
             rv = Tick(r);
             break;
         case RAFT_SUBMIT:
+            infof("submit %u new client entr%s", event->submit.n,
+                  event->submit.n == 1 ? "y" : "ies");
             rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
         case RAFT_CATCH_UP:
@@ -564,6 +566,7 @@ int raft_catch_up(struct raft *r, raft_id id, int *status)
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
+
     /* FIXME: workaround for failures in the dqlite test suite, which sets
      * timeouts too low and end up in failures when run on slow harder. */
     if (r->io != NULL && r->election_timeout == 150 &&

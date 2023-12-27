@@ -25,11 +25,6 @@ int recvRequestVoteResult(struct raft *r,
     assert(r != NULL);
     assert(id > 0);
 
-    tracef(
-        "self:%llu from:%llu@%s term:%llu vote_granted:%d pre_vote:%d "
-        "version:%d",
-        r->id, id, address, result->term, result->vote_granted,
-        result->pre_vote, result->version);
     votes_index = configurationIndexOfVoter(&r->configuration, id);
     if (votes_index == r->configuration.n) {
         tracef("non-voting or unknown server -> reject");
@@ -38,7 +33,8 @@ int recvRequestVoteResult(struct raft *r,
 
     /* Ignore responses if we are not candidate anymore */
     if (r->state != RAFT_CANDIDATE) {
-        tracef("local server is not candidate -> ignore");
+        assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+        infof("local server is %s -> ignore", raft_state_name(r->state));
         return 0;
     }
 
@@ -65,14 +61,15 @@ int recvRequestVoteResult(struct raft *r,
         /* If the term in the result is older than ours, this is an old message
          * we should ignore, because the node who voted for us would have
          * obtained our term.  This happens if the network is pretty choppy. */
-        tracef("local term is higher -> ignore");
+        infof("remote term is lower (%llu vs %llu) -> ignore", result->term,
+              r->current_term);
         return 0;
     }
 
     /* Avoid counting pre-vote votes as regular votes. */
     if (result->version > 1 && result->pre_vote &&
         !r->candidate_state.in_pre_vote) {
-        tracef("receive stale pre-vote response -> ignore");
+        infof("receive stale pre-vote response -> ignore");
         return 0;
     }
 

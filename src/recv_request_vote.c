@@ -7,6 +7,7 @@
 #include "replication.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvRequestVote(struct raft *r,
@@ -24,12 +25,6 @@ int recvRequestVote(struct raft *r,
     assert(id > 0);
     assert(args != NULL);
 
-    tracef(
-        "self:%llu from:%llu@%s candidate_id:%llu disrupt_leader:%d "
-        "last_log_index:%llu "
-        "last_log_term:%llu pre_vote:%d term:%llu",
-        r->id, id, address, args->candidate_id, args->disrupt_leader,
-        args->last_log_index, args->last_log_term, args->pre_vote, args->term);
     result->vote_granted = false;
     result->pre_vote = args->pre_vote;
     result->version = RAFT_REQUEST_VOTE_RESULT_VERSION;
@@ -57,7 +52,13 @@ int recvRequestVote(struct raft *r,
         r->state == RAFT_LEADER ||
         (r->state == RAFT_FOLLOWER && r->follower_state.current_leader.id != 0);
     if (has_leader && !args->disrupt_leader) {
-        tracef("local server has a leader -> reject ");
+        if (r->state == RAFT_LEADER) {
+            infof("local server is leader -> reject");
+        } else {
+            assert(r->state == RAFT_FOLLOWER);
+            infof("local server has a leader (server %llu) -> reject",
+                  r->follower_state.current_leader.id);
+        }
         goto reply;
     }
 
@@ -90,7 +91,8 @@ int recvRequestVote(struct raft *r,
      *
      */
     if (match < 0) {
-        tracef("local term is higher -> reject ");
+        infof("remote term is lower (%llu vs %llu) -> reject", args->term,
+              r->current_term);
         goto reply;
     }
 
@@ -134,4 +136,5 @@ reply:
     return 0;
 }
 
+#undef infof
 #undef tracef
