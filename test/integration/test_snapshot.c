@@ -187,7 +187,7 @@ TEST(snapshot,
     (void)params;
 
     /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
+    SET_SNAPSHOT_THRESHOLD(4);
     SET_SNAPSHOT_TRAILING(1);
     SET_SNAPSHOT_TIMEOUT(200);
 
@@ -231,7 +231,7 @@ TEST(snapshot,
     (void)params;
 
     /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
+    SET_SNAPSHOT_THRESHOLD(4);
     SET_SNAPSHOT_TRAILING(1);
     SET_SNAPSHOT_TIMEOUT(200);
 
