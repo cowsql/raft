@@ -116,7 +116,6 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 
 void electionStart(struct raft *r)
 {
-    raft_term term;
     size_t n_voters;
     size_t voting_index;
     size_t i;
@@ -138,18 +137,15 @@ void electionStart(struct raft *r)
 
     /* During pre-vote we don't increment our term, or reset our vote. Resetting
      * our vote could lead to double-voting if we were to receive a RequestVote
-     * RPC during our Candidate state while we already voted for a server during
-     * the term. */
+     * RPC during our Candidate state, while we actually already voted for a
+     * server during the term. */
     if (!r->candidate_state.in_pre_vote) {
         /* Increment current term and vote for self */
-        term = r->current_term + 1;
+        r->current_term += 1;
+        r->voted_for = r->id;
 
         /* Mark both the current term and vote as changed. */
         r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
-
-        /* Update our cache too. */
-        r->current_term = term;
-        r->voted_for = r->id;
     }
 
     /* Reset election timer. */
