@@ -294,7 +294,7 @@ grant_vote:
 }
 
 bool electionTally(struct raft *r,
-                   size_t voter_index,
+                   const size_t voter_index,
                    unsigned *votes,
                    unsigned *n_voters)
 {
