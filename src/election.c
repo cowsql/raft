@@ -143,7 +143,6 @@ void electionStart(struct raft *r)
     if (!r->candidate_state.in_pre_vote) {
         /* Increment current term and vote for self */
         term = r->current_term + 1;
-        tracef("beginning of term %llu", term);
 
         /* Mark both the current term and vote as changed. */
         r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;

@@ -21,7 +21,6 @@ static void convertSetState(struct raft *r, unsigned short new_state)
     /* Check that the transition is legal, see Figure 3.3. Note that with
      * respect to the paper we have an additional "unavailable" state, which is
      * the initial or final state. */
-    tracef("old_state:%u new_state:%u", r->state, new_state);
     assert(r->state != new_state);
     assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
            (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
@@ -38,7 +37,6 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 /* Clear follower state. */
 static void convertClearFollower(struct raft *r)
 {
-    tracef("clear follower state");
     r->follower_state.current_leader.id = 0;
     if (r->follower_state.current_leader.address != NULL) {
         raft_free(r->follower_state.current_leader.address);
@@ -49,7 +47,6 @@ static void convertClearFollower(struct raft *r)
 /* Clear candidate state. */
 static void convertClearCandidate(struct raft *r)
 {
-    tracef("clear candidate state");
     if (r->candidate_state.votes != NULL) {
         raft_free(r->candidate_state.votes);
         r->candidate_state.votes = NULL;
@@ -59,7 +56,6 @@ static void convertClearCandidate(struct raft *r)
 /* Clear leader state. */
 static void convertClearLeader(struct raft *r)
 {
-    tracef("clear leader state");
     if (r->leader_state.progress != NULL) {
         raft_free(r->leader_state.progress);
         r->leader_state.progress = NULL;
