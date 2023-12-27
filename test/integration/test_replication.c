@@ -729,7 +729,7 @@ TEST(replication, recvRollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
                          1 /* conf index                                    */,
                          5 /* x                                             */,
                          0 /* y                                             */);
-    CLUSTER_SET_TERM(1, 1);
+    CLUSTER_SET_TERM(1, 3);
 
     /* Both servers have an entry at index 2, but with conflicting terms. The
      * entry of the second server is a configuration change and gets appended to

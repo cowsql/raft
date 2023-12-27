@@ -130,7 +130,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
     sprintf(msg, "remote term is higher (%lld vs %lld) -> bump term", term,
             r->current_term);
     if (r->state != RAFT_FOLLOWER) {
-        strcat(msg, " and step down");
+        strcat(msg, ", step down");
     }
     infof("%s", msg);
 

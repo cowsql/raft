@@ -208,30 +208,56 @@ static int maybeSelfElect(struct raft *r)
 /* Emit a start message containing information about the current state. */
 static void stepStartEmitMessage(struct raft *r)
 {
-    char msg[512];
+    char msg[512] = {0};
+    raft_index snapshot_index = logSnapshotIndex(r->log);
+    unsigned n_entries = (unsigned)logNumEntries(r->log);
 
-    sprintf(msg, "term %llu, vote %llu, ", r->current_term, r->voted_for);
+    if (r->current_term == 0) {
+        strcat(msg, "no state");
+        goto emit;
+    }
+
+    if (r->current_term > 0) {
+        char msg_term[64];
+        sprintf(msg_term, "term %llu", r->current_term);
+        strcat(msg, msg_term);
+        if (snapshot_index > 0 || n_entries > 0) {
+            strcat(msg, ", ");
+        }
+    }
+
+    if (r->voted_for > 0) {
+        char msg_vote[64];
+        sprintf(msg_vote, "voted for %llu, ", r->voted_for);
+        strcat(msg, msg_vote);
+    }
 
     if (logSnapshotIndex(r->log) > 0) {
         char msg_snapshot[64];
-        sprintf(msg_snapshot, "snapshot %llu.%llu, ", logSnapshotIndex(r->log),
-                logSnapshotTerm(r->log));
+        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)",
+                logSnapshotIndex(r->log), logSnapshotTerm(r->log));
         strcat(msg, msg_snapshot);
-    } else {
-        strcat(msg, "no snapshot, ");
+        if (n_entries > 0) {
+            strcat(msg, ", ");
+        }
     }
 
-    if (logNumEntries(r->log)) {
+    if (n_entries > 0) {
         char msg_entries[64];
         raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
-        raft_index last = logLastIndex(r->log);
-        sprintf(msg_entries, "entries %llu.%llu to %llu.%llu", first,
-                logTermOf(r->log, first), last, logTermOf(r->log, last));
+        if (n_entries == 1) {
+            sprintf(msg_entries, "1 entry (%llu^%llu)", first,
+                    logTermOf(r->log, first));
+        } else {
+            raft_index last = logLastIndex(r->log);
+            sprintf(msg_entries, "%u entries (%llu^%llu..%llu^%llu)", n_entries,
+                    first, logTermOf(r->log, first), last,
+                    logTermOf(r->log, last));
+        }
         strcat(msg, msg_entries);
-    } else {
-        strcat(msg, "no entries");
     }
 
+emit:
     infof("%s", msg);
 }
 
@@ -250,6 +276,13 @@ static int stepStart(struct raft *r,
 
     r->current_term = term;
     r->voted_for = voted_for;
+
+    /* If no term is set, there must be no persisted state. */
+    if (r->current_term == 0) {
+        assert(r->voted_for == 0);
+        assert(metadata == NULL);
+        assert(n_entries == 0);
+    }
 
     if (metadata != NULL) {
         snapshot_index = metadata->index;
@@ -295,6 +328,32 @@ static int stepStart(struct raft *r,
     }
 
     return 0;
+}
+
+static int stepPersistedEntries(struct raft *r,
+                                raft_index index,
+                                struct raft_entry *entries,
+                                unsigned n,
+                                int status)
+{
+    raft_index last_stored = r->last_stored + n;
+    raft_index last_index = logLastIndex(r->log);
+    int rv;
+
+    assert(n > 0);
+    assert(last_stored > 0);
+    assert(last_index > 0);
+
+    if (n == 1) {
+        infof("persisted 1 entry (%llu^%llu)", index, entries[0].term);
+    } else {
+        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, index,
+              entries[0].term, index + n - 1, entries[n - 1].term);
+    }
+
+    rv = replicationPersistEntriesDone(r, index, entries, n, status);
+
+    return rv;
 }
 
 /* Handle the completion of a send message operation. */
@@ -388,10 +447,10 @@ int raft_step(struct raft *r,
             rv = 0;
             break;
         case RAFT_PERSISTED_ENTRIES:
-            rv = replicationPersistEntriesDone(
-                r, event->persisted_entries.index,
-                event->persisted_entries.batch, event->persisted_entries.n,
-                event->persisted_entries.status);
+            rv = stepPersistedEntries(r, event->persisted_entries.index,
+                                      event->persisted_entries.batch,
+                                      event->persisted_entries.n,
+                                      event->persisted_entries.status);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
             rv = replicationPersistSnapshotDone(
@@ -421,6 +480,8 @@ int raft_step(struct raft *r,
             rv = Tick(r);
             break;
         case RAFT_SUBMIT:
+            infof("submit %u new client entr%s", event->submit.n,
+                  event->submit.n == 1 ? "y" : "ies");
             rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
         case RAFT_CATCH_UP:
@@ -505,12 +566,20 @@ int raft_catch_up(struct raft *r, raft_id id, int *status)
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
+
     /* FIXME: workaround for failures in the dqlite test suite, which sets
      * timeouts too low and end up in failures when run on slow harder. */
     if (r->io != NULL && r->election_timeout == 150 &&
         r->heartbeat_timeout == 15) {
         r->election_timeout *= 3;
         r->heartbeat_timeout *= 3;
+    }
+
+    switch (r->state) {
+        case RAFT_FOLLOWER:
+        case RAFT_CANDIDATE:
+            electionUpdateRandomizedTimeout(r);
+            break;
     }
 }
 

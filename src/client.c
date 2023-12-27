@@ -72,8 +72,12 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     /* Index of the first entry being appended. */
     index = logLastIndex(r->log) + 1;
 
-    infof("persist %u entries with first index %lld at term %lld", n, index,
-          entries[0].term);
+    if (n == 1) {
+        infof("replicate 1 new entry (%llu^%llu)", index, entries[0].term);
+    } else {
+        infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
+              entries[0].term, index + n - 1, entries[n - 1].term);
+    }
 
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];

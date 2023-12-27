@@ -250,7 +250,13 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     struct test_cluster *cluster;
     const struct raft_tracer_info *info = data;
     char trace[1024];
-    const char *state;
+
+    server = t->impl;
+    cluster = server->cluster;
+
+    if (cluster->in_tear_down) {
+        return;
+    }
 
     if (type != RAFT_TRACER_DIAGNOSTIC) {
         return;
@@ -260,30 +266,8 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
         return;
     }
 
-    server = t->impl;
-    cluster = server->cluster;
-
-    switch (raft_state(&server->raft)) {
-        case RAFT_FOLLOWER:
-            state = "F";
-            break;
-        case RAFT_CANDIDATE:
-            state = "C";
-            break;
-        case RAFT_LEADER:
-            state = "L";
-            break;
-        case RAFT_UNAVAILABLE:
-            state = "U";
-            break;
-        default:
-            state = NULL;
-            munit_assert(0);
-            break;
-    }
-
     if (info->diagnostic.message[0] == '>') {
-        snprintf(trace, sizeof trace, "%4lld %s %llu %s", cluster->time, state,
+        snprintf(trace, sizeof trace, "[%4lld] %llu %s", cluster->time,
                  server->raft.id, info->diagnostic.message);
     } else {
         snprintf(trace, sizeof trace, "         %s", info->diagnostic.message);
@@ -293,12 +277,35 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     fprintf(stderr, "%s\n", trace);
 }
 
+static void serverSeed(struct test_server *s);
+
+/* Set the election timeout and the randomized election timeout (timeout +
+ * delta). */
+static void serverSetElectionTimeout(struct test_server *s,
+                                     unsigned timeout,
+                                     unsigned delta)
+{
+    munit_assert_uint(delta, <=, timeout);
+
+    s->randomized_election_timeout = timeout;
+    s->randomized_election_timeout += delta;
+
+    s->raft.election_timeout = timeout;
+    serverSeed(s);
+
+    raft_set_election_timeout(&s->raft, timeout);
+
+    /* The current timeout might have changed now. */
+    s->timeout = raft_timeout(&s->raft);
+}
+
 /* Initialize a new server object. */
 static void serverInit(struct test_server *s,
                        raft_id id,
                        struct test_cluster *cluster)
 {
     char address[64];
+    unsigned delta;
     int rv;
 
     diskInit(&s->disk);
@@ -306,6 +313,7 @@ static void serverInit(struct test_server *s,
     s->tracer.impl = s;
     s->tracer.version = 2;
     s->tracer.trace = serverTrace;
+    s->randomized_election_timeout_prev = 0;
 
     sprintf(address, "%llu", id);
 
@@ -314,17 +322,36 @@ static void serverInit(struct test_server *s,
 
     s->raft.tracer = &s->tracer;
 
-    raft_set_election_timeout(&s->raft, DEFAULT_ELECTION_TIMEOUT);
+    /* By default servers have their randomized timeout increasing
+     * progressively, so they timeout in order. */
+    switch (id) {
+        case 1:
+            delta = 0;
+            break;
+        case 2:
+            delta = 30;
+            break;
+        case 3:
+            delta = 60;
+            break;
+        case 4:
+            delta = 80;
+            break;
+        case 5:
+            delta = 90;
+            break;
+        default:
+            delta = 90 + (unsigned)id;
+            break;
+    }
+
+    serverSetElectionTimeout(s, DEFAULT_ELECTION_TIMEOUT, delta);
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
 
-    s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
+    s->cluster = cluster;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
-
-    s->randomized_election_timeout = DEFAULT_ELECTION_TIMEOUT;
-    s->randomized_election_timeout += (id - 1) * 10;
-    s->randomized_election_timeout_prev = 0;
 }
 
 /* Release all resources used by a server object. */
@@ -344,9 +371,9 @@ static void serverClose(struct test_server *s)
     diskClose(&s->disk);
 }
 
-/* Set the state of raft's internal pseudo random number generator so that the
- * next time RandomWithinRange() is run it will return the value configured by
- * the test server, which is stored in the randomized_election_timeout field. */
+/* Seed raft's internal pseudo random number generator so that the
+ * next time RandomWithinRange() is run it will return
+ * exactly the value stored in s->randomized_election_timeout. */
 static void serverSeed(struct test_server *s)
 {
     unsigned timeout = s->raft.election_timeout;
@@ -568,9 +595,10 @@ static void serverEnqueueTransmit(struct test_server *s,
     QUEUE_PUSH(&s->cluster->operations, &operation->queue);
 }
 
-static int serverCompleteEntries(struct test_server *s,
-                                 struct operation *operation)
+static void serverCompleteEntries(struct test_server *s,
+                                  struct operation *operation)
 {
+    struct raft_event event;
     unsigned i;
 
     /* Possibly truncate stale entries. */
@@ -580,7 +608,14 @@ static int serverCompleteEntries(struct test_server *s,
         diskPersistEntry(&s->disk, &operation->entries.batch[i]);
     }
 
-    return 0;
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_ENTRIES;
+    event.persisted_entries.index = operation->entries.index;
+    event.persisted_entries.n = operation->entries.n;
+    event.persisted_entries.batch = operation->entries.batch;
+    event.persisted_entries.status = 0;
+
+    serverStep(s, &event);
 }
 
 static void serverCompleteSend(struct test_server *s,
@@ -588,22 +623,26 @@ static void serverCompleteSend(struct test_server *s,
 {
     struct raft_event event;
     queue *head;
+    int status = 0;
 
     /* Check if there's a disconnection. */
     QUEUE_FOREACH (head, &s->cluster->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
         if (d->id1 == s->raft.id &&
             d->id2 == operation->send.message.server_id) {
-            return;
+            status = RAFT_NOCONNECTION;
+            break;
         }
     }
 
-    serverEnqueueTransmit(s, &operation->send.message);
+    if (status == 0) {
+        serverEnqueueTransmit(s, &operation->send.message);
+    }
 
     event.time = s->cluster->time;
     event.type = RAFT_SENT;
     event.sent.message = operation->send.message;
-    event.sent.status = 0;
+    event.sent.status = status;
 
     serverStep(s, &event);
 }
@@ -669,6 +708,7 @@ static void serverCompleteOperation(struct test_server *s,
     munit_assert_ulong(s->raft.id, ==, operation->id);
 
     s->cluster->time = operation->completion;
+
     QUEUE_REMOVE(&operation->queue);
     switch (operation->type) {
         case OPERATION_ENTRIES:
@@ -698,6 +738,7 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     }
 
     c->time = 0;
+    c->in_tear_down = false;
     QUEUE_INIT(&c->operations);
     QUEUE_INIT(&c->disconnect);
 }
@@ -740,6 +781,8 @@ void test_cluster_tear_down(struct test_cluster *c)
 {
     unsigned i;
 
+    c->in_tear_down = true;
+
     /* Drop pending operations */
     while (!QUEUE_IS_EMPTY(&c->operations)) {
         struct test_server *server;
@@ -764,6 +807,16 @@ void test_cluster_tear_down(struct test_cluster *c)
         }
         QUEUE_REMOVE(&operation->queue);
         free(operation);
+    }
+
+    /* Drop outstanding disconnections */
+    while (!QUEUE_IS_EMPTY(&c->disconnect)) {
+        struct disconnect *disconnect;
+        queue *head;
+        head = QUEUE_HEAD(&c->disconnect);
+        disconnect = QUEUE_DATA(head, struct disconnect, queue);
+        QUEUE_REMOVE(&disconnect->queue);
+        free(disconnect);
     }
 
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
@@ -802,10 +855,50 @@ void test_cluster_add_entry(struct test_cluster *c,
     diskAddEntry(&server->disk, entry);
 }
 
+void test_cluster_set_election_timeout(struct test_cluster *c,
+                                       raft_id id,
+                                       unsigned timeout,
+                                       unsigned delta)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    serverSetElectionTimeout(server, timeout, delta);
+}
+
+void test_cluster_set_network_latency(struct test_cluster *c,
+                                      raft_id id,
+                                      unsigned latency)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->network_latency = latency;
+}
+
+void test_cluster_set_disk_latency(struct test_cluster *c,
+                                   raft_id id,
+                                   unsigned latency)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->disk_latency = latency;
+}
+
 void test_cluster_start(struct test_cluster *c, raft_id id)
 {
     struct test_server *server = clusterGetServer(c, id);
     serverStart(server);
+}
+
+void test_cluster_submit(struct test_cluster *c,
+                         raft_id id,
+                         struct raft_entry *entry)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    struct raft_event event;
+
+    event.time = c->time;
+    event.type = RAFT_SUBMIT;
+    event.submit.n = 1;
+    event.submit.entries = entry;
+
+    serverStep(server, &event);
 }
 
 /* Update the PNRG seed of each server, to match the expected randomized
@@ -869,6 +962,33 @@ void test_cluster_step(struct test_cluster *c)
     }
 
     clusterSeed(c);
+}
+
+void test_cluster_disconnect(struct test_cluster *c, raft_id id1, raft_id id2)
+{
+    struct disconnect *disconnect = munit_malloc(sizeof *disconnect);
+    disconnect->id1 = id1;
+    disconnect->id2 = id2;
+    QUEUE_PUSH(&c->disconnect, &disconnect->queue);
+}
+
+void test_cluster_reconnect(struct test_cluster *c, raft_id id1, raft_id id2)
+{
+    queue *head;
+    QUEUE_FOREACH (head, &c->disconnect) {
+        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
+        if (d->id1 == id1 && d->id2 == id2) {
+            QUEUE_REMOVE(&d->queue);
+            free(d);
+            return;
+        }
+    }
+}
+
+void test_cluster_kill(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->running = false;
 }
 
 bool test_cluster_trace(struct test_cluster *c, const char *expected)

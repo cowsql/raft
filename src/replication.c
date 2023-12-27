@@ -109,9 +109,19 @@ static int sendAppendEntries(struct raft *r,
      */
     args->leader_commit = r->commit_index;
 
-    infof("%s server %llu sending %u entries with first index %llu",
-          progressStateName(r, i), server->id, args->n_entries,
-          args->prev_log_index + 1);
+    if (args->n_entries == 0) {
+        infof("%s server %llu sending a heartbeat with no entries",
+              progressStateName(r, i), server->id);
+    } else if (args->n_entries == 1) {
+        infof("%s server %llu sending 1 entry (%llu^%llu)",
+              progressStateName(r, i), server->id, next_index,
+              args->entries[0].term);
+    } else {
+        infof("%s server %llu sending %u entries (%llu.%llu..%llu.%llu)",
+              progressStateName(r, i), server->id, args->n_entries, next_index,
+              args->entries[0].term, next_index + args->n_entries - 1,
+              args->entries[args->n_entries - 1].term);
+    }
 
     message.type = RAFT_IO_APPEND_ENTRIES;
     message.server_id = server->id;
@@ -359,6 +369,8 @@ static size_t updateLastStored(struct raft *r,
     return i;
 }
 
+static void replicationQuorum(struct raft *r, const raft_index index);
+
 /* Invoked once a disk write request for new entries has been completed. */
 static int leaderPersistEntriesDone(struct raft *r,
                                     raft_index index,
@@ -422,6 +434,8 @@ int replicationPersistEntriesDone(struct raft *r,
                                   int status)
 {
     int rv;
+
+    assert(n > 0);
 
     switch (r->state) {
         case RAFT_LEADER:
@@ -654,6 +668,10 @@ static void sendAppendEntriesResult(
      */
     if (r->follower_state.current_leader.address == NULL) {
         return;
+    }
+
+    if (result->rejected == 0) {
+        infof("send success result to %llu", id);
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
@@ -927,6 +945,7 @@ int replicationAppend(struct raft *r,
     }
 
     if (n == 0) {
+        infof("no new entries to persist");
         return 0;
     }
 
@@ -951,9 +970,19 @@ int replicationAppend(struct raft *r,
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
 
+    if (n_entries == 1) {
+        infof("start persisting 1 new entry (%llu^%llu)", index,
+              entries[0].term);
+    } else {
+        infof("start persisting %u new entries (%llu^%llu..%llu^%llu)",
+              n_entries, index, entries[0].term, index + n_entries - 1,
+              entries[n_entries - 1].term);
+    }
+
     persistEntries(r, index, entries, n_entries);
 
     entryBatchesDestroy(args->entries, args->n_entries);
+
     return 0;
 
 err_after_log_append:
@@ -1172,33 +1201,12 @@ int replicationSnapshot(struct raft *r,
     return 0;
 }
 
-void replicationQuorum(struct raft *r, const raft_index index)
+static unsigned replicationCountVotes(struct raft *r, raft_index index)
 {
-    size_t votes = 0;
-    size_t i;
-    raft_term term;
+    unsigned votes;
+    unsigned i;
 
-    assert(r->state == RAFT_LEADER);
-
-    if (index <= r->commit_index) {
-        return;
-    }
-
-    term = logTermOf(r->log, index);
-
-    /* TODO: fuzzy-test --seed 0x8db5fccc replication/entries/partitioned
-     * fails the assertion below. */
-    if (term == 0) {
-        return;
-    }
-    // assert(logTermOf(r->log, index) > 0);
-    assert(!(term > r->current_term));
-
-    /* Don't commit entries from previous terms by counting replicas. */
-    if (term < r->current_term) {
-        return;
-    }
-
+    votes = 0;
     for (i = 0; i < r->configuration.n; i++) {
         struct raft_server *server = &r->configuration.servers[i];
         if (server->role != RAFT_VOTER) {
@@ -1209,13 +1217,77 @@ void replicationQuorum(struct raft *r, const raft_index index)
         }
     }
 
-    if (votes > configurationVoterCount(&r->configuration) / 2) {
-        r->commit_index = index;
-        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
-        tracef("new commit index %llu", r->commit_index);
+    return votes;
+}
+
+/* Check if a quorum has been reached for the given log index or some earlier
+ * index, and update the commit index accordingly if so.
+ *
+ * From Figure 3.1:
+ *
+ *   [Rules for servers] Leaders:
+ *
+ *   If there exists an N such that N > commitIndex, a majority of
+ *   matchIndex[i] >= N, and log[N].term == currentTerm: set commitIndex = N */
+static void replicationQuorum(struct raft *r, raft_index index)
+{
+    unsigned votes;
+    raft_term term;
+    unsigned n_voters;
+    raft_index uncommitted = 0; /* Lowest uncommitted entry in current term */
+    const char *suffix;
+
+    assert(r->state == RAFT_LEADER);
+    n_voters = configurationVoterCount(&r->configuration);
+
+    while (index > r->commit_index) {
+        term = logTermOf(r->log, index);
+
+        /* TODO: fuzzy-test --seed 0x8db5fccc replication/entries/partitioned
+         * fails the assertion below. */
+        if (term == 0) {
+            return;
+        }
+
+        // assert(logTermOf(r->log, index) > 0);
+        assert(term <= r->current_term);
+
+        /* Don't commit entries from previous terms by counting replicas. */
+        if (term < r->current_term) {
+            break;
+        }
+
+        votes = replicationCountVotes(r, index);
+
+        if (votes > n_voters / 2) {
+            unsigned n = (unsigned)(index - r->commit_index);
+            if (n == 1) {
+                infof("commit 1 new entry (%llu^%llu)", index, term);
+            } else {
+                infof("commit %u new entries (%llu^%llu..%llu^%llu)", n,
+                      r->commit_index + 1,
+                      logTermOf(r->log, r->commit_index + 1), index, term);
+            }
+            r->commit_index = index;
+            r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
+            return;
+        }
+
+        /* Try with the previous uncommitted index, if any. */
+        uncommitted = index;
+        index -= 1;
     }
 
-    return;
+    if (uncommitted != 0) {
+        if (votes == 1) {
+            suffix = "";
+        } else {
+            suffix = "s";
+        }
+        infof("next uncommitted entry (%llu^%llu) has %u vote%s out of %u",
+              uncommitted, logTermOf(r->log, uncommitted), votes, suffix,
+              n_voters);
+    }
 }
 
 inline bool replicationInstallSnapshotBusy(struct raft *r)

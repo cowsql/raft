@@ -1182,7 +1182,7 @@ RAFT_API int raft_start(struct raft *r);
  *   keeps split votes rates under 40% in all cases for reasonably sized
  *   clusters, and typically results in much lower rates.
  *
- * Note that the current random election timer will be reset and a new one timer
+ * Note that the current random election timer will be reset and a new one
  * will be generated.
  */
 RAFT_API void raft_set_election_timeout(struct raft *r, unsigned msecs);

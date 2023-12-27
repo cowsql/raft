@@ -11,6 +11,7 @@
 #include "replication.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvAppendEntries(struct raft *r,
@@ -28,11 +29,6 @@ int recvAppendEntries(struct raft *r,
     assert(id > 0);
     assert(args != NULL);
     assert(address != NULL);
-    tracef(
-        "self:%llu from:%llu@%s leader_commit:%llu n_entries:%d "
-        "prev_log_index:%llu prev_log_term:%llu, term:%llu",
-        r->id, id, address, args->leader_commit, args->n_entries,
-        args->prev_log_index, args->prev_log_term, args->term);
 
     result->rejected = args->prev_log_index;
     result->last_log_index = logLastIndex(r->log);
@@ -90,7 +86,7 @@ int recvAppendEntries(struct raft *r,
         /* The current term and the peer one must match, otherwise we would have
          * either rejected the request or stepped down to followers. */
         assert(match == 0);
-        tracef("discovered leader -> step down ");
+        infof("discovered leader (%llu) -> step down ", id);
         convertToFollower(r);
     }
 
@@ -152,4 +148,5 @@ reply:
     return 0;
 }
 
+#undef infof
 #undef tracef

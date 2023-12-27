@@ -5,6 +5,11 @@
 
 #include "../include/raft.h"
 
+/* This function must be called after the election timeout value has been
+ * changed and the server is in follower or candidate state. It generates a new
+ * value of the randomized election timeout. */
+void electionUpdateRandomizedTimeout(struct raft *r);
+
 /* Reset the election_timer clock and set randomized_election_timeout to a
  * random value between election_timeout and 2 * election_timeout.
  *
@@ -80,7 +85,13 @@ int electionVote(struct raft *r,
 
 /* Update the votes array by adding the vote from the server at the given
  * index. Return true if with this vote the server has reached the majority of
- * votes and won elections. */
-bool electionTally(struct raft *r, size_t voter_index);
+ * votes and won elections.
+ *
+ * The 'votes' and 'n_voters' output parameters indicate how many votes the
+ * server has and how many voters are there. */
+bool electionTally(struct raft *r,
+                   size_t voter_index,
+                   unsigned *votes,
+                   unsigned *n_voters);
 
 #endif /* ELECTION_H_ */
