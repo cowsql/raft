@@ -201,7 +201,7 @@ int electionVote(struct raft *r,
     *granted = false;
 
     if (local_server == NULL || local_server->role != RAFT_VOTER) {
-        tracef("local server is not voting -> not granting vote");
+        infof("local server is not voting -> don't grant vote");
         return 0;
     }
 
@@ -209,7 +209,8 @@ int electionVote(struct raft *r,
         r->transfer != NULL && r->transfer->id == args->candidate_id;
     if (!args->pre_vote && r->voted_for != 0 &&
         r->voted_for != args->candidate_id && !is_transferee) {
-        tracef("local server already voted -> not granting vote");
+        infof("already voted for server %llu -> don't grant vote",
+              r->voted_for);
         return 0;
     }
 
@@ -239,10 +240,9 @@ int electionVote(struct raft *r,
 
     if (args->last_log_term < local_last_term) {
         /* The requesting server has last entry's log term lower than ours. */
-        tracef(
-            "local last entry %llu has term %llu higher than %llu -> not "
-            "granting",
-            local_last_index, local_last_term, args->last_log_term);
+        infof("remote log older (%llu^%llu vs %llu^%llu) -> don't grant vote",
+              args->last_log_index, args->last_log_term, local_last_index,
+              local_last_term);
         return 0;
     }
 
@@ -261,14 +261,16 @@ int electionVote(struct raft *r,
 
     if (local_last_index <= args->last_log_index) {
         /* Our log is shorter or equal to the one of the requester. */
-        infof(
-            "remote log equal or longer (%llu.%llu vs %llu.%llu) -> grant vote",
-            args->last_log_index, args->last_log_term, local_last_index,
-            local_last_term);
+        const char *grant_text = args->pre_vote ? "pre-vote ok" : "grant vote";
+        infof("remote log equal or longer (%llu^%llu vs %llu^%llu) -> %s",
+              args->last_log_index, args->last_log_term, local_last_index,
+              local_last_term, grant_text);
         goto grant_vote;
     }
 
-    tracef("remote log shorter than local -> not granting vote");
+    infof("remote log shorter (%llu^%llu vs %llu^%llu) -> don't grant vote",
+          args->last_log_index, args->last_log_term, local_last_index,
+          local_last_term);
 
     return 0;
 
@@ -284,7 +286,6 @@ grant_vote:
         r->update->flags |= RAFT_UPDATE_TIMEOUT;
     }
 
-    tracef("vote granted to %llu", args->candidate_id);
     *granted = true;
 
     return 0;
