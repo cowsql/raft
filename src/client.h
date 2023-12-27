@@ -3,7 +3,20 @@
 
 #include "../include/raft.h"
 
-/* Submit the given entries and start replicating them. */
+/* Submit the given entries and start replicating them.
+ *
+ * Errors:
+ *
+ * RAFT_NOTLEADER
+ *     The server is not leader, or a leadership transfer is in progress.
+ *
+ * RAFT_MALFORMED
+ *     The submitted entry is of type RAFT_CHANGE, but the encoded configuration
+ *     is invalid.
+ *
+ * RAFT_NOMEM
+ *     Memory could not be allocated to store the new entry.
+ */
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n);
 
 /* Start catching-up the given server. */

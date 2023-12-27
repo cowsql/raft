@@ -26,6 +26,7 @@ static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
 
     rv = configurationDecode(&entry->buf, &configuration);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
         goto err;
     }
 
@@ -34,6 +35,7 @@ static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
     if (configuration.n != r->configuration.n) {
         rv = progressRebuildArray(r, &configuration);
         if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
             goto err_after_decode;
         }
     }
@@ -48,7 +50,7 @@ static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
 err_after_decode:
     configurationClose(&configuration);
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
     return rv;
 }
 
@@ -84,6 +86,9 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 
         rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
         if (rv != 0) {
+            /* This logAppend call can't fail with RAFT_BUSY, because these are
+             * brand new entries. */
+            assert(rv == RAFT_NOMEM);
             goto err_after_log_append;
         }
 
@@ -97,6 +102,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 
     rv = replicationTrigger(r, index);
     if (rv != 0) {
+        /* TODO: assert the possible error values */
         goto err_after_log_append;
     }
 
@@ -105,7 +111,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 err_after_log_append:
     logDiscard(r->log, index);
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM);
     return rv;
 }
 
