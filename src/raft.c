@@ -330,6 +330,32 @@ static int stepStart(struct raft *r,
     return 0;
 }
 
+static int stepPersistedEntries(struct raft *r,
+                                raft_index index,
+                                struct raft_entry *entries,
+                                unsigned n,
+                                int status)
+{
+    raft_index last_stored = r->last_stored + n;
+    raft_index last_index = logLastIndex(r->log);
+    int rv;
+
+    assert(n > 0);
+    assert(last_stored > 0);
+    assert(last_index > 0);
+
+    if (n == 1) {
+        infof("persisted 1 entry (%llu^%llu)", index, entries[0].term);
+    } else {
+        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, index,
+              entries[0].term, index + n - 1, entries[n - 1].term);
+    }
+
+    rv = replicationPersistEntriesDone(r, index, entries, n, status);
+
+    return rv;
+}
+
 /* Handle the completion of a send message operation. */
 static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
@@ -421,10 +447,10 @@ int raft_step(struct raft *r,
             rv = 0;
             break;
         case RAFT_PERSISTED_ENTRIES:
-            rv = replicationPersistEntriesDone(
-                r, event->persisted_entries.index,
-                event->persisted_entries.batch, event->persisted_entries.n,
-                event->persisted_entries.status);
+            rv = stepPersistedEntries(r, event->persisted_entries.index,
+                                      event->persisted_entries.batch,
+                                      event->persisted_entries.n,
+                                      event->persisted_entries.status);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
             rv = replicationPersistSnapshotDone(
