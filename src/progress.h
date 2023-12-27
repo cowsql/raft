@@ -48,7 +48,11 @@ int progressBuildArray(struct raft *r);
  * configuration will remain unchanged.
  *
  * Progress information for servers existing only in the new configuration will
- * be initialized as in progressBuildArray().*/
+ * be initialized as in progressBuildArray().
+ *
+ * RAFT_NOMEM
+ *     Memory for the progress array could not be allocated.
+ */
 int progressRebuildArray(struct raft *r,
                          const struct raft_configuration *configuration);
 
