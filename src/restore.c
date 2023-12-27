@@ -41,8 +41,6 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
         r->configuration_uncommitted_index = index;
     }
 
-    configurationTrace(r, &r->configuration,
-                       "restore most recent configuration");
     return 0;
 }
 
@@ -132,9 +130,6 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
     r->configuration_last_snapshot_index = metadata->configuration_index;
-
-    configurationTrace(r, &r->configuration,
-                       "configuration restore from snapshot");
 
     r->commit_index = metadata->index;
     r->last_applied = metadata->index;

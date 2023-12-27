@@ -147,7 +147,6 @@ int membershipUncommittedChange(struct raft *r,
 {
     struct raft_configuration configuration;
     int rv;
-    char msg[128];
 
     assert(r != NULL);
     assert(r->state == RAFT_FOLLOWER);
@@ -159,11 +158,6 @@ int membershipUncommittedChange(struct raft *r,
         tracef("failed to decode configuration at index:%llu", index);
         goto err;
     }
-
-    /* ignore errors */
-    snprintf(msg, sizeof(msg), "uncommitted config change at index:%llu",
-             index);
-    configurationTrace(r, &configuration, msg);
 
     raft_configuration_close(&r->configuration);
 
@@ -196,7 +190,6 @@ int membershipRollback(struct raft *r)
         return rv;
     }
 
-    configurationTrace(r, &r->configuration, "roll back config");
     r->configuration_uncommitted_index = 0;
     return 0;
 }
