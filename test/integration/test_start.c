@@ -60,27 +60,27 @@ static void tearDown(void *data)
 SUITE(raft_start)
 
 /* Start a server that has no persisted state whatsoever. */
-TEST_V1(raft_start, noState, setUp, tearDown, 0, NULL)
+TEST_V1(raft_start, NoState, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_START(1);
-    CLUSTER_TRACE("   0 U 1 > term 0, vote 0, no snapshot, no entries\n");
+    CLUSTER_TRACE("[   0] 1 > no state\n");
     munit_assert_int(raft_timeout(CLUSTER_RAFT(1)), ==, 100);
     return MUNIT_OK;
 }
 
 /* Start a server that has a persisted its term. */
-TEST_V1(raft_start, persistedTerm, setUp, tearDown, 0, NULL)
+TEST_V1(raft_start, PersistedTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
     CLUSTER_START(1 /* ID */);
-    CLUSTER_TRACE("   0 U 1 > term 1, vote 0, no snapshot, no entries\n");
+    CLUSTER_TRACE("[   0] 1 > term 1\n");
     return MUNIT_OK;
 }
 
 /* Start a server that has a persisted its term and has a snapshot. */
-TEST_V1(raft_start, persistedTermAndSnapshot, setUp, tearDown, 0, NULL)
+TEST_V1(raft_start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
@@ -91,20 +91,19 @@ TEST_V1(raft_start, persistedTermAndSnapshot, setUp, tearDown, 0, NULL)
                          2, /* N voting                                  */
                          1 /* conf index                                */);
     CLUSTER_START(1 /* ID */);
-    CLUSTER_TRACE("   0 U 1 > term 2, vote 0, snapshot 6.2, no entries\n");
+    CLUSTER_TRACE("[   0] 1 > term 2, 1 snapshot (6^2)\n");
     return MUNIT_OK;
 }
 
 /* Start a server that has a persisted its term and has the initial bootstrap
  * log entry. */
-TEST_V1(raft_start, persistedTermAndEntries, setUp, tearDown, 0, NULL)
+TEST_V1(raft_start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
     CLUSTER_START(1 /* ID */);
-    CLUSTER_TRACE(
-        "   0 U 1 > term 1, vote 0, no snapshot, entries 1.1 to 1.1\n");
+    CLUSTER_TRACE("[   0] 1 > term 1, 1 entry (1^1)\n");
     return MUNIT_OK;
 }
 
