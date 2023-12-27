@@ -5,7 +5,7 @@
 
 #include "../include/raft.h"
 
-/* Add the given message to the array of messages attached to next struct
+/* Add the given message to the array of messages attached to the struct
  * raft_update to be returned.
  *
  * Errors:
