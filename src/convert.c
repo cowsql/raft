@@ -12,6 +12,7 @@
 #include "request.h"
 #include "tracing.h"
 
+#define infof(...) Tracef(r->tracer, __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Convenience for setting a new state value and asserting that the transition
@@ -92,12 +93,17 @@ void convertToFollower(struct raft *r)
     r->follower_state.current_leader.address = NULL;
 }
 
-int convertToCandidate(struct raft *r, bool disrupt_leader)
+int convertToCandidate(struct raft *r, const bool disrupt_leader)
 {
     const struct raft_server *server;
     size_t n_voters = configurationVoterCount(&r->configuration);
 
     (void)server; /* Only used for assertions. */
+
+    /* Check that we're a voter in the current configuration. */
+    server = configurationGet(&r->configuration, r->id);
+    assert(server != NULL);
+    assert(server->role == RAFT_VOTER);
 
     convertClear(r);
     convertSetState(r, RAFT_CANDIDATE);
@@ -112,12 +118,8 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 
     /* Fast-forward to leader if we're the only voting server in the
      * configuration. */
-    server = configurationGet(&r->configuration, r->id);
-    assert(server != NULL);
-    assert(server->role == RAFT_VOTER);
-
     if (n_voters == 1) {
-        tracef("self elect and convert to leader");
+        infof("self elect and convert to leader");
         return convertToLeader(r);
     }
 
@@ -130,8 +132,6 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 int convertToLeader(struct raft *r)
 {
     int rv;
-
-    tracef("become leader for term %llu", r->current_term);
 
     convertClear(r);
     convertSetState(r, RAFT_LEADER);
@@ -202,4 +202,5 @@ void convertToUnavailable(struct raft *r)
     convertSetState(r, RAFT_UNAVAILABLE);
 }
 
+#undef infof
 #undef tracef

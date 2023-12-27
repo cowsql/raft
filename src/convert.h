@@ -23,7 +23,13 @@ void convertToFollower(struct raft *r);
  *   On conversion to candidate, start election
  *
  * If the disrupt_leader flag is true, the server will set the disrupt leader
- * flag of the RequestVote messages it sends.  */
+ * flag of the RequestVote messages it sends.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     Memory for the votes array could not be allocated.
+ */
 int convertToCandidate(struct raft *r, bool disrupt_leader);
 
 /* Convert from candidate to leader.
