@@ -967,13 +967,21 @@ void ioClose(struct raft_io *raft_io)
 }
 
 /* Custom emit tracer function which include the server ID. */
-static void emit(struct raft_tracer *t,
-                 const char *file,
-                 int line,
-                 const char *message)
+static void fixtureTrace(struct raft_tracer *t, int type, const void *data)
 {
-    unsigned id = *(unsigned *)t->impl;
-    fprintf(stderr, "%d: %30s:%*d - %s\n", id, file, 3, line, message);
+    struct raft_fixture_server *s = t->impl;
+    const struct raft_tracer_info *info = data;
+
+    if (type != RAFT_TRACER_DIAGNOSTIC) {
+        return;
+    }
+
+    if (info->diagnostic.level > 3) {
+        return;
+    }
+
+    fprintf(stderr, "[%4llu] %llu: %s\n", s->io.time(&s->io), s->id,
+            info->diagnostic.message);
 }
 
 static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
@@ -999,10 +1007,10 @@ static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
     raft_set_election_timeout(&s->raft, ELECTION_TIMEOUT);
     raft_set_heartbeat_timeout(&s->raft, HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, INSTALL_SNAPSHOT_TIMEOUT);
-    s->tracer.impl = (void *)&s->id;
-    s->tracer.emit = emit;
+    s->tracer.impl = s;
+    s->tracer.version = 2;
+    s->tracer.trace = fixtureTrace;
     s->raft.tracer = &s->tracer;
-    raft_tracer_maybe_enable(&s->tracer, true);
     return 0;
 }
 
