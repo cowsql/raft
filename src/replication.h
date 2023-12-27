@@ -79,17 +79,6 @@ int replicationInstallSnapshot(struct raft *r,
 /* Returns `true` if the raft instance is currently installing a snapshot */
 bool replicationInstallSnapshotBusy(struct raft *r);
 
-/* Check if a quorum has been reached for the given log index, and update the
- * commit index accordingly if so.
- *
- * From Figure 3.1:
- *
- *   [Rules for servers] Leaders:
- *
- *   If there exists an N such that N > commitIndex, a majority of
- *   matchIndex[i] >= N, and log[N].term == currentTerm: set commitIndex = N */
-void replicationQuorum(struct raft *r, const raft_index index);
-
 /* Called when an enqueued AppendEntries message has been processed. */
 int replicationSendAppendEntriesDone(struct raft *r,
                                      struct raft_message *message,
