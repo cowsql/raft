@@ -208,30 +208,56 @@ static int maybeSelfElect(struct raft *r)
 /* Emit a start message containing information about the current state. */
 static void stepStartEmitMessage(struct raft *r)
 {
-    char msg[512];
+    char msg[512] = {0};
+    raft_index snapshot_index = logSnapshotIndex(r->log);
+    unsigned n_entries = (unsigned)logNumEntries(r->log);
 
-    sprintf(msg, "term %llu, vote %llu, ", r->current_term, r->voted_for);
+    if (r->current_term == 0) {
+        strcat(msg, "no state");
+        goto emit;
+    }
+
+    if (r->current_term > 0) {
+        char msg_term[64];
+        sprintf(msg_term, "term %llu", r->current_term);
+        strcat(msg, msg_term);
+        if (snapshot_index > 0 || n_entries > 0) {
+            strcat(msg, ", ");
+        }
+    }
+
+    if (r->voted_for > 0) {
+        char msg_vote[64];
+        sprintf(msg_vote, "voted for %llu, ", r->voted_for);
+        strcat(msg, msg_vote);
+    }
 
     if (logSnapshotIndex(r->log) > 0) {
         char msg_snapshot[64];
-        sprintf(msg_snapshot, "snapshot %llu.%llu, ", logSnapshotIndex(r->log),
-                logSnapshotTerm(r->log));
+        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)",
+                logSnapshotIndex(r->log), logSnapshotTerm(r->log));
         strcat(msg, msg_snapshot);
-    } else {
-        strcat(msg, "no snapshot, ");
+        if (n_entries > 0) {
+            strcat(msg, ", ");
+        }
     }
 
-    if (logNumEntries(r->log)) {
+    if (n_entries > 0) {
         char msg_entries[64];
         raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
-        raft_index last = logLastIndex(r->log);
-        sprintf(msg_entries, "entries %llu.%llu to %llu.%llu", first,
-                logTermOf(r->log, first), last, logTermOf(r->log, last));
+        if (n_entries == 1) {
+            sprintf(msg_entries, "1 entry (%llu^%llu)", first,
+                    logTermOf(r->log, first));
+        } else {
+            raft_index last = logLastIndex(r->log);
+            sprintf(msg_entries, "%u entries (%llu^%llu..%llu^%llu)", n_entries,
+                    first, logTermOf(r->log, first), last,
+                    logTermOf(r->log, last));
+        }
         strcat(msg, msg_entries);
-    } else {
-        strcat(msg, "no entries");
     }
 
+emit:
     infof("%s", msg);
 }
 
@@ -250,6 +276,13 @@ static int stepStart(struct raft *r,
 
     r->current_term = term;
     r->voted_for = voted_for;
+
+    /* If no term is set, there must be no persisted state. */
+    if (r->current_term == 0) {
+        assert(r->voted_for == 0);
+        assert(metadata == NULL);
+        assert(n_entries == 0);
+    }
 
     if (metadata != NULL) {
         snapshot_index = metadata->index;
