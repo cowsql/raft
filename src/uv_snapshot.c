@@ -137,13 +137,17 @@ static int uvSnapshotIsOrphanInternal(const char *dir,
                                       bool meta,
                                       bool *orphan)
 {
-    int rv;
-    *orphan = false;
-
     raft_term term;
     raft_index index;
     raft_time timestamp;
-    if (!uvSnapshotParseFilename(filename, meta, &term, &index, &timestamp)) {
+    bool is_snapshot_filename;
+    int rv;
+
+    *orphan = false;
+
+    is_snapshot_filename =
+        uvSnapshotParseFilename(filename, meta, &term, &index, &timestamp);
+    if (!is_snapshot_filename) {
         return 0;
     }
 

@@ -67,6 +67,14 @@ AM_CONDITIONAL(SANITIZE_ENABLED, test x"$enable_sanitize" = x"yes")
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 
+# Check if lcov >= 2.0
+AS_IF([test x"$enable_code_coverage" = xyes],
+      [AX_COMPARE_VERSION($(lcov --version|cut -f 4 -d " " | cut -f 1 -d -), [ge], [2.0],
+          [have_lcov_2=yes], [have_lcov_2=no])
+      ],
+      [have_lcov_2=no])
+AM_CONDITIONAL(LCOV_VERSION_2, test x"$have_lcov_2" = x"yes")
+
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h string.h stdio.h assert.h unistd.h linux/io_uring.h linux/aio_abi.h])
 

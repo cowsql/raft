@@ -418,6 +418,7 @@ int raft_step(struct raft *r,
               struct raft_event *event,
               struct raft_update *update)
 {
+    const char *state_name;
     int rv;
 
     assert(event != NULL);
@@ -478,7 +479,8 @@ int raft_step(struct raft *r,
                                      event->snapshot.trailing);
             break;
         case RAFT_TIMEOUT:
-            infof("timeout as %s", raft_state_name(r->state));
+            state_name = raft_state_name(r->state);
+            infof("timeout as %s", state_name);
             rv = Tick(r);
             break;
         case RAFT_SUBMIT:
