@@ -207,8 +207,7 @@ static int sendSnapshot(struct raft *r, const unsigned i)
         goto err;
     }
 
-    infof("sending snapshot with last index %llu to %llu", args->last_index,
-          server->id);
+    infof("sending snapshot (%llu^%llu)", args->last_index, args->last_term);
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
@@ -269,7 +268,7 @@ int replicationProgress(struct raft *r, unsigned i)
          * we're not doing so already. */
         if (prev_term == 0 && !progress_state_is_snapshot) {
             assert(prev_index < snapshot_index);
-            infof("missing entry at index %lld -> send snapshot", prev_index);
+            infof("missing entry at index %lld -> needs snapshot", prev_index);
             goto send_snapshot;
         }
     }
@@ -1116,8 +1115,10 @@ int replicationInstallSnapshot(struct raft *r,
 
     assert(!(r->update->flags & RAFT_UPDATE_SNAPSHOT));
 
-    r->update->flags |= RAFT_UPDATE_SNAPSHOT;
+    infof("start persisting snapshot (%llu^%llu)", metadata.index,
+          metadata.term);
 
+    r->update->flags |= RAFT_UPDATE_SNAPSHOT;
     r->update->snapshot.metadata = metadata;
     r->update->snapshot.offset = 0;
     r->update->snapshot.chunk = args->data;
