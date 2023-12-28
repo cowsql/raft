@@ -132,7 +132,6 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
     r->configuration_last_snapshot_index = metadata->configuration_index;
 
     r->commit_index = metadata->index;
-    r->last_applied = metadata->index;
     r->last_stored = metadata->index;
     r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
 
@@ -186,6 +185,9 @@ int raft_start(struct raft *r)
             entryBatchesDestroy(entries, n_entries);
             return rv;
         }
+        r->last_applied = snapshot->index;
+    } else if (n_entries > 1) {
+        r->last_applied = 1;
     }
 
     event.time = r->now;

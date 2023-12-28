@@ -301,7 +301,6 @@ static int stepStart(struct raft *r,
         /* As a small optimization, bump the commit index to 1 since we require
          * the first entry to be the same on all servers. */
         r->commit_index = 1;
-        r->last_applied = 1;
         r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 

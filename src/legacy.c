@@ -934,6 +934,7 @@ static int legacyHandleUpdateCommitIndex(struct raft *r,
             tracef("restore snapshot: %s", errCodeToString(rv));
             return rv;
         }
+        r->last_applied = commit_index;
     }
 
     rv = legacyApply(r, events, n_events);
