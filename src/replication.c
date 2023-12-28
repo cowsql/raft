@@ -236,10 +236,6 @@ int replicationProgress(struct raft *r, unsigned i)
     assert(server->id != r->id);
     assert(next_index >= 1);
 
-    if (!progressShouldReplicate(r, i)) {
-        return 0;
-    }
-
     /* From Section 3.5:
      *
      *   When sending an AppendEntries RPC, the leader includes the index and
@@ -319,6 +315,9 @@ static int triggerAll(struct raft *r)
         /* Skip spare servers, unless they're being promoted. */
         if (server->role == RAFT_SPARE &&
             server->id != r->leader_state.promotee_id) {
+            continue;
+        }
+        if (!progressShouldReplicate(r, i)) {
             continue;
         }
         rv = replicationProgress(r, i);
@@ -628,8 +627,10 @@ int replicationUpdate(struct raft *r,
         }
     }
 
-    /* If this follower is in pipeline mode, send it more entries. */
-    if (progressState(r, i) == PROGRESS__PIPELINE) {
+    /* If this follower is in pipeline mode, send it more entries if
+     * needed. */
+    if (progressState(r, i) == PROGRESS__PIPELINE &&
+        progressShouldReplicate(r, i)) {
         replicationProgress(r, i);
     }
 
