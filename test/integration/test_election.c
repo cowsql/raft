@@ -130,7 +130,7 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
      * result and eventually starts a new election round. */
     CLUSTER_DISCONNECT(2, 1);
     CLUSTER_TRACE(
-        "[ 270] 1 > timeout as candidate\n"
+        "[ 200] 1 > timeout as candidate\n"
         "           stay candidate, start election for term 3\n");
 
     /* Reconnecting the two servers eventually makes the first server win the
@@ -138,12 +138,12 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
     CLUSTER_RECONNECT(2, 1);
 
     CLUSTER_TRACE(
-        "[ 280] 2 > recv request vote from server 1\n"
+        "[ 210] 2 > recv request vote from server 1\n"
         "           remote term is higher (3 vs 2) -> bump term\n"
         "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
 
     CLUSTER_TRACE(
-        "[ 290] 1 > recv request vote result from server 2\n"
+        "[ 220] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           replicate 1 new entry (2^3)\n"
         "           probe server 2 sending 1 entry (2^3)\n");

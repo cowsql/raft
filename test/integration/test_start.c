@@ -89,7 +89,7 @@ TEST_V1(raft_start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
                          2, /* last term                                 */
                          2, /* N servers                                 */
                          2, /* N voting                                  */
-                         1 /* conf index                                */);
+                         1 /* conf index                                 */);
     CLUSTER_START(1 /* ID */);
     CLUSTER_TRACE("[   0] 1 > term 2, 1 snapshot (6^2)\n");
     return MUNIT_OK;
