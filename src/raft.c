@@ -358,6 +358,23 @@ static int stepPersistedEntries(struct raft *r,
     return rv;
 }
 
+static int stepPersistedSnapshot(struct raft *r,
+                                 struct raft_snapshot_metadata *metadata,
+                                 size_t offset,
+                                 struct raft_buffer *chunk,
+                                 bool last,
+                                 int status)
+{
+    int rv;
+    infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
+    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last,
+                                        status);
+    if (rv != 0) {
+        return rv;
+    }
+    return 0;
+}
+
 /* Handle the completion of a send message operation. */
 static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
@@ -456,12 +473,11 @@ int raft_step(struct raft *r,
                                       event->persisted_entries.status);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
-            rv = replicationPersistSnapshotDone(
-                r, &event->persisted_snapshot.metadata,
-                event->persisted_snapshot.offset,
-                &event->persisted_snapshot.chunk,
-                event->persisted_snapshot.last,
-                event->persisted_snapshot.status);
+            rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
+                                       event->persisted_snapshot.offset,
+                                       &event->persisted_snapshot.chunk,
+                                       event->persisted_snapshot.last,
+                                       event->persisted_snapshot.status);
             break;
         case RAFT_SENT:
             rv = stepSent(r, &event->sent.message, event->sent.status);
