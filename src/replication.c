@@ -269,7 +269,7 @@ int replicationProgress(struct raft *r, unsigned i)
          * we're not doing so already. */
         if (prev_term == 0 && !progress_state_is_snapshot) {
             assert(prev_index < snapshot_index);
-            tracef("missing entry at index %lld -> send snapshot", prev_index);
+            infof("missing entry at index %lld -> send snapshot", prev_index);
             goto send_snapshot;
         }
     }
@@ -380,9 +380,6 @@ static int leaderPersistEntriesDone(struct raft *r,
     size_t server_index;
 
     assert(r->state == RAFT_LEADER);
-
-    tracef("leader: written %u entries starting at %lld: status %d", n, index,
-           status);
 
     /* In case of a failed disk write, convert immediately to follower state,
      * giving the cluster a chance to elect another leader that doesn't have a
@@ -503,7 +500,6 @@ static int appendLeader(struct raft *r, raft_index index)
      * some entries to write. */
     if (n == 0) {
         assert(false);
-        tracef("No log entries found at index %llu", index);
         ErrMsgPrintf(r->errmsg, "No log entries found at index %llu", index);
         rv = RAFT_SHUTDOWN;
         goto err_after_entries_acquired;
@@ -701,8 +697,6 @@ static int followerPersistEntriesDone(struct raft *r,
 
     assert(r->state == RAFT_FOLLOWER);
 
-    tracef("I/O completed on follower: status %d", status);
-
     assert(entries != NULL);
     assert(n > 0);
 
@@ -789,7 +783,7 @@ static int checkLogMatchingProperty(struct raft *r,
     if (local_prev_term != args->prev_log_term) {
         if (args->prev_log_index <= r->commit_index) {
             /* Should never happen; something is seriously wrong! */
-            tracef(
+            infof(
                 "conflicting terms %llu and %llu for entry %llu (commit "
                 "index %llu) -> shutdown",
                 local_prev_term, args->prev_log_term, args->prev_log_index,
@@ -831,11 +825,11 @@ static int deleteConflictingEntries(struct raft *r,
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
                 /* Should never happen; something is seriously wrong! */
-                tracef("new index conflicts with committed entry -> shutdown");
                 return RAFT_SHUTDOWN;
             }
 
-            tracef("log mismatch -> truncate (%llu)", entry_index);
+            infof("log mismatch (%llu^%llu vs %llu^%llu) -> truncate",
+                  entry_index, local_term, entry_index, entry->term);
 
             /* Possibly discard uncommitted configuration changes. */
             if (r->configuration_uncommitted_index >= entry_index) {
@@ -1027,7 +1021,6 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     /* If we are shutting down, let's discard the result. */
     if (r->state == RAFT_UNAVAILABLE) {
-        tracef("shutting down -> discard result of snapshot installation");
         goto discard;
     }
 
@@ -1049,7 +1042,7 @@ int replicationPersistSnapshotDone(struct raft *r,
         goto discard;
     }
 
-    tracef("restored snapshot with last index %llu", metadata->index);
+    infof("restored snapshot with last index %llu", metadata->index);
 
     goto respond;
 
@@ -1142,7 +1135,7 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
      * via an AppendEntries RPC (for followers), then reset the uncommitted
      * index, since that uncommitted configuration is now committed. */
     if (r->configuration_uncommitted_index == index) {
-        tracef("configuration at index:%llu is committed.", index);
+        infof("configuration at index:%llu is committed.", index);
         r->configuration_uncommitted_index = 0;
     }
 
@@ -1161,8 +1154,8 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
          */
         server = configurationGet(&r->configuration, r->id);
         if (server == NULL || server->role != RAFT_VOTER) {
-            tracef("leader removed from config or no longer voter server: %p",
-                   (void *)server);
+            infof("leader removed from config or no longer voter server: %p",
+                  (void *)server);
             convertToFollower(r);
         }
     }
