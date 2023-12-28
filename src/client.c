@@ -67,7 +67,6 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
         rv = RAFT_NOTLEADER;
         ErrMsgFromCode(r->errmsg, rv);
-        tracef("raft_apply not leader");
         goto err;
     }
 
@@ -125,8 +124,6 @@ int raft_apply(struct raft *r,
     struct raft_event event;
     struct raft_entry entry;
     int rv;
-
-    tracef("raft_apply n %d", n);
 
     assert(r != NULL);
     assert(bufs != NULL);
@@ -248,8 +245,6 @@ int raft_add(struct raft *r,
         return rv;
     }
 
-    tracef("add server: id %llu, address %s", id, address);
-
     /* Make a copy of the current configuration, and add the new server to
      * it. */
     rv = configurationCopy(&r->configuration, &configuration);
@@ -330,7 +325,6 @@ int raft_assign(struct raft *r,
 
     r->now = r->io->time(r->io);
 
-    tracef("raft_assign to id:%llu the role:%d", id, role);
     if (role != RAFT_STANDBY && role != RAFT_VOTER && role != RAFT_SPARE) {
         rv = RAFT_BADROLE;
         ErrMsgFromCode(r->errmsg, rv);
@@ -393,7 +387,6 @@ int raft_assign(struct raft *r,
 
         rv = clientChangeConfiguration(r, &r->configuration);
         if (rv != 0) {
-            tracef("clientChangeConfiguration failed %d", rv);
             r->configuration.servers[server_index].role = old_role;
             return rv;
         }
@@ -438,8 +431,6 @@ int raft_remove(struct raft *r,
         rv = RAFT_BADID;
         goto err;
     }
-
-    tracef("remove server: id %llu", id);
 
     /* Make a copy of the current configuration, and remove the given server
      * from it. */
@@ -552,9 +543,7 @@ int raft_transfer(struct raft *r,
     unsigned i;
     int rv;
 
-    tracef("transfer to %llu", id);
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
-        tracef("transfer error - state:%d", r->state);
         rv = RAFT_NOTLEADER;
         ErrMsgFromCode(r->errmsg, rv);
         goto err;
