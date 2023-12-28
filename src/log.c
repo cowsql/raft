@@ -504,14 +504,16 @@ int logAppend(struct raft_log *l,
 
     rv = ensureCapacity(l);
     if (rv != 0) {
-        return rv;
+        assert(rv == RAFT_NOMEM);
+        goto err;
     }
 
     index = logLastIndex(l) + 1;
 
     rv = refsInit(l, term, index);
     if (rv != 0) {
-        return rv;
+        assert(rv == RAFT_NOMEM || rv == RAFT_BUSY);
+        goto err;
     }
 
     entry = &l->entries[l->back];
@@ -524,6 +526,10 @@ int logAppend(struct raft_log *l,
     l->back = l->back % l->size;
 
     return 0;
+
+err:
+    assert(rv == RAFT_NOMEM || rv == RAFT_BUSY);
+    return rv;
 }
 
 int logAppendCommands(struct raft_log *l,

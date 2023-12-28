@@ -85,6 +85,13 @@ int RestoreEntries(struct raft *r,
              * second to last configuration entry, if any. */
             if (conf_index != 0) {
                 r->configuration_committed_index = conf_index;
+                /* We also indirectly know that the commit index must be at
+                 * least as high as the index of this second to last
+                 * configuration entry. */
+                /* FIXME: this currently breaks incus/cowsql tests
+                r->commit_index = r->configuration_committed_index;
+                r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
+                */
             }
             conf = entry;
             conf_index = r->last_stored;

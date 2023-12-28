@@ -9,7 +9,6 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Common fields between follower and candidate state.
  *
@@ -84,7 +83,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     /* Fill the RequestVote message.
      *
      * Note that we set last_log_index and last_log_term to the index and term
-     * of the last persisted entry, to the last entry in our in-memory log
+     * of the last persisted entry, not to the last entry in our in-memory log
      * cache, because we must advertise only log entries that can't be lost at
      * restart.
      *
@@ -108,6 +107,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 
@@ -116,7 +116,6 @@ static int electionSend(struct raft *r, const struct raft_server *server)
 
 void electionStart(struct raft *r)
 {
-    raft_term term;
     size_t n_voters;
     size_t voting_index;
     size_t i;
@@ -138,18 +137,15 @@ void electionStart(struct raft *r)
 
     /* During pre-vote we don't increment our term, or reset our vote. Resetting
      * our vote could lead to double-voting if we were to receive a RequestVote
-     * RPC during our Candidate state while we already voted for a server during
-     * the term. */
+     * RPC during our Candidate state, while we actually already voted for a
+     * server during the term. */
     if (!r->candidate_state.in_pre_vote) {
         /* Increment current term and vote for self */
-        term = r->current_term + 1;
+        r->current_term += 1;
+        r->voted_for = r->id;
 
         /* Mark both the current term and vote as changed. */
         r->update->flags |= RAFT_UPDATE_CURRENT_TERM | RAFT_UPDATE_VOTED_FOR;
-
-        /* Update our cache too. */
-        r->current_term = term;
-        r->voted_for = r->id;
     }
 
     /* Reset election timer. */
@@ -176,20 +172,22 @@ void electionStart(struct raft *r)
         rv = electionSend(r, server);
         if (rv != 0) {
             /* This is not a critical failure, let's just log it. */
-            tracef("failed to send vote request to server %llu: %s", server->id,
-                   raft_strerror(rv));
+            assert(rv == RAFT_NOMEM);
+            infof("can't send vote request to server %llu: %s", server->id,
+                  raft_strerror(rv));
         }
     }
 }
 
-int electionVote(struct raft *r,
-                 const struct raft_request_vote *args,
-                 bool *granted)
+void electionVote(struct raft *r,
+                  const struct raft_request_vote *args,
+                  bool *granted)
 {
     const struct raft_server *local_server;
+    const char *grant_text;
+    const char *deny_text;
     raft_index local_last_index;
     raft_term local_last_term;
-    bool is_transferee; /* Requester is the target of a leadership transfer */
 
     assert(r != NULL);
     assert(args != NULL);
@@ -199,58 +197,65 @@ int electionVote(struct raft *r,
 
     *granted = false;
 
+    if (args->pre_vote) {
+        grant_text = "pre-vote ok";
+        deny_text = "deny pre-vote";
+    } else {
+        grant_text = "grant vote";
+        deny_text = "don't grant vote";
+    }
+
     if (local_server == NULL || local_server->role != RAFT_VOTER) {
-        infof("local server is not voting -> don't grant vote");
-        return 0;
+        infof("local server is not voting -> %s", deny_text);
+        return;
     }
 
-    is_transferee =
-        r->transfer != NULL && r->transfer->id == args->candidate_id;
     if (!args->pre_vote && r->voted_for != 0 &&
-        r->voted_for != args->candidate_id && !is_transferee) {
-        infof("already voted for server %llu -> don't grant vote",
-              r->voted_for);
-        return 0;
+        r->voted_for != args->candidate_id) {
+        infof("already voted for server %llu -> %s", r->voted_for, deny_text);
+        return;
     }
 
-    /* Raft Dissertation 9.6:
-     * > In the Pre-Vote algorithm, a candidate
-     * > only increments its term if it first learns from a majority of the
-     * > cluster that they would be willing
-     * > to grant the candidate their votes (if the candidate's log is
-     * > sufficiently up-to-date, and the voters
-     * > have not received heartbeats from a valid leader for at least a
-     * baseline > election timeout) Arriving here means that in a pre-vote
-     * phase, we will cast our vote if the candidate's log is sufficiently
-     * up-to-date, no matter what the candidate's term is. We have already
-     * checked if we currently have a leader upon reception of the RequestVote
-     * RPC, meaning the 2 conditions will be satisfied if the candidate's log is
-     * up-to-date.
-     * */
+    /* From Section 9.6:
+     *
+     *   In the Pre-Vote algorithm, a candidate only increments its term if it
+     *   first learns from a majority of the cluster that they would be willing
+     *   to grant the candidate their votes (if the candidate's log is
+     *   sufficiently up-to-date, and the voters have not received heartbeats
+     *   from a valid leader for at least a baseline election timeout).
+     *
+     * Arriving here means that in a pre-vote phase, we will cast our vote if
+     * the candidate's log is sufficiently up-to-date, no matter what the
+     * candidate's term is. We have already checked if we currently have a
+     * leader upon reception of the RequestVote RPC, meaning the 2 conditions
+     * will be satisfied if the candidate's log is up-to-date. */
     local_last_index = logLastIndex(r->log);
 
     /* Our log is definitely not more up-to-date if it's empty! */
     if (local_last_index == 0) {
-        tracef("local log is empty -> granting vote");
+        infof("local log is empty -> %s", grant_text);
         goto grant_vote;
     }
 
     local_last_term = logLastTerm(r->log);
 
+    /* If the term of the last entry of the requesting server's log is lower
+     * than the term of the last entry of our log, then our log is more
+     * up-to-date and we don't grant the vote. */
     if (args->last_log_term < local_last_term) {
-        /* The requesting server has last entry's log term lower than ours. */
-        infof("remote log older (%llu^%llu vs %llu^%llu) -> don't grant vote",
+        infof("remote log older (%llu^%llu vs %llu^%llu) -> %s",
               args->last_log_index, args->last_log_term, local_last_index,
-              local_last_term);
-        return 0;
+              local_last_term, deny_text);
+        return;
     }
 
-    if (args->last_log_term > local_last_term) {
-        /* The requesting server has a more up-to-date log. */
-        tracef(
-            "remote last entry %llu has term %llu higher than %llu -> "
-            "granting vote",
-            args->last_log_index, args->last_log_term, local_last_term);
+    /* If the term of the last entry of our log is lower than the term of the
+     * last entry of the requesting server's log, then the requesting server's
+     * log is more up-to-date and we grant our vote. */
+    if (local_last_term < args->last_log_term) {
+        infof("local log older (%llu^%llu vs %llu^%llu) -> %s",
+              local_last_index, local_last_term, args->last_log_index,
+              args->last_log_term, grant_text);
         goto grant_vote;
     }
 
@@ -260,18 +265,17 @@ int electionVote(struct raft *r,
 
     if (local_last_index <= args->last_log_index) {
         /* Our log is shorter or equal to the one of the requester. */
-        const char *grant_text = args->pre_vote ? "pre-vote ok" : "grant vote";
         infof("remote log equal or longer (%llu^%llu vs %llu^%llu) -> %s",
               args->last_log_index, args->last_log_term, local_last_index,
               local_last_term, grant_text);
         goto grant_vote;
     }
 
-    infof("remote log shorter (%llu^%llu vs %llu^%llu) -> don't grant vote",
+    infof("remote log shorter (%llu^%llu vs %llu^%llu) -> %s",
           args->last_log_index, args->last_log_term, local_last_index,
-          local_last_term);
+          local_last_term, deny_text);
 
-    return 0;
+    return;
 
 grant_vote:
     if (!args->pre_vote) {
@@ -286,12 +290,10 @@ grant_vote:
     }
 
     *granted = true;
-
-    return 0;
 }
 
 bool electionTally(struct raft *r,
-                   size_t voter_index,
+                   const size_t voter_index,
                    unsigned *votes,
                    unsigned *n_voters)
 {
@@ -318,4 +320,3 @@ bool electionTally(struct raft *r,
 }
 
 #undef infof
-#undef tracef

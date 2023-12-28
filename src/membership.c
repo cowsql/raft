@@ -11,27 +11,23 @@
 #include "queue.h"
 #include "tracing.h"
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 int membershipCanChangeConfiguration(struct raft *r)
 {
     int rv;
 
     if (r->state != RAFT_LEADER || r->transfer != NULL) {
-        tracef("NOT LEADER");
         rv = RAFT_NOTLEADER;
         goto err;
     }
 
     if (r->configuration_uncommitted_index != 0) {
-        tracef("r->configuration_uncommitted_index %llu",
-               r->configuration_uncommitted_index);
         rv = RAFT_CANTCHANGE;
         goto err;
     }
 
     if (r->leader_state.promotee_id != 0) {
-        tracef("r->leader_state.promotee_id %llu", r->leader_state.promotee_id);
         rv = RAFT_CANTCHANGE;
         goto err;
     }
@@ -103,7 +99,7 @@ bool membershipUpdateCatchUpRound(struct raft *r)
     /* If the server did not reach the target index for this round, it did not
      * catch up. */
     if (match_index < r->leader_state.round_index) {
-        tracef(
+        infof(
             "member (index: %u) not yet caught up match_index:%llu "
             "round_index:%llu",
             server_index, match_index, r->leader_state.round_index);
@@ -116,8 +112,8 @@ bool membershipUpdateCatchUpRound(struct raft *r)
     is_up_to_date = match_index == last_index;
     is_fast_enough = round_duration < r->election_timeout;
 
-    tracef("member is_up_to_date:%d is_fast_enough:%d", is_up_to_date,
-           is_fast_enough);
+    infof("member is_up_to_date:%d is_fast_enough:%d", is_up_to_date,
+          is_fast_enough);
 
     /* If the server's log is fully up-to-date or the round that just terminated
      * was fast enough, then the server as caught up. */
@@ -155,7 +151,6 @@ int membershipUncommittedChange(struct raft *r,
 
     rv = configurationDecode(&entry->buf, &configuration);
     if (rv != 0) {
-        tracef("failed to decode configuration at index:%llu", index);
         goto err;
     }
 
@@ -178,7 +173,9 @@ int membershipRollback(struct raft *r)
     assert(r != NULL);
     assert(r->state == RAFT_FOLLOWER);
     assert(r->configuration_uncommitted_index > 0);
-    tracef("roll back membership");
+    infof("roll back uncommitted configuration (%llu^%llu)",
+          r->configuration_uncommitted_index,
+          logTermOf(r->log, r->configuration_uncommitted_index));
 
     /* Fetch the last committed configuration entry. */
     assert(r->configuration_committed_index != 0);
@@ -215,7 +212,6 @@ int membershipLeadershipTransferStart(struct raft *r)
     server = configurationGet(&r->configuration, r->transfer->id);
     assert(server != NULL);
     if (server == NULL) {
-        tracef("transferee server not found in configuration");
         return -1;
     }
 
@@ -251,3 +247,5 @@ void membershipLeadershipTransferClose(struct raft *r)
         QUEUE_PUSH(&r->legacy.requests, &req->queue);
     }
 }
+
+#undef infof

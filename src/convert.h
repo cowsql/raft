@@ -23,7 +23,13 @@ void convertToFollower(struct raft *r);
  *   On conversion to candidate, start election
  *
  * If the disrupt_leader flag is true, the server will set the disrupt leader
- * flag of the RequestVote messages it sends.  */
+ * flag of the RequestVote messages it sends.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     Memory for the votes array could not be allocated.
+ */
 int convertToCandidate(struct raft *r, bool disrupt_leader);
 
 /* Convert from candidate to leader.
@@ -44,7 +50,13 @@ int convertToCandidate(struct raft *r, bool disrupt_leader);
  *   The leader maintains a nextIndex for each follower, which is the index
  *   of the next log entry the leader will send to that follower. When a
  *   leader first comes to power, it initializes all nextIndex values to the
- *   index just after the last one in its log. */
+ *   index just after the last one in its log.
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     Memory for the progress array or for the initial no-op entry could
+ *     not be allocated.
+ */
 int convertToLeader(struct raft *r);
 
 void convertToUnavailable(struct raft *r);

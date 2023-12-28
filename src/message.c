@@ -3,56 +3,53 @@
 #include "heap.h"
 #include "queue.h"
 
-/* Append a new message to the r->messages queue and return a pointer to it.
+/* Ensure that the r->messages array as at least n_messages slots, and expand it
+ * if needed.
  *
  * Return NULL if no-memory is available. */
-static struct raft_message *messageAppend(struct raft *r)
+static int messageEnsureQueueCapacity(struct raft *r, const unsigned n_messages)
 {
+    unsigned n_messages_cap = r->n_messages_cap;
     struct raft_message *messages;
-    unsigned n_messages = r->update->messages.n + 1;
 
-    assert(r->update->messages.batch == r->messages);
-
-    if (n_messages > r->n_messages_cap) {
-        unsigned n_messages_cap = r->n_messages_cap;
-        if (n_messages_cap == 0) {
-            n_messages_cap = 16; /* Initial cap */
-        } else {
-            n_messages_cap *= 2;
-        }
-        messages =
-            raft_realloc(r->messages, sizeof *r->messages * n_messages_cap);
-        if (messages == NULL) {
-            return NULL;
-        }
-        r->messages = messages;
-        r->n_messages_cap = n_messages_cap;
-        r->update->messages.batch = r->messages;
+    if (n_messages <= n_messages_cap) {
+        return 0;
     }
 
-    r->update->messages.n = n_messages;
+    if (n_messages_cap == 0) {
+        n_messages_cap = 16; /* Initial cap */
+    } else {
+        n_messages_cap *= 2;
+    }
 
-    return &r->update->messages.batch[r->update->messages.n - 1];
+    messages = raft_realloc(r->messages, sizeof *r->messages * n_messages_cap);
+    if (messages == NULL) {
+        return RAFT_NOMEM;
+    }
+
+    r->messages = messages;
+    r->n_messages_cap = n_messages_cap;
+    r->update->messages.batch = r->messages;
+
+    return 0;
 }
 
 int MessageEnqueue(struct raft *r, struct raft_message *message)
 {
-    struct raft_message *next;
+    unsigned n_messages = r->update->messages.n + 1;
     int rv;
 
-    r->update->flags |= RAFT_UPDATE_MESSAGES;
+    assert(r->update->messages.batch == r->messages);
 
-    next = messageAppend(r);
-    if (next == NULL) {
-        rv = RAFT_NOMEM;
-        goto err;
+    rv = messageEnsureQueueCapacity(r, n_messages);
+    if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
+        return rv;
     }
 
-    *next = *message;
+    r->update->messages.n = n_messages;
+    r->update->messages.batch[r->update->messages.n - 1] = *message;
+    r->update->flags |= RAFT_UPDATE_MESSAGES;
 
     return 0;
-
-err:
-    assert(rv == RAFT_NOMEM);
-    return rv;
 }

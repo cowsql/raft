@@ -12,7 +12,6 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvAppendEntries(struct raft *r,
                       raft_id id,
@@ -46,7 +45,8 @@ int recvAppendEntries(struct raft *r,
      *   currentTerm.
      */
     if (match < 0) {
-        tracef("local term is higher -> reject ");
+        infof("local term is higher (%llu vs %llu) -> reject", r->current_term,
+              args->term);
         goto reply;
     }
 
@@ -107,7 +107,7 @@ int recvAppendEntries(struct raft *r,
      * something smarter, e.g. buffering the entries in the I/O backend, which
      * should be in charge of serializing everything. */
     if (replicationInstallSnapshotBusy(r) && args->n_entries > 0) {
-        tracef("ignoring AppendEntries RPC during snapshot install");
+        infof("ignoring AppendEntries RPC during snapshot install");
         entryBatchesDestroy(args->entries, args->n_entries);
         return 0;
     }
@@ -149,4 +149,3 @@ reply:
 }
 
 #undef infof
-#undef tracef

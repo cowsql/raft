@@ -5,7 +5,7 @@
 #include "replication.h"
 #include "tracing.h"
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 int recvAppendEntriesResult(struct raft *r,
                             const raft_id id,
@@ -21,12 +21,8 @@ int recvAppendEntriesResult(struct raft *r,
     assert(address != NULL);
     assert(result != NULL);
 
-    tracef("self:%llu from:%llu@%s last_log_index:%llu rejected:%llu term:%llu",
-           r->id, id, address, result->last_log_index, result->rejected,
-           result->term);
-
     if (r->state != RAFT_LEADER) {
-        tracef("local server is not leader -> ignore");
+        infof("local server is not leader -> ignore");
         return 0;
     }
 
@@ -36,7 +32,8 @@ int recvAppendEntriesResult(struct raft *r,
     }
 
     if (match < 0) {
-        tracef("local term is higher -> ignore ");
+        infof("local term is higher (%llu vs %llu) -> ignore", r->current_term,
+              result->term);
         return 0;
     }
 
@@ -57,7 +54,7 @@ int recvAppendEntriesResult(struct raft *r,
     /* Ignore responses from servers that have been removed */
     server = configurationGet(&r->configuration, id);
     if (server == NULL) {
-        tracef("unknown server -> ignore");
+        infof("unknown server -> ignore");
         return 0;
     }
 
@@ -70,4 +67,4 @@ int recvAppendEntriesResult(struct raft *r,
     return 0;
 }
 
-#undef tracef
+#undef infof

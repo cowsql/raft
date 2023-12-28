@@ -94,7 +94,17 @@ raft_term logSnapshotTerm(struct raft_log *l);
  * invoked. Return #NULL if there is no such entry. */
 const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
 
-/* Append a new entry to the log. */
+/* Append a new entry to the log.
+ *
+ * Errors:
+ *
+ * RAFT_BUSY
+ *     Attempt to append an index with the same index and term of a referenced
+ *     one (e.g. the referenced entry is being persisted).
+ *
+ * RAFT_NOMEM
+ *     Memory for the new entry could not be allocated.
+ */
 int logAppend(struct raft_log *l,
               raft_term term,
               unsigned short type,

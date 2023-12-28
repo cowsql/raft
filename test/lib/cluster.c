@@ -951,6 +951,8 @@ void test_cluster_step(struct test_cluster *c)
     struct test_server *server;
     struct operation *operation;
 
+    clusterSeed(c);
+
     server = clusterGetServerWithEarliestTimeout(c);
     operation = clusterGetOperationWithEarliestCompletion(c);
 
@@ -960,8 +962,23 @@ void test_cluster_step(struct test_cluster *c)
         server = clusterGetServer(c, operation->id);
         serverCompleteOperation(server, operation);
     }
+}
 
-    clusterSeed(c);
+void test_cluster_elapse(struct test_cluster *c, unsigned msecs)
+{
+    struct test_server *server;
+    struct operation *operation;
+    raft_time time = c->time + msecs;
+
+    server = clusterGetServerWithEarliestTimeout(c);
+    munit_assert_ullong(time, <, server->timeout);
+
+    operation = clusterGetOperationWithEarliestCompletion(c);
+    if (operation != NULL) {
+        munit_assert_ullong(time, <=, operation->completion);
+    }
+
+    c->time = time;
 }
 
 void test_cluster_disconnect(struct test_cluster *c, raft_id id1, raft_id id2)

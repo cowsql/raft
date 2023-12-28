@@ -9,7 +9,6 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvRequestVoteResult(struct raft *r,
                           raft_id id,
@@ -27,7 +26,7 @@ int recvRequestVoteResult(struct raft *r,
 
     votes_index = configurationIndexOfVoter(&r->configuration, id);
     if (votes_index == r->configuration.n) {
-        tracef("non-voting or unknown server -> reject");
+        infof("non-voting or unknown server -> reject");
         return 0;
     }
 
@@ -53,7 +52,7 @@ int recvRequestVoteResult(struct raft *r,
 
     /* Converted to follower as a result of seeing a higher term. */
     if (r->state != RAFT_CANDIDATE) {
-        tracef("no longer candidate -> ignore");
+        infof("no longer candidate -> ignore");
         return 0;
     }
 
@@ -79,7 +78,7 @@ int recvRequestVoteResult(struct raft *r,
      * out before crashing. */
     if (result->version > 1 && !result->pre_vote &&
         r->candidate_state.in_pre_vote) {
-        tracef("receive vote response during pre-vote -> ignore");
+        infof("receive vote response during pre-vote -> ignore");
         return 0;
     }
 
@@ -149,4 +148,3 @@ int recvRequestVoteResult(struct raft *r,
 }
 
 #undef infof
-#undef tracef

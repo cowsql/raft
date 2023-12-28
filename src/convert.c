@@ -12,7 +12,7 @@
 #include "request.h"
 #include "tracing.h"
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 /* Convenience for setting a new state value and asserting that the transition
  * is valid. */
@@ -92,12 +92,17 @@ void convertToFollower(struct raft *r)
     r->follower_state.current_leader.address = NULL;
 }
 
-int convertToCandidate(struct raft *r, bool disrupt_leader)
+int convertToCandidate(struct raft *r, const bool disrupt_leader)
 {
     const struct raft_server *server;
     size_t n_voters = configurationVoterCount(&r->configuration);
 
     (void)server; /* Only used for assertions. */
+
+    /* Check that we're a voter in the current configuration. */
+    server = configurationGet(&r->configuration, r->id);
+    assert(server != NULL);
+    assert(server->role == RAFT_VOTER);
 
     convertClear(r);
     convertSetState(r, RAFT_CANDIDATE);
@@ -112,12 +117,8 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 
     /* Fast-forward to leader if we're the only voting server in the
      * configuration. */
-    server = configurationGet(&r->configuration, r->id);
-    assert(server != NULL);
-    assert(server->role == RAFT_VOTER);
-
     if (n_voters == 1) {
-        tracef("self elect and convert to leader");
+        infof("self elect and convert to leader");
         return convertToLeader(r);
     }
 
@@ -129,9 +130,8 @@ int convertToCandidate(struct raft *r, bool disrupt_leader)
 
 int convertToLeader(struct raft *r)
 {
+    size_t n_voters;
     int rv;
-
-    tracef("become leader for term %llu", r->current_term);
 
     convertClear(r);
     convertSetState(r, RAFT_LEADER);
@@ -143,7 +143,8 @@ int convertToLeader(struct raft *r)
     /* Allocate and initialize the progress array. */
     rv = progressBuildArray(r);
     if (rv != 0) {
-        return rv;
+        assert(rv == RAFT_NOMEM);
+        goto err;
     }
 
     /* Reset promotion state. */
@@ -154,19 +155,23 @@ int convertToLeader(struct raft *r)
 
     /* By definition, all entries until the last_stored entry will be committed
      * if we are the only voter around. */
-    size_t n_voters = configurationVoterCount(&r->configuration);
-    if (n_voters == 1 && (r->last_stored > r->commit_index)) {
-        tracef("apply log entries after self election %llu %llu",
-               r->last_stored, r->commit_index);
-        r->commit_index = r->last_stored;
-        r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
-    } else if (n_voters > 1) {
+    n_voters = configurationVoterCount(&r->configuration);
+    assert(n_voters > 0);
+    if (n_voters == 1) {
+        if (r->last_stored > r->commit_index) {
+            infof("apply log entries after self election %llu %llu",
+                  r->last_stored, r->commit_index);
+            r->commit_index = r->last_stored;
+            r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
+        }
+    } else {
         /* Raft Dissertation, paragraph 6.4:
-         * The Leader Completeness Property guarantees that a leader has all
-         * committed entries, but at the start of its term, it may not know
-         * which those are. To find out, it needs to commit an entry from its
-         * term. Raft handles this by having each leader commit a blank no-op
-         * entry into the log at the start of its term. */
+         *
+         *   The Leader Completeness Property guarantees that a leader has all
+         *   committed entries, but at the start of its term, it may not know
+         *   which those are. To find out, it needs to commit an entry from its
+         *   term. Raft handles this by having each leader commit a blank no-op
+         *   entry into the log at the start of its term. */
         struct raft_entry entry;
 
         entry.type = RAFT_BARRIER;
@@ -175,21 +180,28 @@ int convertToLeader(struct raft *r)
         entry.buf.base = raft_malloc(entry.buf.len);
 
         if (entry.buf.base == NULL) {
-            return RAFT_NOMEM;
+            rv = RAFT_NOMEM;
+            goto err;
         }
 
         rv = ClientSubmit(r, &entry, 1);
         if (rv != 0) {
-            tracef(
-                "failed to send no-op barrier entry after leader conversion: "
-                "%d",
-                rv);
+            /* This call to ClientSubmit can only fail with RAFT_NOMEM, because
+             * it's not a RAFT_CHANGE entry (RAFT_MALFORMED can't be returned)
+             * and we're leader (RAFT_NOTLEADER can't be returned) */
+            assert(rv == RAFT_NOMEM);
+            infof("can't submit no-op after converting to leader: %s",
+                  raft_strerror(rv));
             raft_free(entry.buf.base);
-            return rv;
+            goto err;
         }
     }
 
     return 0;
+
+err:
+    assert(rv == RAFT_NOMEM);
+    return rv;
 }
 
 void convertToUnavailable(struct raft *r)
@@ -202,4 +214,4 @@ void convertToUnavailable(struct raft *r)
     convertSetState(r, RAFT_UNAVAILABLE);
 }
 
-#undef tracef
+#undef infof
