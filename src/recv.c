@@ -18,7 +18,6 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Dispatch a single RPC message to the appropriate handler. */
 int recvMessage(struct raft *r,
@@ -61,13 +60,11 @@ int recvMessage(struct raft *r,
             rv = recvTimeoutNow(r, id, address, &message->timeout_now);
             break;
         default:
-            tracef("received unknown message type (%d)", message->type);
             /* Drop message */
             return 0;
     };
 
     if (rv != 0 && rv != RAFT_NOCONNECTION) {
-        tracef("recv: %d: %s", message->type, raft_strerror(rv));
         return rv;
     }
 
@@ -170,8 +167,6 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
     recvCheckMatchingTerms(r, term, match);
 
     if (*match == -1) {
-        tracef("old term - current_term:%llu other_term:%llu", r->current_term,
-               term);
         return 0;
     }
 
@@ -192,7 +187,6 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
     if (*match == 1) {
         rv = recvBumpCurrentTerm(r, term);
         if (rv != 0) {
-            tracef("recvBumpCurrentTerm failed %d", rv);
             return rv;
         }
     }
@@ -227,4 +221,3 @@ int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
 }
 
 #undef infof
-#undef tracef

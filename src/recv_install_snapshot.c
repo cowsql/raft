@@ -9,7 +9,7 @@
 #include "replication.h"
 #include "tracing.h"
 
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 int recvInstallSnapshot(struct raft *r,
                         const raft_id id,
@@ -23,11 +23,6 @@ int recvInstallSnapshot(struct raft *r,
     bool async;
 
     assert(address != NULL);
-    tracef(
-        "self:%llu from:%llu@%s conf_index:%llu last_index:%llu last_term:%llu "
-        "term:%llu",
-        r->id, id, address, args->conf_index, args->last_index, args->last_term,
-        args->term);
 
     result->rejected = args->last_index;
     result->last_log_index = logLastIndex(r->log);
@@ -40,7 +35,8 @@ int recvInstallSnapshot(struct raft *r,
     }
 
     if (match < 0) {
-        tracef("local term is higher -> reject ");
+        infof("local term is higher (%llu vs %llu) -> reject", r->current_term,
+              args->term);
         goto reply;
     }
 
@@ -49,7 +45,7 @@ int recvInstallSnapshot(struct raft *r,
     assert(r->current_term == args->term);
     if (r->state == RAFT_CANDIDATE) {
         assert(match == 0);
-        tracef("discovered leader -> step down ");
+        infof("discovered leader (%llu) -> step down ", id);
         convertToFollower(r);
     }
 
@@ -62,7 +58,6 @@ int recvInstallSnapshot(struct raft *r,
 
     rv = replicationInstallSnapshot(r, args, &result->rejected, &async);
     if (rv != 0) {
-        tracef("replicationInstallSnapshot failed %d", rv);
         return rv;
     }
 
@@ -94,4 +89,4 @@ reply:
     return 0;
 }
 
-#undef tracef
+#undef infof
