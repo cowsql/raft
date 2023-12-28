@@ -58,14 +58,6 @@ int raft_init(struct raft *r,
     int rv;
     assert(r != NULL);
 
-    rv = ioFsmVersionCheck(r, io, fsm);
-    if (rv != 0) {
-        goto err;
-    }
-
-    r->io = io;
-    r->fsm = fsm;
-
     r->tracer = &StderrTracer;
     raft_tracer_maybe_enable(r->tracer, true);
 
@@ -96,7 +88,6 @@ int raft_init(struct raft *r,
     r->heartbeat_timeout = DEFAULT_HEARTBEAT_TIMEOUT;
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
     r->commit_index = 0;
-    r->last_applied = 0;
     r->last_stored = 0;
     r->state = RAFT_UNAVAILABLE;
     r->transfer = NULL;
@@ -104,18 +95,33 @@ int raft_init(struct raft *r,
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
     r->snapshot.persisting = false;
-    r->close_cb = NULL;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;
     r->max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS;
     r->max_catch_up_round_duration = DEFAULT_MAX_CATCH_UP_ROUND_DURATION;
     r->now = 0;
+    r->messages = NULL;
+    r->n_messages_cap = 0;
+    r->update = NULL;
+    r->io = NULL;
+    r->fsm = NULL;
     if (io != NULL) {
+        assert(fsm != NULL);
+        rv = ioFsmVersionCheck(r, io, fsm);
+        if (rv != 0) {
+            goto err_after_log_init;
+        }
+
+        r->io = io;
+        r->fsm = fsm;
+
+        r->last_applied = 0;
+        r->close_cb = NULL;
         r->io->data = r;
         rv = r->io->init(r->io, r->id, r->address);
         if (rv != 0) {
             ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-            goto err_after_address_alloc;
+            goto err_after_log_init;
         }
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
@@ -126,11 +132,10 @@ int raft_init(struct raft *r,
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
     }
-    r->update = NULL;
-    r->messages = NULL;
-    r->n_messages_cap = 0;
     return 0;
 
+err_after_log_init:
+    logClose(r->log);
 err_after_address_alloc:
     RaftHeapFree(r->address);
 err:
@@ -160,11 +165,11 @@ static void ioCloseCb(struct raft_io *io)
 
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
-    assert(r->close_cb == NULL);
     assert(r->update == NULL);
 
     if (r->io != NULL) {
         struct raft_event event;
+        assert(r->close_cb == NULL);
         event.time = r->io->time(r->io);
         event.type = RAFT_STOP;
 
@@ -752,12 +757,12 @@ static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
                              struct raft_fsm *fsm)
 {
-    if (io != NULL && io->version == 0) {
+    if (io->version == 0) {
         ErrMsgPrintf(r->errmsg, "io->version must be set");
         return -1;
     }
 
-    if (fsm != NULL && fsm->version == 0) {
+    if (fsm->version == 0) {
         ErrMsgPrintf(r->errmsg, "fsm->version must be set");
         return -1;
     }
