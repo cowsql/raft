@@ -237,6 +237,8 @@ static bool v1 = false;
         munit_error("trace does not match");           \
     }
 
+#define CLUSTER_ELAPSE(MSECS) test_cluster_elapse(&f->cluster_, MSECS)
+
 /* Step the cluster. */
 #define CLUSTER_STEP raft_fixture_step(&f->cluster);
 
@@ -744,6 +746,10 @@ void test_cluster_submit(struct test_cluster *c,
 /* Advance the cluster by completing a single asynchronous operation or firing a
  * timeout. */
 void test_cluster_step(struct test_cluster *c);
+
+/* Let the given number of milliseconds elapse. This requires that no event
+ * would be triggered by test_cluster_step() in the given time window. */
+void test_cluster_elapse(struct test_cluster *c, unsigned msecs);
 
 /* Stop delivering messages from id1 to id2 */
 void test_cluster_disconnect(struct test_cluster *c, raft_id id1, raft_id id2);
