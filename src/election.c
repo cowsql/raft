@@ -9,7 +9,6 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Common fields between follower and candidate state.
  *
@@ -321,4 +320,3 @@ bool electionTally(struct raft *r,
 }
 
 #undef infof
-#undef tracef
