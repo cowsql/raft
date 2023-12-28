@@ -12,8 +12,7 @@
 #include "request.h"
 #include "tracing.h"
 
-#define infof(...) Tracef(r->tracer, __VA_ARGS__)
-#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 /* Convenience for setting a new state value and asserting that the transition
  * is valid. */
@@ -216,4 +215,3 @@ void convertToUnavailable(struct raft *r)
 }
 
 #undef infof
-#undef tracef
