@@ -12,6 +12,7 @@
 
 enum operation_type {
     OPERATION_ENTRIES = 0,
+    OPERATION_SNAPSHOT,
     OPERATION_SEND,
     OPERATION_TRANSMIT
 };
@@ -33,6 +34,13 @@ struct operation
             struct raft_entry *batch;
             unsigned n;
         } entries;
+        struct
+        {
+            struct raft_snapshot_metadata metadata;
+            size_t offset;
+            struct raft_buffer chunk;
+            bool last;
+        } snapshot;
         struct
         {
             raft_id from;
@@ -416,6 +424,27 @@ static void serverProcessEntries(struct test_server *s,
     QUEUE_PUSH(&s->cluster->operations, &operation->queue);
 }
 
+static void serverProcessSnapshot(struct test_server *s,
+                                  struct raft_snapshot_metadata *metadata,
+                                  size_t offset,
+                                  struct raft_buffer *chunk,
+                                  bool last)
+{
+    struct operation *operation = munit_malloc(sizeof *operation);
+
+    operation->type = OPERATION_SNAPSHOT;
+    operation->id = s->raft.id;
+
+    operation->completion = s->cluster->time + s->disk_latency;
+
+    operation->snapshot.metadata = *metadata;
+    operation->snapshot.offset = offset;
+    operation->snapshot.chunk = *chunk;
+    operation->snapshot.last = last;
+
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+}
+
 static void serverProcessMessages(struct test_server *s,
                                   struct raft_message *messages,
                                   unsigned n)
@@ -462,6 +491,12 @@ static void serverStep(struct test_server *s, struct raft_event *event)
     if (update.flags & RAFT_UPDATE_ENTRIES) {
         serverProcessEntries(s, update.entries.index, update.entries.batch,
                              update.entries.n);
+    }
+
+    if (update.flags & RAFT_UPDATE_SNAPSHOT) {
+        serverProcessSnapshot(s, &update.snapshot.metadata,
+                              update.snapshot.offset, &update.snapshot.chunk,
+                              update.snapshot.last);
     }
 
     if (update.flags & RAFT_UPDATE_MESSAGES) {
@@ -618,6 +653,34 @@ static void serverCompleteEntries(struct test_server *s,
     serverStep(s, &event);
 }
 
+static void serverCompleteSnapshot(struct test_server *s,
+                                   struct operation *operation)
+{
+    struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
+    struct raft_event event;
+
+    snapshot->metadata.index = operation->snapshot.metadata.index;
+    snapshot->metadata.term = operation->snapshot.metadata.term;
+    confCopy(&operation->snapshot.metadata.configuration,
+             &snapshot->metadata.configuration);
+    snapshot->metadata.configuration_index =
+        operation->snapshot.metadata.configuration_index;
+
+    snapshot->data = operation->snapshot.chunk;
+
+    diskSetSnapshot(&s->disk, snapshot);
+
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = operation->snapshot.metadata;
+    event.persisted_snapshot.offset = operation->snapshot.offset;
+    event.persisted_snapshot.chunk = operation->snapshot.chunk;
+    event.persisted_snapshot.last = operation->snapshot.last;
+    event.persisted_snapshot.status = 0;
+
+    serverStep(s, &event);
+}
+
 static void serverCompleteSend(struct test_server *s,
                                struct operation *operation)
 {
@@ -714,6 +777,9 @@ static void serverCompleteOperation(struct test_server *s,
         case OPERATION_ENTRIES:
             serverCompleteEntries(s, operation);
             break;
+        case OPERATION_SNAPSHOT:
+            serverCompleteSnapshot(s, operation);
+            break;
         case OPERATION_SEND:
             serverCompleteSend(s, operation);
             break;
@@ -777,6 +843,25 @@ static void serverCancelEntries(struct test_server *s,
     serverStep(s, &event);
 }
 
+static void serverCancelSnapshot(struct test_server *s,
+                                 struct operation *operation)
+{
+    struct raft_event event;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = operation->snapshot.metadata;
+    event.persisted_snapshot.offset = operation->snapshot.offset;
+    event.persisted_snapshot.chunk = operation->snapshot.chunk;
+    event.persisted_snapshot.last = operation->snapshot.last;
+    event.persisted_snapshot.status = RAFT_CANCELED;
+
+    /* XXX: this should probably be done by raft core */
+    raft_free(operation->snapshot.chunk.base);
+
+    serverStep(s, &event);
+}
+
 void test_cluster_tear_down(struct test_cluster *c)
 {
     unsigned i;
@@ -798,6 +883,10 @@ void test_cluster_tear_down(struct test_cluster *c)
             case OPERATION_ENTRIES:
                 server = clusterGetServer(c, operation->id);
                 serverCancelEntries(server, operation);
+                break;
+            case OPERATION_SNAPSHOT:
+                server = clusterGetServer(c, operation->id);
+                serverCancelSnapshot(server, operation);
                 break;
             case OPERATION_TRANSMIT:
                 clearTransmitOperation(operation);
