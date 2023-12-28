@@ -41,8 +41,6 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
         r->configuration_uncommitted_index = index;
     }
 
-    configurationTrace(r, &r->configuration,
-                       "restore most recent configuration");
     return 0;
 }
 
@@ -133,11 +131,7 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
     r->configuration_last_snapshot_index = metadata->configuration_index;
 
-    configurationTrace(r, &r->configuration,
-                       "configuration restore from snapshot");
-
     r->commit_index = metadata->index;
-    r->last_applied = metadata->index;
     r->last_stored = metadata->index;
     r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
 
@@ -191,6 +185,9 @@ int raft_start(struct raft *r)
             entryBatchesDestroy(entries, n_entries);
             return rv;
         }
+        r->last_applied = snapshot->index;
+    } else if (n_entries > 1) {
+        r->last_applied = 1;
     }
 
     event.time = r->now;

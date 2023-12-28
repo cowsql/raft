@@ -12,7 +12,7 @@
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-struct ioForwardSendMessage
+struct legacySendMessage
 {
     struct raft_io_send send;
     struct raft_io_snapshot_get get;
@@ -20,9 +20,9 @@ struct ioForwardSendMessage
     struct raft_message message;
 };
 
-static void ioSendMessageCb(struct raft_io_send *send, int status)
+static void legacySendMessageCb(struct raft_io_send *send, int status)
 {
-    struct ioForwardSendMessage *req = send->data;
+    struct legacySendMessage *req = send->data;
     struct raft *r = req->r;
     struct raft_event event;
 
@@ -40,11 +40,11 @@ static void ioSendMessageCb(struct raft_io_send *send, int status)
     LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req);
+static int legacyLoadSnapshot(struct legacySendMessage *req);
 
-static int ioSendMessage(struct raft *r, struct raft_message *message)
+static int legacySendMessage(struct raft *r, struct raft_message *message)
 {
-    struct ioForwardSendMessage *req;
+    struct legacySendMessage *req;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -56,14 +56,14 @@ static int ioSendMessage(struct raft *r, struct raft_message *message)
     req->send.data = req;
 
     if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
-        rv = ioForwardLoadSnapshot(req);
+        rv = legacyLoadSnapshot(req);
         if (rv != 0) {
             return rv;
         }
         return 0;
     }
 
-    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
+    rv = r->io->send(r->io, &req->send, &req->message, legacySendMessageCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
@@ -75,7 +75,7 @@ static int ioSendMessage(struct raft *r, struct raft_message *message)
     return 0;
 }
 
-struct ioForwardPersistEntries
+struct legacyPersistEntries
 {
     struct raft_io_append append;
     struct raft *r;
@@ -84,9 +84,9 @@ struct ioForwardPersistEntries
     unsigned n;
 };
 
-static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
+static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
 {
-    struct ioForwardPersistEntries *req = append->data;
+    struct legacyPersistEntries *req = append->data;
     struct raft *r = req->r;
     struct raft_event event;
 
@@ -102,12 +102,12 @@ static void ioForwardPersistEntriesCb(struct raft_io_append *append, int status)
     LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardPersistEntries(struct raft *r,
-                                   raft_index index,
-                                   struct raft_entry *entries,
-                                   unsigned n)
+static int legacyHandleUpdateEntries(struct raft *r,
+                                     raft_index index,
+                                     struct raft_entry *entries,
+                                     unsigned n)
 {
-    struct ioForwardPersistEntries *req;
+    struct legacyPersistEntries *req;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -125,8 +125,7 @@ static int ioForwardPersistEntries(struct raft *r,
         goto err;
     }
 
-    rv = r->io->append(r->io, &req->append, entries, n,
-                       ioForwardPersistEntriesCb);
+    rv = r->io->append(r->io, &req->append, entries, n, legacyPersistEntriesCb);
     if (rv != 0) {
         goto err;
     }
@@ -139,7 +138,7 @@ err:
     return rv;
 }
 
-struct ioForwardPersistSnapshot
+struct legacyPersistSnapshot
 {
     struct raft_io_snapshot_put put;
     struct raft_snapshot snapshot;
@@ -150,10 +149,10 @@ struct ioForwardPersistSnapshot
     bool last;
 };
 
-static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
-                                       int status)
+static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
+                                    int status)
 {
-    struct ioForwardPersistSnapshot *req = put->data;
+    struct legacyPersistSnapshot *req = put->data;
     struct raft *r = req->r;
     struct raft_event event;
 
@@ -183,13 +182,13 @@ static void ioForwardPersistSnapshotCb(struct raft_io_snapshot_put *put,
     LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardPersistSnapshot(struct raft *r,
-                                    struct raft_snapshot_metadata *metadata,
-                                    size_t offset,
-                                    struct raft_buffer *chunk,
-                                    bool last)
+static int legacyHandleUpdateSnapshot(struct raft *r,
+                                      struct raft_snapshot_metadata *metadata,
+                                      size_t offset,
+                                      struct raft_buffer *chunk,
+                                      bool last)
 {
-    struct ioForwardPersistSnapshot *req;
+    struct legacyPersistSnapshot *req;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -211,7 +210,7 @@ static int ioForwardPersistSnapshot(struct raft *r,
     req->snapshot.n_bufs = 1;
 
     rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
-                             ioForwardPersistSnapshotCb);
+                             legacyPersistSnapshotCb);
     if (rv != 0) {
         goto err;
     }
@@ -225,11 +224,26 @@ err:
     return rv;
 }
 
-static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
-                                    struct raft_snapshot *snapshot,
-                                    int status)
+static int legacyHandleUpdateMessages(struct raft *r,
+                                      struct raft_message *messages,
+                                      unsigned n)
 {
-    struct ioForwardSendMessage *req = get->data;
+    unsigned i;
+    int rv;
+    for (i = 0; i < n; i++) {
+        rv = legacySendMessage(r, &messages[i]);
+        if (rv != 0) {
+            return rv;
+        }
+    }
+    return 0;
+}
+
+static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
+                                 struct raft_snapshot *snapshot,
+                                 int status)
+{
+    struct legacySendMessage *req = get->data;
     struct raft *r = req->r;
     struct raft_install_snapshot *params = &req->message.install_snapshot;
     struct raft_event event;
@@ -253,7 +267,7 @@ static void ioForwardLoadSnapshotCb(struct raft_io_snapshot_get *get,
     raft_free(snapshot->bufs);
     raft_free(snapshot);
 
-    rv = r->io->send(r->io, &req->send, &req->message, ioSendMessageCb);
+    rv = r->io->send(r->io, &req->send, &req->message, legacySendMessageCb);
     if (rv != 0) {
         ErrMsgTransferf(r->io->errmsg, r->errmsg,
                         "send message of type %d to %llu", req->message.type,
@@ -275,14 +289,14 @@ abort:
     LegacyForwardToRaftIo(r, &event);
 }
 
-static int ioForwardLoadSnapshot(struct ioForwardSendMessage *req)
+static int legacyLoadSnapshot(struct legacySendMessage *req)
 {
     struct raft *r = req->r;
     int rv;
 
     req->get.data = req;
 
-    rv = r->io->snapshot_get(r->io, &req->get, ioForwardLoadSnapshotCb);
+    rv = r->io->snapshot_get(r->io, &req->get, legacyLoadSnapshotCb);
     if (rv != 0) {
         raft_free(req);
         ErrMsgTransferf(r->io->errmsg, r->errmsg, "load snapshot at %llu",
@@ -850,49 +864,38 @@ static void legacyPersistedEntriesFailure(struct raft *r,
     }
 }
 
-/* Handle a single event, possibly adding more events. */
-static int legacyHandleEvent(struct raft *r,
-                             struct raft_entry *entry,
-                             struct raft_event **events,
-                             unsigned *n_events,
-                             unsigned i)
+static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
 {
-    struct raft_event *event;
-    struct raft_update update;
-    unsigned j;
+    assert(r->legacy.prev_state != r->state);
+
+    if (r->legacy.prev_state == RAFT_LEADER) {
+        /* If we're stepping down because of disk write failure, fail
+         * requests using the same status code as the write failure.*/
+        if (event->type == RAFT_PERSISTED_ENTRIES &&
+            event->persisted_entries.status != 0) {
+            legacyPersistedEntriesFailure(r, event);
+        }
+
+        LegacyFailPendingRequests(r);
+        assert(QUEUE_IS_EMPTY(&r->legacy.pending));
+    }
+
+    if (raft_state(r) == RAFT_LEADER) {
+        assert(r->legacy.change == NULL);
+    }
+
+    r->legacy.prev_state = r->state;
+}
+
+/* Whether the state_cb callback should be invoked. */
+static bool legacyShouldFireStepCb(struct raft *r)
+{
     queue *head;
     struct request *req;
-    bool has_pending_no_space_failure = false;
-    int rv;
 
-    event = &(*events)[i];
-
-    rv = raft_step(r, event, &update);
-    if (rv != 0) {
-        goto err;
+    if (r->legacy.step_cb == NULL) {
+        return false;
     }
-
-    if (update.flags & RAFT_UPDATE_STATE) {
-        assert(r->legacy.prev_state != r->state);
-        if (r->legacy.prev_state == RAFT_LEADER) {
-            /* If we're stepping down because of disk write failure, fail
-             * requests using the same status code as the write failure.*/
-            if (event->type == RAFT_PERSISTED_ENTRIES &&
-                event->persisted_entries.status != 0) {
-                legacyPersistedEntriesFailure(r, event);
-            }
-
-            LegacyFailPendingRequests(r);
-            assert(QUEUE_IS_EMPTY(&r->legacy.pending));
-        }
-        if (raft_state(r) == RAFT_LEADER) {
-            assert(r->legacy.change == NULL);
-        }
-        r->legacy.prev_state = r->state;
-    }
-
-    /* Check whether a raft_change request has been completed. */
-    legacyCheckChangeRequest(r, entry, events, n_events);
 
     /* Check if there's a client request in the completion queue which has
      * failed due to a RAFT_NOSPACE error. In that case we will not call the
@@ -903,13 +906,71 @@ static int legacyHandleEvent(struct raft *r,
         req = QUEUE_DATA(head, struct request, queue);
         if (req->type == RAFT_COMMAND) {
             if (((struct raft_apply *)req)->status == RAFT_NOSPACE) {
-                has_pending_no_space_failure = true;
-                break;
+                return false;
             }
         }
     }
 
-    if (!has_pending_no_space_failure && r->legacy.step_cb != NULL) {
+    return true;
+}
+
+static int legacyHandleUpdateCommitIndex(struct raft *r,
+                                         struct raft_event **events,
+                                         unsigned *n_events)
+{
+    raft_index commit_index = raft_commit_index(r);
+    int rv;
+
+    /* If the new commit index matches the index of a snapshot we have just
+     * persisted, then restore the FSM state using its cached data. */
+    if (commit_index != 0 && commit_index == r->legacy.snapshot_index) {
+        /* From Figure 5.3:
+         *
+         *   8. Reset state machine using snapshot contents.
+         */
+        r->legacy.snapshot_index = 0;
+        rv = r->fsm->restore(r->fsm, &r->legacy.snapshot_chunk);
+        if (rv != 0) {
+            tracef("restore snapshot: %s", errCodeToString(rv));
+            return rv;
+        }
+        r->last_applied = commit_index;
+    }
+
+    rv = legacyApply(r, events, n_events);
+    if (rv != 0) {
+        return rv;
+    }
+
+    return 0;
+}
+
+/* Handle a single event, possibly adding more events. */
+static int legacyHandleEvent(struct raft *r,
+                             struct raft_entry *entry,
+                             struct raft_event **events,
+                             unsigned *n_events,
+                             unsigned i)
+{
+    struct raft_event *event;
+    struct raft_update update;
+    int rv;
+
+    event = &(*events)[i];
+
+    rv = raft_step(r, event, &update);
+    if (rv != 0) {
+        return rv;
+    }
+
+    if (update.flags & RAFT_UPDATE_STATE) {
+        legacyHandleStateUpdate(r, event);
+    }
+
+    /* Check whether a raft_change request has been completed. */
+    legacyCheckChangeRequest(r, entry, events, n_events);
+
+    if (legacyShouldFireStepCb(r)) {
         r->legacy.step_cb(r);
     }
 
@@ -921,7 +982,7 @@ static int legacyHandleEvent(struct raft *r,
     if (update.flags & RAFT_UPDATE_CURRENT_TERM) {
         rv = r->io->set_term(r->io, raft_current_term(r));
         if (rv != 0) {
-            goto err;
+            return rv;
         }
     }
 
@@ -929,64 +990,43 @@ static int legacyHandleEvent(struct raft *r,
     if (update.flags & RAFT_UPDATE_VOTED_FOR) {
         rv = r->io->set_vote(r->io, raft_voted_for(r));
         if (rv != 0) {
-            goto err;
+            return rv;
         }
     }
 
     if (update.flags & RAFT_UPDATE_ENTRIES) {
-        rv = ioForwardPersistEntries(r, update.entries.index,
-                                     update.entries.batch, update.entries.n);
+        rv = legacyHandleUpdateEntries(r, update.entries.index,
+                                       update.entries.batch, update.entries.n);
         if (rv != 0) {
-            goto err;
+            return rv;
         }
     }
 
     if (update.flags & RAFT_UPDATE_SNAPSHOT) {
-        rv = ioForwardPersistSnapshot(
+        rv = legacyHandleUpdateSnapshot(
             r, &update.snapshot.metadata, update.snapshot.offset,
             &update.snapshot.chunk, update.snapshot.last);
         if (rv != 0) {
-            goto err;
+            return rv;
         }
     }
 
     if (update.flags & RAFT_UPDATE_MESSAGES) {
-        for (j = 0; j < update.messages.n; j++) {
-            rv = ioSendMessage(r, &update.messages.batch[j]);
-            if (rv != 0) {
-                goto err;
-            }
+        rv = legacyHandleUpdateMessages(r, update.messages.batch,
+                                        update.messages.n);
+        if (rv != 0) {
+            return rv;
         }
     }
 
     if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
-        raft_index commit_index = raft_commit_index(r);
-
-        /* If the new commit index matches the index of a snapshot we have just
-         * persisted, then restore the FSM state using its cached data. */
-        if (commit_index != 0 && commit_index == r->legacy.snapshot_index) {
-            /* From Figure 5.3:
-             *
-             *   8. Reset state machine using snapshot contents.
-             */
-            r->legacy.snapshot_index = 0;
-            rv = r->fsm->restore(r->fsm, &r->legacy.snapshot_chunk);
-            if (rv != 0) {
-                tracef("restore snapshot: %s", errCodeToString(rv));
-                goto err;
-            }
-        }
-
-        rv = legacyApply(r, events, n_events);
+        rv = legacyHandleUpdateCommitIndex(r, events, n_events);
         if (rv != 0) {
-            goto err;
+            return rv;
         }
     }
 
     return 0;
-
-err:
-    return rv;
 }
 
 int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
@@ -997,10 +1037,7 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     struct raft_entry entry; /* Used for actual promotion of RAFT_CHANGE reqs */
     int rv;
 
-    if (r->io == NULL) {
-        /* No legacy raft_io implementation, just do nothing. */
-        return 0;
-    }
+    assert(r->io != NULL);
 
     /* Initially the set of events contains only the event passed as argument,
      * but might grow if some further events get generated by the handling
@@ -1015,15 +1052,15 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     for (i = 0; i < n_events; i++) {
         rv = legacyHandleEvent(r, &entry, &events, &n_events, i);
         if (rv != 0) {
-            goto err;
+            break;
         }
     }
 
     raft_free(events);
-    return 0;
 
-err:
-    assert(rv != 0);
-    raft_free(events);
-    return rv;
+    if (rv != 0) {
+        return rv;
+    }
+
+    return 0;
 }
