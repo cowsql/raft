@@ -593,7 +593,7 @@ int replicationUpdate(struct raft *r,
         case PROGRESS__SNAPSHOT:
             /* If a snapshot has been installed, transition back to probe */
             if (progressSnapshotDone(r, i)) {
-                progressToProbe(r, i);
+                progressToPipeline(r, i);
             }
             break;
         case PROGRESS__PROBE:
