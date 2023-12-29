@@ -1,5 +1,4 @@
 ACLOCAL_AMFLAGS = -I m4
-AM_CFLAGS += $(CODE_COVERAGE_CFLAGS)
 
 # Not clobbering the base pointer helps bpftrace construct backtraces
 AM_CFLAGS += -fno-omit-frame-pointer
@@ -10,7 +9,7 @@ raftincludedir = $(includedir)/raft
 raftinclude_HEADERS =
 
 lib_LTLIBRARIES = libraft.la
-libraft_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden
+libraft_la_CFLAGS = $(AM_CFLAGS) $(CODE_COVERAGE_CFLAGS) -fvisibility=hidden
 libraft_la_LDFLAGS = -version-info 0:0:0
 libraft_la_SOURCES = \
   src/byte.c \
@@ -189,11 +188,7 @@ test_unit_uv_SOURCES = \
 test_unit_uv_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 test_unit_uv_LDADD = libtest.la $(UV_LIBS)
 
-# The integration/uv test is not linked to libraft, but built
-# directly against the libraft sources in order to test some
-# non-visible, non-API functions.
 test_integration_uv_SOURCES = \
-  ${libraft_la_SOURCES} \
   test/integration/main_uv.c \
   test/integration/test_uv_init.c \
   test/integration/test_uv_append.c \
@@ -210,7 +205,7 @@ test_integration_uv_SOURCES = \
   test/integration/test_uv_truncate_snapshot.c
 test_integration_uv_CFLAGS = $(AM_CFLAGS) -Wno-type-limits -Wno-conversion
 test_integration_uv_LDFLAGS = -no-install
-test_integration_uv_LDADD = libtest.la $(UV_LIBS)
+test_integration_uv_LDADD = libtest.la libraft.la $(UV_LIBS)
 
 AM_CFLAGS += $(UV_CFLAGS)
 
@@ -279,7 +274,7 @@ CODE_COVERAGE_DIRECTORY=./src
 CODE_COVERAGE_OUTPUT_DIRECTORY=coverage
 CODE_COVERAGE_OUTPUT_FILE=coverage.info
 if LCOV_VERSION_2
-CODE_COVERAGE_LCOV_SHOPTS_DEFAULT=--ignore-errors unused
+CODE_COVERAGE_LCOV_SHOPTS_DEFAULT=--ignore-errors unused,unused --rc branch_coverage=1
 endif
 CODE_COVERAGE_IGNORE_PATTERN="/usr/include/*"
 CODE_COVERAGE_BRANCH_COVERAGE=1
