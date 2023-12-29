@@ -686,66 +686,6 @@ TEST_V1(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-static char *ioErrorConvertDelay[] = {"0", "1", NULL};
-static MunitParameterEnum ioErrorConvert[] = {
-    {"delay", ioErrorConvertDelay},
-    {NULL, NULL},
-};
-
-/* An I/O error occurs when converting to candidate. */
-TEST(election, ioErrorConvert, setUp, tearDown, 0, ioErrorConvert)
-{
-    struct fixture *f = data;
-    const char *delay = munit_parameters_get(params, "delay");
-    return MUNIT_SKIP;
-    CLUSTER_START();
-
-    /* The first server fails to convert to candidate. */
-    CLUSTER_IO_FAULT(0, atoi(delay), 1);
-    CLUSTER_STEP;
-    ASSERT_UNAVAILABLE(0);
-
-    return MUNIT_OK;
-}
-
-/* The I/O error occurs when sending a vote request, and gets ignored. */
-TEST(election, ioErrorSendVoteRequest, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    return MUNIT_SKIP;
-    CLUSTER_START();
-
-    /* The first server fails to send a RequestVote RPC. */
-    CLUSTER_IO_FAULT(0, 2, 1);
-    CLUSTER_STEP;
-
-    /* The first server is still candidate. */
-    CLUSTER_STEP;
-    ASSERT_CANDIDATE(0);
-
-    return MUNIT_OK;
-}
-
-/* The I/O error occurs when the second node tries to persist its vote. */
-TEST(election, ioErrorPersistVote, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    return MUNIT_SKIP;
-    CLUSTER_START();
-
-    /* The first server becomes candidate. */
-    CLUSTER_STEP;
-    ASSERT_CANDIDATE(0);
-
-    /* The second server receives a RequestVote RPC but fails to persist its
-     * vote. */
-    CLUSTER_IO_FAULT(1, 0, 1);
-    CLUSTER_STEP;
-    ASSERT_UNAVAILABLE(1);
-
-    return MUNIT_OK;
-}
-
 /* Test an election round with two voters and pre-vote. */
 TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
 {
