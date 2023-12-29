@@ -1,41 +1,10 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
-/******************************************************************************
- *
- * Fixture with a fake raft_io instance.
- *
- *****************************************************************************/
-
 struct fixture
 {
     FIXTURE_CLUSTER;
 };
-
-/******************************************************************************
- *
- * Helper macros
- *
- *****************************************************************************/
-
-/* Bootstrap the I'th server. */
-#define BOOTSTRAP(I)                                  \
-    do {                                              \
-        struct raft_configuration _configuration;     \
-        int _rv;                                      \
-        struct raft *_raft;                           \
-        CLUSTER_CONFIGURATION(&_configuration);       \
-        _raft = CLUSTER_RAFT(I);                      \
-        _rv = raft_bootstrap(_raft, &_configuration); \
-        munit_assert_int(_rv, ==, 0);                 \
-        raft_configuration_close(&_configuration);    \
-    } while (0)
-
-/******************************************************************************
- *
- * Set up a cluster with a single server.
- *
- *****************************************************************************/
 
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
@@ -51,16 +20,10 @@ static void tearDown(void *data)
     free(f);
 }
 
-/******************************************************************************
- *
- * raft_start
- *
- *****************************************************************************/
-
-SUITE(raft_start)
+SUITE(start)
 
 /* Start a server that has no persisted state whatsoever. */
-TEST_V1(raft_start, NoState, setUp, tearDown, 0, NULL)
+TEST_V1(start, NoState, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_START(1);
@@ -70,7 +33,7 @@ TEST_V1(raft_start, NoState, setUp, tearDown, 0, NULL)
 }
 
 /* Start a server that has a persisted its term. */
-TEST_V1(raft_start, PersistedTerm, setUp, tearDown, 0, NULL)
+TEST_V1(start, PersistedTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
@@ -80,7 +43,7 @@ TEST_V1(raft_start, PersistedTerm, setUp, tearDown, 0, NULL)
 }
 
 /* Start a server that has a persisted its term and has a snapshot. */
-TEST_V1(raft_start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
+TEST_V1(start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
@@ -97,7 +60,7 @@ TEST_V1(raft_start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
 
 /* Start a server that has a persisted its term and has the initial bootstrap
  * log entry. */
-TEST_V1(raft_start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
+TEST_V1(start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
@@ -109,143 +72,154 @@ TEST_V1(raft_start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
 
 /* There are two servers. The first has a snapshot present and no other
  * entries. */
-TEST(raft_start, oneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
+TEST_V1(start, OneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    CLUSTER_GROW;
-    CLUSTER_SET_SNAPSHOT(0 /* server index                                  */,
-                         6 /* last index                                    */,
-                         2 /* last term                                     */,
-                         1 /* conf index                                    */,
-                         5 /* x                                             */,
-                         7 /* y                                             */);
-    CLUSTER_SET_TERM(0, 2);
-    BOOTSTRAP(1);
-    CLUSTER_START();
-    CLUSTER_MAKE_PROGRESS;
+
+    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
+    CLUSTER_SET_SNAPSHOT(1, /* ID                                        */
+                         6, /* last index                                */
+                         2, /* last term                                 */
+                         2, /* N servers                                 */
+                         2, /* N voting                                  */
+                         1 /* conf index                                 */);
+
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+
+    /* Server 1 becomes leader. */
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_START(2 /* ID */);
+    CLUSTER_TRACE(
+        "[   0] 1 > term 2, 1 snapshot (6^2)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote log is more recent (6^2 vs 1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n");
+
+    /* It eventually replicates the snapshot. */
+    CLUSTER_TRACE(
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           missing previous entry (6^2) -> reject\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (6^2)\n"
+        "[ 150] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (6^2)\n"
+        "[ 160] 2 > persisted snapshot (6^2)\n"
+        "           send success result to 1\n");
+
+    /* When the server 1 receives the result it immediately transition server 2
+     * to pipeline mode. */
+    CLUSTER_TRACE(
+        "[ 170] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n");
+
     return MUNIT_OK;
 }
 
 /* There are two servers. The first has a snapshot along with some follow-up
  * entries. */
-TEST(raft_start, oneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
+TEST_V1(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entries[2];
-    struct raft_fsm *fsm;
 
-    CLUSTER_GROW;
-    BOOTSTRAP(1);
+    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
+    CLUSTER_SET_SNAPSHOT(1, /* ID                                        */
+                         6, /* last index                                */
+                         2, /* last term                                 */
+                         2, /* N servers                                 */
+                         2, /* N voting                                  */
+                         1 /* conf index                                 */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
 
-    entries[0].type = RAFT_COMMAND;
-    entries[0].term = 2;
-    FsmEncodeSetX(6, &entries[0].buf);
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
 
-    entries[1].type = RAFT_COMMAND;
-    entries[1].term = 2;
-    FsmEncodeAddY(2, &entries[1].buf);
+    /* Server 1 becomes leader. */
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_START(2 /* ID */);
+    CLUSTER_TRACE(
+        "[   0] 1 > term 2, 1 snapshot (6^2), 2 entries (7^1..8^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote log is longer (8^1 vs 1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           replicate 1 new barrier entry (9^3)\n"
+        "           probe server 2 sending 1 entry (9^3)\n"
+        "[ 130] 1 > persisted 1 entry (9^3)\n"
+        "           next uncommitted entry (8^1) has 1 vote out of 2\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           missing previous entry (8^1) -> reject\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (6^2)\n");
 
-    CLUSTER_SET_SNAPSHOT(0 /*                                               */,
-                         6 /* last index                                    */,
-                         2 /* last term                                     */,
-                         1 /* conf index                                    */,
-                         5 /* x                                             */,
-                         7 /* y                                             */);
-    CLUSTER_ADD_ENTRY(0, &entries[0]);
-    CLUSTER_ADD_ENTRY(1, &entries[1]);
-    CLUSTER_SET_TERM(0, 2);
-
-    CLUSTER_START();
-    CLUSTER_MAKE_PROGRESS;
-
-    fsm = CLUSTER_FSM(0);
-    munit_assert_int(FsmGetX(fsm), ==, 7);
-
-    return MUNIT_OK;
-}
-
-/******************************************************************************
- *
- * Start with entries present on disk.
- *
- *****************************************************************************/
-
-/* There are 3 servers. The first has no entries are present at all */
-TEST(raft_start, noEntries, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    CLUSTER_GROW;
-    CLUSTER_GROW;
-    BOOTSTRAP(1);
-    BOOTSTRAP(2);
-    CLUSTER_START();
-    CLUSTER_MAKE_PROGRESS;
-    return MUNIT_OK;
-}
-
-/* There are 3 servers, the first has some entries, the others don't. */
-TEST(raft_start, twoEntries, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    struct raft_configuration configuration;
-    struct raft_entry entry;
-    struct raft_fsm *fsm;
-    unsigned i;
-    int rv;
-
-    CLUSTER_GROW;
-    CLUSTER_GROW;
-
-    CLUSTER_CONFIGURATION(&configuration);
-    rv = raft_bootstrap(CLUSTER_RAFT(0), &configuration);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-
-    entry.type = RAFT_COMMAND;
-    entry.term = 3;
-    FsmEncodeSetX(123, &entry.buf);
-
-    CLUSTER_ADD_ENTRY(0, &entry);
-    CLUSTER_SET_TERM(0, 3);
-
-    BOOTSTRAP(1);
-    BOOTSTRAP(2);
-
-    CLUSTER_START();
-    CLUSTER_ELECT(0);
-    CLUSTER_MAKE_PROGRESS;
-
-    CLUSTER_STEP_UNTIL_APPLIED(CLUSTER_N, 3, 3000);
-
-    for (i = 0; i < CLUSTER_N; i++) {
-        fsm = CLUSTER_FSM(i);
-        munit_assert_int(FsmGetX(fsm), ==, 124);
-    }
+    test_cluster_step(&f->cluster_);
+    test_cluster_step(&f->cluster_);
+    test_cluster_step(&f->cluster_);
+    test_cluster_step(&f->cluster_);
 
     return MUNIT_OK;
 }
 
 /* There is a single voting server in the cluster, which immediately elects
  * itself when starting. */
-TEST(raft_start, singleVotingSelfElect, setUp, tearDown, 0, NULL)
+TEST_V1(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    CLUSTER_BOOTSTRAP;
-    CLUSTER_START();
-    munit_assert_int(CLUSTER_STATE(0), ==, RAFT_LEADER);
-    CLUSTER_MAKE_PROGRESS;
+    struct raft_entry entry;
+
+    CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 1 /* servers */, 1 /* voters */);
+    CLUSTER_START(1 /* ID */);
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "           self elect and convert to leader\n");
+
+    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
+
+    /* The server can make progress alone. */
+    entry.term = 1;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
+
+    CLUSTER_TRACE(
+        "[   0] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^1)\n"
+        "[  10] 1 > persisted 1 entry (2^1)\n"
+        "           commit 1 new entry (2^1)\n");
+
     return MUNIT_OK;
 }
 
 /* There are two servers in the cluster, one is voting and the other is
  * not. When started, the non-voting server does not elects itself. */
-TEST(raft_start, singleVotingNotUs, setUp, tearDown, 0, NULL)
+TEST_V1(start, SingleVotingNotUs, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    CLUSTER_GROW;
-    CLUSTER_BOOTSTRAP_N_VOTING(1);
-    CLUSTER_START();
-    munit_assert_int(CLUSTER_STATE(1), ==, RAFT_FOLLOWER);
-    CLUSTER_MAKE_PROGRESS;
+
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 1 /* voters */);
+    CLUSTER_START(2 /* ID */);
+    CLUSTER_TRACE("[   0] 2 > term 1, 1 entry (1^1)\n");
+
+    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_FOLLOWER);
+
     return MUNIT_OK;
 }

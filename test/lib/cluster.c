@@ -172,6 +172,24 @@ static void diskLoadSnapshotMetadata(struct test_disk *d,
     snapshotCopy(&d->snapshot->metadata, metadata);
 }
 
+/* Load snapshot data into the given buffer, asserting that index and term match
+ * the given metadata. */
+static void diskLoadSnapshotData(struct test_disk *d,
+                                 raft_index index,
+                                 raft_term term,
+                                 struct raft_buffer *data)
+{
+    munit_assert_ptr_not_null(d->snapshot);
+    munit_assert_ullong(d->snapshot->metadata.index, ==, index);
+    munit_assert_ullong(d->snapshot->metadata.term, ==, term);
+
+    data->len = d->snapshot->data.len;
+    data->base = raft_malloc(data->len);
+    munit_assert_ptr_not_null(data->base);
+
+    memcpy(data->base, d->snapshot->data.base, data->len);
+}
+
 /* Load all data persisted on the disk. */
 static void diskLoad(struct test_disk *d,
                      raft_term *term,
@@ -756,8 +774,7 @@ static void serverEnqueueTransmit(struct test_server *s,
                         message->append_entries.n_entries);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            /* Create a copy of the snapshot being sent, so the memory of the
-             * original message can be released when raft_done() is called. */
+            /* Load from disk the data of the snapshot being sent. */
             {
                 struct raft_install_snapshot *src = &message->install_snapshot;
                 struct raft_install_snapshot *dst =
@@ -766,10 +783,8 @@ static void serverEnqueueTransmit(struct test_server *s,
                 dst->last_term = src->last_term;
                 confCopy(&src->conf, &dst->conf);
                 dst->conf_index = src->conf_index;
-                dst->data.len = src->data.len;
-                dst->data.base = raft_malloc(dst->data.len);
-                munit_assert_ptr_not_null(dst->data.base);
-                memcpy(dst->data.base, src->data.base, src->data.len);
+                diskLoadSnapshotData(&s->disk, src->last_index, src->last_term,
+                                     &dst->data);
             }
             break;
     }

@@ -1044,8 +1044,6 @@ int replicationPersistSnapshotDone(struct raft *r,
         goto discard;
     }
 
-    infof("restored snapshot with last index %llu", metadata->index);
-
     goto respond;
 
 discard:

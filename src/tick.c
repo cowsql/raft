@@ -46,6 +46,7 @@ static int tickFollower(struct raft *r)
     if (electionTimerExpired(r)) {
         const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
+            infof("%s server -> stay follower", raft_role_name(server->role));
             goto out;
         }
         if (replicationInstallSnapshotBusy(r)) {
