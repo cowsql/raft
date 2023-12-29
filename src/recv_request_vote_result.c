@@ -24,23 +24,11 @@ int recvRequestVoteResult(struct raft *r,
     assert(r != NULL);
     assert(id > 0);
 
-    votes_index = configurationIndexOfVoter(&r->configuration, id);
-    if (votes_index == r->configuration.n) {
-        infof("non-voting or unknown server -> reject");
-        return 0;
-    }
-
-    /* Ignore responses if we are not candidate anymore */
-    if (r->state != RAFT_CANDIDATE) {
-        assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
-        infof("local server is %s -> ignore", raft_state_name(r->state));
-        return 0;
-    }
-
-    /* If we're in the pre-vote phase, don't actually increment our term right
-     * now (we'll do it later, if we start the second phase), and also don't
-     * step down if the peer is just one term ahead (this is okay as in the
-     * request we sent our current term plus one). */
+    /* If this is a pre-vote result, don't actually increment our term right
+     * now, because the term included in this message is not necessarily the
+     * term the remote peer is at (pre-vote results contain the term that the
+     * peer would bump to if the request it receives was an actual request, and
+     * that term is typically our current term plus one). */
     if (r->candidate_state.in_pre_vote) {
         recvCheckMatchingTerms(r, result->term, &match);
     } else {
@@ -50,9 +38,16 @@ int recvRequestVoteResult(struct raft *r,
         }
     }
 
-    /* Converted to follower as a result of seeing a higher term. */
+    /* Ignore responses if we are not candidate anymore */
     if (r->state != RAFT_CANDIDATE) {
-        infof("no longer candidate -> ignore");
+        assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+        infof("local server is %s -> ignore", raft_state_name(r->state));
+        return 0;
+    }
+
+    votes_index = configurationIndexOfVoter(&r->configuration, id);
+    if (votes_index == r->configuration.n) {
+        infof("non-voting or unknown server -> reject");
         return 0;
     }
 
