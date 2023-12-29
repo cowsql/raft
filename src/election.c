@@ -265,9 +265,14 @@ void electionVote(struct raft *r,
 
     if (local_last_index <= args->last_log_index) {
         /* Our log is shorter or equal to the one of the requester. */
-        infof("remote log equal or longer (%llu^%llu vs %llu^%llu) -> %s",
-              args->last_log_index, args->last_log_term, local_last_index,
-              local_last_term, grant_text);
+        if (local_last_index == args->last_log_index) {
+            infof("remote log is equal (%llu^%llu) -> %s", args->last_log_index,
+                  args->last_log_term, grant_text);
+        } else {
+            infof("remote log is longer (%llu^%llu vs %llu^%llu) -> %s",
+                  args->last_log_index, args->last_log_term, local_last_index,
+                  local_last_term, grant_text);
+        }
         goto grant_vote;
     }
 

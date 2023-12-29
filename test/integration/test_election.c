@@ -80,7 +80,7 @@ TEST_V1(election, TwoVoters, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
@@ -124,7 +124,7 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* Disconnect the second server, so the first server does not receive the
      * result and eventually starts a new election round. */
@@ -140,7 +140,7 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 210] 2 > recv request vote from server 1\n"
         "           remote term is higher (3 vs 2) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     CLUSTER_TRACE(
         "[ 220] 1 > recv request vote result from server 2\n"
@@ -180,7 +180,7 @@ TEST_V1(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (3 vs 1) -> bump term\n"
-        "           remote log equal or longer (2^1 vs 2^1) -> grant vote\n");
+        "           remote log is equal (2^1) -> grant vote\n");
 
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
@@ -219,7 +219,7 @@ TEST_V1(election, GrantIfLastIndexIsHigher, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (3 vs 1) -> bump term\n"
-        "           remote log equal or longer (2^1 vs 1^1) -> grant vote\n");
+        "           remote log is longer (2^1 vs 1^1) -> grant vote\n");
 
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
@@ -262,16 +262,16 @@ TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 110] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 110] 4 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 110] 5 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* The first server receives the first RequestVote result RPC but stays
      * candidate since it has only 2 votes, and 3 are required. */
@@ -360,10 +360,10 @@ TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
         "           convert to candidate, start election for term 2\n"
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 110] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 120] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
         "           replicate 1 new entry (2^2)\n"
@@ -445,7 +445,7 @@ TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* Server 3 receives the vote request from server 1 and rejects it because
      * it has already voted. */
@@ -554,7 +554,7 @@ TEST_V1(election, RejectIfLastIndexIsLower, setUp, tearDown, 0, NULL)
         "           convert to candidate, start election for term 3\n"
         "[ 140] 1 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term, step down\n"
-        "           remote log equal or longer (2^1 vs 1^1) -> grant vote\n"
+        "           remote log is longer (2^1 vs 1^1) -> grant vote\n"
         "[ 150] 2 > recv request vote result from server 1\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           replicate 1 new entry (3^3)\n"
@@ -699,7 +699,7 @@ TEST_V1(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(2)), ==, 1);
 
@@ -817,7 +817,7 @@ TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
 
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
 
     /* Server 2 has not incremented its term or persisted its vote.*/
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(2)), ==, 1);
@@ -834,7 +834,7 @@ TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 130] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(2)), ==, 2);
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(2)), ==, 1);
@@ -878,14 +878,14 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
      * term. */
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(2)), ==, 1);
 
     /* Server 3 receives the pre-vote RequestVote RPC but does not increment its
      * term. */
     CLUSTER_TRACE(
         "[ 110] 3 > recv request vote from server 1\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(3)), ==, 1);
 
     /* Server 1 receives the pre-vote RequestVote results and starts the actual
@@ -902,13 +902,13 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 130] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* Server 3 receives the actual RequestVote RPC */
     CLUSTER_TRACE(
         "[ 130] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* Server 1 crashes. */
     CLUSTER_KILL(1);
@@ -926,7 +926,7 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
      * resetting it previous vote. */
     CLUSTER_TRACE(
         "[ 270] 3 > recv request vote from server 2\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(3)), ==, 2);
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(3)), ==, 1);
 
@@ -943,7 +943,7 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 290] 3 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n");
+        "           remote log is equal (1^1) -> grant vote\n");
 
     /* Server 2 receives the actual RequestVote result */
     CLUSTER_TRACE(
@@ -995,7 +995,7 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
      * term. */
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(2)), ==, 1);
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(2)), ==, 0);
 
@@ -1006,7 +1006,7 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
      * term. */
     CLUSTER_TRACE(
         "[ 110] 3 > recv request vote from server 1\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> pre-vote ok\n");
+        "           remote log is equal (1^1) -> pre-vote ok\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(2)), ==, 1);
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(2)), ==, 0);
 
@@ -1095,7 +1095,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
         "           convert to candidate, start election for term 2\n"
         "[ 110] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log equal or longer (1^1 vs 1^1) -> grant vote\n"
+        "           remote log is equal (1^1) -> grant vote\n"
         "[ 120] 1 > recv request vote result from server 3\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
         "           replicate 1 new entry (2^2)\n"
