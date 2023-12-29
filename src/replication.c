@@ -270,7 +270,8 @@ int replicationProgress(struct raft *r, unsigned i)
          * we're not doing so already. */
         if (prev_term == 0 && !progress_state_is_snapshot) {
             assert(prev_index < snapshot_index);
-            infof("missing entry at index %lld -> needs snapshot", prev_index);
+            infof("missing previous entry at index %lld -> needs snapshot",
+                  prev_index);
             goto send_snapshot;
         }
     }
@@ -776,8 +777,8 @@ static int checkLogMatchingProperty(struct raft *r,
 
     local_prev_term = logTermOf(r->log, args->prev_log_index);
     if (local_prev_term == 0) {
-        infof("missing entry (%llu^%llu) -> reject", args->prev_log_index,
-              args->prev_log_term);
+        infof("missing previous entry (%llu^%llu) -> reject",
+              args->prev_log_index, args->prev_log_term);
         return 1;
     }
 

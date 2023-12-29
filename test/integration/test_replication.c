@@ -891,7 +891,7 @@ TEST_V1(replication, FollowerHasMissingEntries, setUp, tearDown, 0, NULL)
      * it, because it's missing the one before. */
     CLUSTER_TRACE(
         "[ 130] 2 > recv append entries from server 1\n"
-        "           missing entry (2^1) -> reject\n");
+        "           missing previous entry (2^1) -> reject\n");
 
     /* Server 1 sends the missing entry. */
     CLUSTER_TRACE(
