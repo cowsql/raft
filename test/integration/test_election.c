@@ -330,7 +330,7 @@ TEST_V1(election, RejectIfHigherTerm, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term, step down\n"
-        "           no longer candidate -> ignore\n");
+        "           local server is follower -> ignore\n");
 
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_FOLLOWER);
 
