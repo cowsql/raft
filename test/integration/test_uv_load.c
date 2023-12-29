@@ -1,7 +1,6 @@
 #include <unistd.h>
 
 #include "../../src/byte.h"
-#include "../../src/uv.h"
 #include "../lib/runner.h"
 #include "../lib/uv.h"
 
@@ -772,7 +771,7 @@ TEST(load, manySnapshots, setUp, tearDown, 0, NULL)
 
     /* The orphaned .meta file is removed */
     char meta_filename[128];
-    sprintf(meta_filename, "%s%s", filename, UV__SNAPSHOT_META_SUFFIX);
+    sprintf(meta_filename, "%s%s", filename, ".meta");
     munit_assert_false(DirHasFile(f->dir, meta_filename));
 
     return MUNIT_OK;
@@ -834,8 +833,7 @@ TEST(load, orphanedSnapshotFiles, setUp, tearDown, 0, NULL)
     /* Take a snapshot but then remove the data file, as if the server crashed
      * before it could complete writing it. */
     sprintf(filename1_removed, "snapshot-2-18-%ju", now);
-    sprintf(metafilename1_removed, "snapshot-2-18-%ju%s", now,
-            UV__SNAPSHOT_META_SUFFIX);
+    sprintf(metafilename1_removed, "snapshot-2-18-%ju.meta", now);
     SNAPSHOT_PUT(2, 18, 1);
     munit_assert_true(DirHasFile(f->dir, filename1_removed));
     munit_assert_true(DirHasFile(f->dir, metafilename1_removed));
@@ -844,8 +842,7 @@ TEST(load, orphanedSnapshotFiles, setUp, tearDown, 0, NULL)
     /* Take a snapshot but then remove the .meta file */
     now = uv_now(&f->loop);
     sprintf(filename2_removed, "snapshot-2-19-%ju", now);
-    sprintf(metafilename2_removed, "snapshot-2-19-%ju%s", now,
-            UV__SNAPSHOT_META_SUFFIX);
+    sprintf(metafilename2_removed, "snapshot-2-19-%ju.meta", now);
     SNAPSHOT_PUT(2, 19, 2);
     munit_assert_true(DirHasFile(f->dir, filename2_removed));
     munit_assert_true(DirHasFile(f->dir, metafilename2_removed));
