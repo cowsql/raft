@@ -277,7 +277,7 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     }
 
     if (info->diagnostic.level > 3) {
-        fprintf(stderr, " TRACE %llu > %s\n", server->raft.id,
+        fprintf(stderr, "TRACE: %llu > %s\n", server->raft.id,
                 info->diagnostic.message);
         return;
     }
