@@ -483,6 +483,24 @@ static void serverProcessMessages(struct test_server *s,
     }
 }
 
+static void serverProcessCommitIndex(struct test_server *s)
+{
+    struct raft *r = &s->raft;
+    struct raft_event event;
+    struct raft_update update;
+    int rv;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_CONFIGURATION;
+
+    /* XXX: we should check if the given index is actually associated with a
+     * configuration */
+    event.configuration.index = raft_commit_index(r);
+
+    rv = raft_step(r, &event, &update);
+    munit_assert_int(rv, ==, 0);
+}
+
 /* Fire the given event using raft_step() and process the resulting struct
  * raft_update object. */
 static void serverStep(struct test_server *s, struct raft_event *event)
@@ -521,6 +539,10 @@ static void serverStep(struct test_server *s, struct raft_event *event)
 
     if (update.flags & RAFT_UPDATE_TIMEOUT) {
         s->timeout = raft_timeout(&s->raft);
+    }
+
+    if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
+        serverProcessCommitIndex(s);
     }
 }
 
