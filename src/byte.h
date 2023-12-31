@@ -74,14 +74,13 @@ BYTE__INLINE uint64_t byteFlip64(uint64_t v)
 #endif
 }
 
-BYTE__INLINE void bytePut8(void **cursor, uint8_t value)
+BYTE__INLINE void bytePut8(uint8_t **cursor, uint8_t value)
 {
-    uint8_t **p = (uint8_t **)cursor;
-    **p = value;
-    *p += 1;
+    **cursor = value;
+    *cursor += 1;
 }
 
-BYTE__INLINE void bytePut32(void **cursor, uint32_t value)
+BYTE__INLINE void bytePut32(uint8_t **cursor, uint32_t value)
 {
     unsigned i;
     uint32_t flipped = byteFlip32(value);
@@ -90,7 +89,7 @@ BYTE__INLINE void bytePut32(void **cursor, uint32_t value)
     }
 }
 
-BYTE__INLINE void bytePut64(void **cursor, uint64_t value)
+BYTE__INLINE void bytePut64(uint8_t **cursor, uint64_t value)
 {
     unsigned i;
     uint64_t flipped = byteFlip64(value);
@@ -99,22 +98,21 @@ BYTE__INLINE void bytePut64(void **cursor, uint64_t value)
     }
 }
 
-BYTE__INLINE void bytePutString(void **cursor, const char *value)
+BYTE__INLINE void bytePutString(uint8_t **cursor, const char *value)
 {
     char **p = (char **)cursor;
     strcpy(*p, value);
-    *p += strlen(value) + 1;
+    *cursor += strlen(value) + 1;
 }
 
-BYTE__INLINE uint8_t byteGet8(const void **cursor)
+BYTE__INLINE uint8_t byteGet8(const uint8_t **cursor)
 {
-    const uint8_t **p = (const uint8_t **)cursor;
-    uint8_t value = **p;
-    *p += 1;
+    uint8_t value = **cursor;
+    *cursor += 1;
     return value;
 }
 
-BYTE__INLINE uint32_t byteGet32(const void **cursor)
+BYTE__INLINE uint32_t byteGet32(const uint8_t **cursor)
 {
     uint32_t value = 0;
     unsigned i;
@@ -124,7 +122,7 @@ BYTE__INLINE uint32_t byteGet32(const void **cursor)
     return byteFlip32(value);
 }
 
-BYTE__INLINE uint64_t byteGet64(const void **cursor)
+BYTE__INLINE uint64_t byteGet64(const uint8_t **cursor)
 {
     uint64_t value = 0;
     unsigned i;
@@ -134,13 +132,12 @@ BYTE__INLINE uint64_t byteGet64(const void **cursor)
     return byteFlip64(value);
 }
 
-BYTE__INLINE const char *byteGetString(const void **cursor, size_t max_len)
+BYTE__INLINE const char *byteGetString(const uint8_t **cursor, size_t max_len)
 {
-    const char **p = (const char **)cursor;
-    const char *value = *p;
+    const char *value = (const char *)*cursor;
     size_t len = 0;
     while (len < max_len) {
-        if (*(*p + len) == 0) {
+        if (*(*cursor + len) == 0) {
             break;
         }
         len++;
@@ -148,7 +145,7 @@ BYTE__INLINE const char *byteGetString(const void **cursor, size_t max_len)
     if (len == max_len) {
         return NULL;
     }
-    *p += len + 1;
+    *cursor += len + 1;
     return value;
 }
 

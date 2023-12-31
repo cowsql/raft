@@ -104,7 +104,7 @@ bool IsCompressed(const void *data, size_t sz)
     if (data == NULL || sz < 4) {
         return false;
     }
-    const void *cursor = data;
+    const uint8_t *cursor = data;
 #ifdef LZ4F_MAGICNUMBER
 #define RAFT_LZ4F_MAGICNUMBER LZ4F_MAGICNUMBER
 #else

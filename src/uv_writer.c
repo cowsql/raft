@@ -190,7 +190,7 @@ static void uvWriterPollCb(uv_poll_t *poller, int status, int events)
 
     for (i = 0; i < (unsigned)n_events; i++) {
         struct io_event *event = &w->events[i];
-        struct UvWriterReq *req = *((void **)&event->data);
+        struct UvWriterReq *req = (void *)((uintptr_t)event->data);
 
         /* If we got EAGAIN, it means it was not possible to perform the write
          * asynchronously, so let's fall back to the threadpool. */
@@ -472,10 +472,10 @@ int UvWriterSubmit(struct UvWriter *w,
     req->iocb.aio_fildes = (uint32_t)w->fd;
     req->iocb.aio_lio_opcode = IOCB_CMD_PWRITEV;
     req->iocb.aio_reqprio = 0;
-    *((void **)(&req->iocb.aio_buf)) = (void *)bufs;
+    req->iocb.aio_buf = (uintptr_t)bufs;
     req->iocb.aio_nbytes = n;
     req->iocb.aio_offset = (int64_t)offset;
-    *((void **)(&req->iocb.aio_data)) = (void *)req;
+    req->iocb.aio_data = (uintptr_t)req;
 
     /* Use per-request synchronous I/O if available. */
     req->iocb.aio_rw_flags |= RWF_DSYNC;

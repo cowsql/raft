@@ -13,7 +13,7 @@
 /* Encode the content of a metadata file. */
 static void uvMetadataEncode(const struct uvMetadata *metadata, void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
     bytePut64(&cursor, UV__DISK_FORMAT);
     bytePut64(&cursor, metadata->version);
     bytePut64(&cursor, metadata->term);
@@ -25,7 +25,7 @@ static int uvMetadataDecode(const void *buf,
                             struct uvMetadata *metadata,
                             char *errmsg)
 {
-    const void *cursor = buf;
+    const uint8_t *cursor = buf;
     uint64_t format;
     format = byteGet64(&cursor);
     if (format != UV__DISK_FORMAT) {

@@ -67,7 +67,7 @@ static void closeCb(struct raft_io *io)
 #define WRITE_METADATA_FILE(N, FORMAT, VERSION, TERM, VOTED_FOR) \
     {                                                            \
         uint8_t buf[8 * 4];                                      \
-        void *cursor = buf;                                      \
+        uint8_t *cursor = buf;                                   \
         char filename[strlen("metadataN") + 1];                  \
         sprintf(filename, "metadata%d", N);                      \
         bytePut64(&cursor, FORMAT);                              \

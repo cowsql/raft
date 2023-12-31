@@ -109,7 +109,6 @@ CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
   -fcf-protection \
   --param=ssp-buffer-size=4 \
   -pipe \
-  -fno-strict-aliasing \
   -fdiagnostics-color \
   -fexceptions \
   -fstack-clash-protection \
