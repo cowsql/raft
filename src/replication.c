@@ -1131,15 +1131,15 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
 {
     assert(index > 0);
 
+    if (r->configuration_uncommitted_index != index) {
+        return 0;
+    }
+
     /* If this is an uncommitted configuration that we had already applied when
      * submitting the configuration change (for leaders) or upon receiving it
      * via an AppendEntries RPC (for followers), then reset the uncommitted
      * index, since that uncommitted configuration is now committed. */
-    if (r->configuration_uncommitted_index == index) {
-        infof("configuration at index:%llu is committed.", index);
-        r->configuration_uncommitted_index = 0;
-    }
-
+    r->configuration_uncommitted_index = 0;
     r->configuration_committed_index = index;
 
     if (r->state == RAFT_LEADER) {
