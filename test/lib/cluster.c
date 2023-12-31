@@ -99,6 +99,12 @@ static void diskSetTerm(struct test_disk *d, raft_term term)
     d->term = term;
 }
 
+/* Set the persisted vote. */
+static void diskSetVote(struct test_disk *d, raft_id vote)
+{
+    d->voted_for = vote;
+}
+
 /* Set the persisted snapshot. */
 static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
 {
@@ -485,7 +491,7 @@ static void serverStep(struct test_server *s, struct raft_event *event)
     }
 
     if (update.flags & RAFT_UPDATE_VOTED_FOR) {
-        diskSetTerm(&s->disk, raft_voted_for(r));
+        diskSetVote(&s->disk, raft_voted_for(r));
     }
 
     if (update.flags & RAFT_UPDATE_ENTRIES) {
@@ -924,6 +930,13 @@ void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
     struct test_server *server = clusterGetServer(c, id);
     munit_assert_false(server->running);
     diskSetTerm(&server->disk, term);
+}
+
+void test_cluster_set_vote(struct test_cluster *c, raft_id id, raft_id vote)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetVote(&server->disk, vote);
 }
 
 void test_cluster_set_snapshot(struct test_cluster *c,

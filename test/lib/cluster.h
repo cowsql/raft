@@ -494,6 +494,9 @@ static bool v1 = false;
         CLUSTER_SET_TERM_V0(__VA_ARGS__); \
     }
 
+#define CLUSTER_SET_VOTE(ID, VOTE) \
+    test_cluster_set_vote(&f->cluster_, ID, VOTE);
+
 #define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
     test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
 
@@ -705,6 +708,10 @@ struct raft *test_cluster_raft(struct test_cluster *c, raft_id id);
 /* Set the persisted term of the given server to the given value. Must me called
  * before starting the server. */
 void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term);
+
+/* Set the persisted vote of the given server to the given value. Must me called
+ * before starting the server. */
+void test_cluster_set_vote(struct test_cluster *c, raft_id id, raft_id term);
 
 /* Set the last persisted snapshot of the given server. Must me called before
  * starting the server. */
