@@ -322,8 +322,6 @@ static void serverInit(struct test_server *s,
     unsigned delta;
     int rv;
 
-    diskInit(&s->disk);
-
     s->tracer.impl = s;
     s->tracer.version = 2;
     s->tracer.trace = serverTrace;
@@ -368,8 +366,7 @@ static void serverInit(struct test_server *s,
     s->running = false;
 }
 
-/* Release all resources used by a server object. */
-static void serverClose(struct test_server *s)
+static void serverStop(struct test_server *s)
 {
     struct raft_event event;
     struct raft_update update;
@@ -381,6 +378,19 @@ static void serverClose(struct test_server *s)
     rv = raft_step(&s->raft, &event, &update);
     munit_assert_int(rv, ==, 0);
 
+    s->running = false;
+
+    /* Re-initialized the raft object. */
+    raft_close(&s->raft, NULL);
+    serverInit(s, s->raft.id, s->cluster);
+}
+
+/* Release all resources used by a server object. */
+static void serverClose(struct test_server *s)
+{
+    if (s->running) {
+        serverStop(s);
+    }
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
 }
@@ -806,6 +816,7 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     (void)params;
 
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        diskInit(&c->servers[i].disk);
         serverInit(&c->servers[i], i + 1, c);
     }
 
@@ -986,6 +997,12 @@ void test_cluster_start(struct test_cluster *c, raft_id id)
 {
     struct test_server *server = clusterGetServer(c, id);
     serverStart(server);
+}
+
+void test_cluster_stop(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    serverStop(server);
 }
 
 void test_cluster_submit(struct test_cluster *c,

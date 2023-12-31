@@ -344,12 +344,10 @@ static bool v1 = false;
     }
 
 /* Kill the I'th server. */
-#define CLUSTER_KILL(I)                     \
-    if (v1) {                               \
-        test_cluster_kill(&f->cluster_, I); \
-    } else {                                \
-        raft_fixture_kill(&f->cluster, I);  \
-    }
+#define CLUSTER_KILL(I) raft_fixture_kill(&f->cluster, I);
+
+/* Stop the server with the given ID. */
+#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
 
 /* Revive the I'th server */
 #define CLUSTER_REVIVE(I) raft_fixture_revive(&f->cluster, I);
@@ -744,6 +742,9 @@ void test_cluster_set_disk_latency(struct test_cluster *c,
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Stop the server with the given @id. */
+void test_cluster_stop(struct test_cluster *c, raft_id id);
 
 /* Submit a new entry. */
 void test_cluster_submit(struct test_cluster *c,
