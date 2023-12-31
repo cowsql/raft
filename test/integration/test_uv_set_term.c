@@ -69,7 +69,7 @@ static void closeCb(struct raft_io *io)
 #define WRITE_METADATA_FILE(N, FORMAT, VERSION, TERM, VOTED_FOR) \
     {                                                            \
         uint8_t buf[8 * 4];                                      \
-        void *cursor = buf;                                      \
+        uint8_t *cursor = buf;                                   \
         char filename[strlen("metadataN") + 1];                  \
         sprintf(filename, "metadata%d", N);                      \
         bytePut64(&cursor, FORMAT);                              \
@@ -81,17 +81,17 @@ static void closeCb(struct raft_io *io)
 
 /* Assert that the content of either the metadata1 or metadata2 file match the
  * given values. */
-#define ASSERT_METADATA_FILE(N, VERSION, TERM, VOTED_FOR)    \
-    {                                                        \
-        uint8_t buf2[8 * 4];                                 \
-        const void *cursor = buf2;                           \
-        char filename[strlen("metadataN") + 1];              \
-        sprintf(filename, "metadata%d", N);                  \
-        DirReadFile(f->dir, filename, buf2, sizeof buf2);    \
-        munit_assert_int(byteGet64(&cursor), ==, 1);         \
-        munit_assert_int(byteGet64(&cursor), ==, VERSION);   \
-        munit_assert_int(byteGet64(&cursor), ==, TERM);      \
-        munit_assert_int(byteGet64(&cursor), ==, VOTED_FOR); \
+#define ASSERT_METADATA_FILE(N, VERSION, TERM, VOTED_FOR)       \
+    {                                                           \
+        uint8_t buf2[8 * 4];                                    \
+        const uint8_t *cursor = buf2;                           \
+        char filename[strlen("metadataN") + 1];                 \
+        sprintf(filename, "metadata%d", N);                     \
+        DirReadFile(f->dir, filename, buf2, sizeof buf2);       \
+        munit_assert_ullong(byteGet64(&cursor), ==, 1);         \
+        munit_assert_ullong(byteGet64(&cursor), ==, VERSION);   \
+        munit_assert_ullong(byteGet64(&cursor), ==, TERM);      \
+        munit_assert_ullong(byteGet64(&cursor), ==, VOTED_FOR); \
     }
 
 /******************************************************************************

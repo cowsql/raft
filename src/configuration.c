@@ -265,7 +265,7 @@ size_t configurationEncodedSize(const struct raft_configuration *c)
 
 void configurationEncodeToBuf(const struct raft_configuration *c, void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
     unsigned i;
 
     /* Encoding format version */
@@ -314,7 +314,7 @@ err:
 int configurationDecode(const struct raft_buffer *buf,
                         struct raft_configuration *c)
 {
-    const void *cursor;
+    const uint8_t *cursor;
     size_t i;
     size_t n;
     int rv;

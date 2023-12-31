@@ -91,7 +91,7 @@ size_t uvSizeofBatchHeader(size_t n)
 
 static void encodeRequestVote(const struct raft_request_vote *p, void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
     uint64_t flags = 0;
 
     if (p->disrupt_leader) {
@@ -111,7 +111,7 @@ static void encodeRequestVote(const struct raft_request_vote *p, void *buf)
 static void encodeRequestVoteResult(const struct raft_request_vote_result *p,
                                     void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
     uint64_t flags = 0;
 
     if (p->pre_vote) {
@@ -125,7 +125,7 @@ static void encodeRequestVoteResult(const struct raft_request_vote_result *p,
 
 static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
 
     cursor = buf;
 
@@ -144,7 +144,7 @@ static void encodeAppendEntriesResult(
     const struct raft_append_entries_result *p,
     void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
 
     bytePut64(&cursor, p->term);
     bytePut64(&cursor, p->rejected);
@@ -155,7 +155,7 @@ static void encodeAppendEntriesResult(
 static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
                                   void *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
     size_t conf_size = configurationEncodedSize(&p->conf);
 
     cursor = buf;
@@ -176,7 +176,7 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
 
 static void encodeTimeoutNow(const struct raft_timeout_now *p, void *buf)
 {
-    void *cursor = buf;
+    uint8_t *cursor = buf;
 
     bytePut64(&cursor, p->term);
     bytePut64(&cursor, p->last_log_index);
@@ -188,7 +188,7 @@ int uvEncodeMessage(const struct raft_message *message,
                     unsigned *n_bufs)
 {
     uv_buf_t header;
-    void *cursor;
+    uint8_t *cursor;
 
     /* Figure out the length of the header for this request and allocate a
      * buffer for it. */
@@ -221,7 +221,7 @@ int uvEncodeMessage(const struct raft_message *message,
         goto oom;
     }
 
-    cursor = header.base;
+    cursor = (uint8_t *)header.base;
 
     /* Encode the request preamble, with message type and message size. */
     bytePut64(&cursor, message->type);
@@ -297,7 +297,7 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
                          void *buf)
 {
     unsigned i;
-    void *cursor = buf;
+    uint8_t *cursor = buf;
 
     /* Number of entries in the batch, little endian */
     bytePut64(&cursor, n);
@@ -320,9 +320,9 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
 
 static void decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
 {
-    const void *cursor;
+    const uint8_t *cursor;
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     p->version = 1;
     p->term = byteGet64(&cursor);
@@ -345,9 +345,9 @@ static void decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
 static void decodeRequestVoteResult(const uv_buf_t *buf,
                                     struct raft_request_vote_result *p)
 {
-    const void *cursor;
+    const uint8_t *cursor;
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     p->version = 1;
     p->term = byteGet64(&cursor);
@@ -364,7 +364,7 @@ int uvDecodeBatchHeader(const void *batch,
                         struct raft_entry **entries,
                         unsigned *n)
 {
-    const void *cursor = batch;
+    const uint8_t *cursor = batch;
     size_t i;
     int rv;
 
@@ -415,13 +415,13 @@ err:
 static int decodeAppendEntries(const uv_buf_t *buf,
                                struct raft_append_entries *args)
 {
-    const void *cursor;
+    const uint8_t *cursor;
     int rv;
 
     assert(buf != NULL);
     assert(args != NULL);
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     args->version = 0;
     args->term = byteGet64(&cursor);
@@ -440,9 +440,9 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 static void decodeAppendEntriesResult(const uv_buf_t *buf,
                                       struct raft_append_entries_result *p)
 {
-    const void *cursor;
+    const uint8_t *cursor;
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     p->version = 0;
     p->term = byteGet64(&cursor);
@@ -458,14 +458,14 @@ static void decodeAppendEntriesResult(const uv_buf_t *buf,
 static int decodeInstallSnapshot(const uv_buf_t *buf,
                                  struct raft_install_snapshot *args)
 {
-    const void *cursor;
+    const uint8_t *cursor;
     struct raft_buffer conf;
     int rv;
 
     assert(buf != NULL);
     assert(args != NULL);
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     args->version = 0;
     args->term = byteGet64(&cursor);
@@ -487,9 +487,9 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
 
 static void decodeTimeoutNow(const uv_buf_t *buf, struct raft_timeout_now *p)
 {
-    const void *cursor;
+    const uint8_t *cursor;
 
-    cursor = buf->base;
+    cursor = (void *)buf->base;
 
     p->version = 0;
     p->term = byteGet64(&cursor);

@@ -428,7 +428,7 @@ TEST(configurationEncode, one_server, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     struct raft_buffer buf;
     size_t len;
-    const void *cursor;
+    const uint8_t *cursor;
     const char *address = "127.0.0.1:666";
     ADD(1, address, RAFT_VOTER);
     ENCODE(&buf);
@@ -437,14 +437,14 @@ TEST(configurationEncode, one_server, setUp, tearDown, 0, NULL)
           8 + strlen(address) + 1; /* Server */
     len = bytePad64(len);
 
-    munit_assert_int(buf.len, ==, len);
+    munit_assert_ullong(buf.len, ==, len);
 
     cursor = buf.base;
 
     munit_assert_int(byteGet8(&cursor), ==, 1);
-    munit_assert_int(byteGet64(&cursor), ==, 1);
+    munit_assert_ullong(byteGet64(&cursor), ==, 1);
 
-    munit_assert_int(byteGet64(&cursor), ==, 1);
+    munit_assert_ullong(byteGet64(&cursor), ==, 1);
     munit_assert_string_equal(byteGetString(&cursor, strlen(address) + 1),
                               address);
     munit_assert_int(byteGet8(&cursor), ==, RAFT_VOTER);
@@ -460,7 +460,7 @@ TEST(configurationEncode, two_servers, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     struct raft_buffer buf;
     size_t len;
-    const void *cursor;
+    const uint8_t *cursor;
     const char *address1 = "127.0.0.1:666";
     const char *address2 = "192.168.1.1:666";
 
@@ -473,19 +473,19 @@ TEST(configurationEncode, two_servers, setUp, tearDown, 0, NULL)
           8 + strlen(address2) + 1 + 1;  /* Server 2 */
     len = bytePad64(len);
 
-    munit_assert_int(buf.len, ==, len);
+    munit_assert_ullong(buf.len, ==, len);
 
     cursor = buf.base;
 
     munit_assert_int(byteGet8(&cursor), ==, 1);
-    munit_assert_int(byteGet64(&cursor), ==, 2);
+    munit_assert_ullong(byteGet64(&cursor), ==, 2);
 
-    munit_assert_int(byteGet64(&cursor), ==, 1);
+    munit_assert_ullong(byteGet64(&cursor), ==, 1);
     munit_assert_string_equal(byteGetString(&cursor, strlen(address1) + 1),
                               address1);
     munit_assert_int(byteGet8(&cursor), ==, RAFT_STANDBY);
 
-    munit_assert_int(byteGet64(&cursor), ==, 2);
+    munit_assert_ullong(byteGet64(&cursor), ==, 2);
     munit_assert_string_equal(byteGetString(&cursor, strlen(address2) + 1),
                               address2);
     munit_assert_int(byteGet8(&cursor), ==, RAFT_VOTER);

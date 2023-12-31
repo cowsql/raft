@@ -611,7 +611,7 @@ int UvSnapshotPut(struct raft_io *io,
 {
     struct uv *uv;
     struct uvSnapshotPut *put;
-    void *cursor;
+    uint8_t *cursor;
     unsigned crc;
     int rv;
     raft_index next_index;
@@ -650,7 +650,7 @@ int UvSnapshotPut(struct raft_io *io,
         goto err_after_req_alloc;
     }
 
-    cursor = put->meta.header;
+    cursor = (uint8_t *)put->meta.header;
     bytePut64(&cursor, UV__DISK_FORMAT);
     bytePut64(&cursor, 0);
     bytePut64(&cursor, snapshot->configuration_index);
@@ -659,7 +659,7 @@ int UvSnapshotPut(struct raft_io *io,
     crc = byteCrc32(&put->meta.header[2], sizeof(uint64_t) * 2, 0);
     crc = byteCrc32(put->meta.bufs[1].base, put->meta.bufs[1].len, crc);
 
-    cursor = &put->meta.header[1];
+    cursor = (uint8_t *)&put->meta.header[1];
     bytePut64(&cursor, crc);
 
     /* - If the trailing parameter is set to 0, it means that we're restoring a

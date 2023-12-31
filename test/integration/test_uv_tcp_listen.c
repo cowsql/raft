@@ -116,7 +116,7 @@ static void tearDownDeps(void *data)
 static void *setUp(const MunitParameter params[], void *user_data)
 {
     struct fixture *f = setUpDeps(params, user_data);
-    void *cursor;
+    uint8_t *cursor;
     /* test_tcp_listen(&f->tcp); */
     INIT;
     f->accepted = false;
@@ -126,7 +126,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
     bytePut64(&cursor, 1);
     bytePut64(&cursor, PEER_ID);
     bytePut64(&cursor, 16);
-    strcpy(cursor, PEER_ADDRESS);
+    strcpy((char *)cursor, PEER_ADDRESS);
 
     return f;
 }

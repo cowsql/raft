@@ -51,7 +51,7 @@ struct uvTcpConnect
 /* Encode an handshake message into the given buffer. */
 static int uvTcpEncodeHandshake(raft_id id, const char *address, uv_buf_t *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
     size_t address_len = bytePad64(strlen(address) + 1);
     buf->len = sizeof(uint64_t) + /* Protocol version. */
                sizeof(uint64_t) + /* Server ID. */
@@ -61,11 +61,11 @@ static int uvTcpEncodeHandshake(raft_id id, const char *address, uv_buf_t *buf)
     if (buf->base == NULL) {
         return RAFT_NOMEM;
     }
-    cursor = buf->base;
+    cursor = (uint8_t *)buf->base;
     bytePut64(&cursor, UV__TCP_HANDSHAKE_PROTOCOL);
     bytePut64(&cursor, id);
     bytePut64(&cursor, address_len);
-    strcpy(cursor, address);
+    strcpy((char *)cursor, address);
     return 0;
 }
 

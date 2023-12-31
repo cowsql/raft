@@ -729,7 +729,7 @@ static int probeAsyncIO(int fd, size_t size, bool *ok, char *errmsg)
     /* Prepare the KAIO request object */
     memset(&iocb, 0, sizeof iocb);
     iocb.aio_lio_opcode = IOCB_CMD_PWRITE;
-    *((void **)(&iocb.aio_buf)) = buf;
+    iocb.aio_buf = (uintptr_t)buf;
     iocb.aio_nbytes = size;
     iocb.aio_offset = 0;
     iocb.aio_fildes = (uint32_t)fd;

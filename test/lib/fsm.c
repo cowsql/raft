@@ -20,7 +20,7 @@ static int fsmApply(struct raft_fsm *fsm,
                     void **result)
 {
     struct fsm *f = fsm->data;
-    const void *cursor = buf->base;
+    const uint8_t *cursor = buf->base;
     unsigned command;
     int value;
 
@@ -56,9 +56,9 @@ static int fsmApply(struct raft_fsm *fsm,
 static int fsmRestore(struct raft_fsm *fsm, struct raft_buffer *buf)
 {
     struct fsm *f = fsm->data;
-    const void *cursor = buf->base;
+    const uint8_t *cursor = buf->base;
 
-    munit_assert_int(buf->len, ==, sizeof(uint64_t) * 2);
+    munit_assert_ullong(buf->len, ==, sizeof(uint64_t) * 2);
 
     f->x = byteGet64(&cursor);
     f->y = byteGet64(&cursor);
@@ -74,7 +74,7 @@ static int fsmEncodeSnapshot(int x,
                              unsigned *n_bufs)
 {
     struct raft_buffer *buf;
-    void *cursor;
+    uint8_t *cursor;
 
     *n_bufs = 1;
 
@@ -172,7 +172,7 @@ void FsmClose(struct raft_fsm *fsm)
 
 void FsmEncodeSetX(const int value, struct raft_buffer *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
 
     buf->base = raft_malloc(16);
     buf->len = 16;
@@ -186,7 +186,7 @@ void FsmEncodeSetX(const int value, struct raft_buffer *buf)
 
 void FsmEncodeAddX(const int value, struct raft_buffer *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
 
     buf->base = raft_malloc(16);
     buf->len = 16;
@@ -200,7 +200,7 @@ void FsmEncodeAddX(const int value, struct raft_buffer *buf)
 
 void FsmEncodeSetY(const int value, struct raft_buffer *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
 
     buf->base = raft_malloc(16);
     buf->len = 16;
@@ -214,7 +214,7 @@ void FsmEncodeSetY(const int value, struct raft_buffer *buf)
 
 void FsmEncodeAddY(const int value, struct raft_buffer *buf)
 {
-    void *cursor;
+    uint8_t *cursor;
 
     buf->base = raft_malloc(16);
     buf->len = 16;

@@ -699,7 +699,7 @@ void uvSegmentBufferClose(struct uvSegmentBuffer *b)
 int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
 {
     int rv;
-    void *cursor;
+    uint8_t *cursor;
     size_t n;
     assert(b->n == 0);
     n = sizeof(uint64_t);
@@ -708,7 +708,7 @@ int uvSegmentBufferFormat(struct uvSegmentBuffer *b)
         return rv;
     }
     b->n = n;
-    cursor = b->arena.base;
+    cursor = (uint8_t *)b->arena.base;
     bytePut64(&cursor, UV__DISK_FORMAT);
     return 0;
 }
@@ -717,13 +717,13 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
                           const struct raft_entry entries[],
                           unsigned n_entries)
 {
-    size_t size;   /* Total size of the batch */
-    uint32_t crc1; /* Header checksum */
-    uint32_t crc2; /* Data checksum */
-    void *crc1_p;  /* Pointer to header checksum slot */
-    void *crc2_p;  /* Pointer to data checksum slot */
-    void *header;  /* Pointer to the header section */
-    void *cursor;
+    size_t size;     /* Total size of the batch */
+    uint32_t crc1;   /* Header checksum */
+    uint32_t crc2;   /* Data checksum */
+    uint8_t *crc1_p; /* Pointer to header checksum slot */
+    uint8_t *crc2_p; /* Pointer to data checksum slot */
+    void *header;    /* Pointer to the header section */
+    uint8_t *cursor;
     unsigned i;
     int rv;
 
@@ -737,7 +737,7 @@ int uvSegmentBufferAppend(struct uvSegmentBuffer *b,
     if (rv != 0) {
         return rv;
     }
-    cursor = b->arena.base + b->n;
+    cursor = (uint8_t *)b->arena.base + b->n;
 
     /* Placeholder of the checksums */
     crc1_p = cursor;

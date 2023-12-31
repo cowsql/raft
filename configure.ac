@@ -60,6 +60,9 @@ AM_CONDITIONAL(BENCHMARK_ENABLED, test "x$enable_benchmark" = "xyes")
 AC_ARG_ENABLE(debug, AS_HELP_STRING([--enable-debug[=ARG]], [enable debugging [default=no]]))
 AM_CONDITIONAL(DEBUG_ENABLED, test "x$enable_debug" = "xyes")
 
+# Whether to enable compile-time hardening options.
+AC_ARG_ENABLE(hardening, AS_HELP_STRING([--disable-hardening], [disable compile-time hardening options]))
+
 # Whether to enable memory sanitizer.
 AC_ARG_ENABLE(sanitize, AS_HELP_STRING([--enable-sanitize[=ARG]], [enable code sanitizers [default=no]]))
 AM_CONDITIONAL(SANITIZE_ENABLED, test x"$enable_sanitize" = x"yes")
@@ -102,58 +105,63 @@ AC_TYPE_UINT64_T
 # on 32-bit architecture be 8 bytes instead of the normal 4.
 AC_SYS_LARGEFILE
 
-CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
-  -std=c11 \
-  -g \
-  --mcet \
-  -fcf-protection \
-  --param=ssp-buffer-size=4 \
-  -pipe \
-  -fno-strict-aliasing \
-  -fdiagnostics-color \
-  -fexceptions \
-  -fstack-clash-protection \
-  -fstack-protector-strong \
-  -fasynchronous-unwind-tables \
-  -fdiagnostics-show-option \
-  -Wall \
-  -Wextra \
-  -Wpedantic \
-  -Wimplicit-fallthrough=5 \
-  -Wcast-align \
-  -Wstrict-prototypes \
-  -Wlogical-op \
-  -Wmissing-include-dirs \
-  -Wold-style-definition \
-  -Winit-self \
-  -Wfloat-equal \
-  -Wsuggest-attribute=noreturn \
-  -Wformat=2 \
-  -Wendif-labels \
-  -Wdate-time \
-  -Wnested-externs \
-  -Wconversion \
-  -Werror=implicit-function-declaration \
-  -Wunused-but-set-variable \
-  -Werror=return-type \
-  -Werror=incompatible-pointer-types \
-  -Wshadow \
-  -Werror=overflow \
-  -Werror=shift-count-overflow \
-  -Werror=shift-overflow=2 \
-  -Warray-bounds \
-  -Wrestrict \
-  -Wreturn-local-addr \
-  -Wstringop-overflow \
-])
+AS_IF([test "x$enable_hardening" != "xno"],
+      [CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+        -std=c11 \
+        -g \
+        --mcet \
+        -fcf-protection \
+        --param=ssp-buffer-size=4 \
+        -pipe \
+        -fdiagnostics-color \
+        -fexceptions \
+        -fstack-clash-protection \
+        -fstack-protector-strong \
+        -fasynchronous-unwind-tables \
+        -fdiagnostics-show-option \
+        -Wall \
+        -Wextra \
+        -Wpedantic \
+        -Wimplicit-fallthrough=5 \
+        -Wcast-align \
+        -Wstrict-prototypes \
+        -Wlogical-op \
+        -Wmissing-include-dirs \
+        -Wold-style-definition \
+        -Winit-self \
+        -Wfloat-equal \
+        -Wsuggest-attribute=noreturn \
+        -Wformat=2 \
+        -Wendif-labels \
+        -Wdate-time \
+        -Wnested-externs \
+        -Wconversion \
+        -Werror=implicit-function-declaration \
+        -Wunused-but-set-variable \
+        -Werror=return-type \
+        -Werror=incompatible-pointer-types \
+        -Wshadow \
+        -Werror=overflow \
+        -Werror=shift-count-overflow \
+        -Werror=shift-overflow=2 \
+        -Warray-bounds \
+        -Wrestrict \
+        -Wreturn-local-addr \
+        -Wstringop-overflow \
+      ])],
+      [])
+
 AC_SUBST(AM_CFLAGS)
 
-CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[ \
-  -z relro \
-  -z now \
-  -fstack-protector-strong \
-  --param=ssp-buffer-size=4 \
-])
+AS_IF([test "x$enable_hardening" != "xno"],
+      [CC_CHECK_FLAGS_APPEND([AM_LDFLAGS],[LDFLAGS],[ \
+        -z relro \
+        -z now \
+        -fstack-protector-strong \
+        --param=ssp-buffer-size=4 \
+      ])],
+      [])
+
 AC_SUBST(AM_LDLAGS)
 
 REQUIRES=''

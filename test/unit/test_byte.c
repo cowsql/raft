@@ -81,7 +81,7 @@ SUITE(byteGetString)
 TEST(byteGetString, success, NULL, NULL, 0, NULL)
 {
     uint8_t buf[] = {'h', 'e', 'l', 'l', 'o', 0};
-    const void *cursor = buf;
+    const uint8_t *cursor = buf;
     munit_assert_string_equal(byteGetString(&cursor, sizeof buf), "hello");
     munit_assert_ptr_equal(cursor, buf + sizeof buf);
     return MUNIT_OK;
@@ -90,7 +90,7 @@ TEST(byteGetString, success, NULL, NULL, 0, NULL)
 TEST(byteGetString, malformed, NULL, NULL, 0, NULL)
 {
     uint8_t buf[] = {'h', 'e', 'l', 'l', 'o', 'w'};
-    const void *cursor = buf;
+    const uint8_t *cursor = buf;
     munit_assert_ptr_equal(byteGetString(&cursor, sizeof buf), NULL);
     munit_assert_ptr_equal(cursor, buf);
     return MUNIT_OK;
@@ -107,10 +107,10 @@ SUITE(byteGet64)
 TEST(byteGet64, success, NULL, NULL, 0, NULL)
 {
     uint8_t *buf = munit_malloc(sizeof(uint64_t) * 2);
-    void *cursor1 = buf + 1;
-    const void *cursor2 = buf + 1;
+    uint8_t *cursor1 = buf + 1;
+    const uint8_t *cursor2 = buf + 1;
     bytePut64(&cursor1, 1);
-    munit_assert_int(byteGet64(&cursor2), ==, 1);
+    munit_assert_ullong(byteGet64(&cursor2), ==, 1);
     free(buf);
     return MUNIT_OK;
 }
