@@ -217,9 +217,12 @@ TEST(append, finalizeSegment, setUp, tearDown, 0, NULL)
     while (!DirHasFile(f->dir, "open-4")) {
         LOOP_RUN(1);
     }
-    munit_assert_true(DirHasFile(f->dir, "0000000000000001-0000000000000004"));
+    while (!DirHasFile(f->dir, "0000000000000001-0000000000000004")) {
+        LOOP_RUN(1);
+    }
     munit_assert_false(DirHasFile(f->dir, "open-1"));
-    munit_assert_true(DirHasFile(f->dir, "open-4"));
+    munit_assert_true(DirHasFile(f->dir, "open-2"));
+    munit_assert_true(DirHasFile(f->dir, "open-3"));
     return MUNIT_OK;
 }
 
