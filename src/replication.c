@@ -112,14 +112,14 @@ static int sendAppendEntries(struct raft *r,
     args->leader_commit = r->commit_index;
 
     if (args->n_entries == 0) {
-        infof("%s server %llu sending a heartbeat with no entries",
+        infof("%s server %llu sending a heartbeat (no entries)",
               progressStateName(r, i), server->id);
     } else if (args->n_entries == 1) {
         infof("%s server %llu sending 1 entry (%llu^%llu)",
               progressStateName(r, i), server->id, next_index,
               args->entries[0].term);
     } else {
-        infof("%s server %llu sending %u entries (%llu.%llu..%llu.%llu)",
+        infof("%s server %llu sending %u entries (%llu^%llu..%llu^%llu)",
               progressStateName(r, i), server->id, args->n_entries, next_index,
               args->entries[0].term, next_index + args->n_entries - 1,
               args->entries[args->n_entries - 1].term);
