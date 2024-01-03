@@ -442,7 +442,7 @@ int replicationPersistEntriesDone(struct raft *r,
             rv = followerPersistEntriesDone(r, index, entries, n, status);
             break;
         default:
-            if (status != 0) {
+            if (status == 0) {
                 updateLastStored(r, index, entries, n);
             }
             rv = 0;
