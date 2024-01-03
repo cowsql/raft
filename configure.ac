@@ -109,7 +109,6 @@ AS_IF([test "x$enable_hardening" != "xno"],
       [CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
         -std=c11 \
         -g \
-        --mcet \
         -fcf-protection \
         --param=ssp-buffer-size=4 \
         -pipe \
