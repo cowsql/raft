@@ -282,7 +282,7 @@ int replicationProgress(struct raft *r, unsigned i)
     return sendAppendEntries(r, i, prev_index, prev_term);
 
 send_snapshot:
-    if (progressGetRecentRecv(r, i)) {
+    if (progressGetLastRecv(r, i) >= r->now - r->election_timeout) {
         /* Only send a snapshot when we have heard from the server */
         return sendSnapshot(r, i);
     } else {
@@ -541,7 +541,7 @@ int replicationUpdate(struct raft *r,
     assert(r->state == RAFT_LEADER);
     assert(i < r->configuration.n);
 
-    progressMarkRecentRecv(r, i);
+    progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
 

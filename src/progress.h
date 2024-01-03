@@ -22,7 +22,7 @@ struct raft_progress
     raft_index next_index;   /* Next entry to send. */
     raft_index match_index;  /* Highest index reported as replicated. */
     raft_time last_send;     /* Timestamp of last AppendEntries RPC. */
-    bool recent_recv;        /* A msg was received within election timeout. */
+    raft_time last_recv;     /* Timestamp of last AppendEntries result. */
     raft_flags features;     /* What the server is capable of. */
     struct
     {
@@ -82,19 +82,18 @@ void progressUpdateLastSend(struct raft *r, unsigned i);
  * been sent. */
 void progressUpdateSnapshotLastSend(struct raft *r, unsigned i);
 
-/* Reset to false the recent_recv flag of the server at the given index,
- * returning the previous value.
- *
- * To be called once every election_timeout milliseconds. */
-bool progressResetRecentRecv(struct raft *r, unsigned i);
+/* Update the last_recv timestamp after an AppendEntries response has been
+ * received. */
+void progressUpdateLastRecv(struct raft *r, unsigned i);
 
-/* Set to true the recent_recv flag of the server at the given index.
- *
- * To be called whenever we receive an AppendEntries RPC result */
-void progressMarkRecentRecv(struct raft *r, unsigned i);
+/* Reset to false all the recent_recv flags. */
+void progressResetRecentRecv(struct raft *r);
 
-/* Return the value of the recent_recv flag. */
-bool progressGetRecentRecv(const struct raft *r, unsigned i);
+/* Return the value of the last_send timestamp. */
+raft_time progressGetLastSend(const struct raft *r, unsigned i);
+
+/* Return the value of the last_recv flag. */
+raft_time progressGetLastRecv(const struct raft *r, unsigned i);
 
 /* Convert to the i'th server to snapshot mode. */
 void progressToSnapshot(struct raft *r, unsigned i);

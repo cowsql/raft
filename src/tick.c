@@ -92,7 +92,8 @@ static int tickCandidate(struct raft *r)
 
 /* Return true if we received an AppendEntries RPC result from a majority of
  * voting servers since we became leaders or since the last time this function
- * was called.
+ * returned true (i.e. since the last time the check was successful and hence we
+ * reset the election timer).
  *
  * For each server the function checks the recent_recv flag of the associated
  * progress object, and resets the flag after the check. It returns true if a
@@ -105,9 +106,9 @@ static bool checkContactQuorum(struct raft *r)
 
     for (i = 0; i < r->configuration.n; i++) {
         struct raft_server *server = &r->configuration.servers[i];
-        bool recent_recv = progressResetRecentRecv(r, i);
-        if ((server->role == RAFT_VOTER && recent_recv) ||
-            server->id == r->id) {
+        raft_time last_recv = progressGetLastRecv(r, i);
+        bool is_recent = last_recv >= r->election_timer_start;
+        if ((server->role == RAFT_VOTER && is_recent) || server->id == r->id) {
             contacts++;
         }
     }
@@ -128,14 +129,17 @@ static int tickLeader(struct raft *r)
      *   successful round of heartbeats to a majority of its cluster; this
      *   allows clients to retry their requests with another server.
      */
-    if (r->now - r->election_timer_start >= r->election_timeout) {
-        if (!checkContactQuorum(r)) {
-            infof("unable to contact majority of cluster -> step down");
-            convertToFollower(r);
-            return 0;
-        }
+
+    /* If a majority of servers have contacted us recently, reset the
+     * recent_recv flags and the election timer. Otherwise, check if we have run
+     * past the election timer and step down in that case. */
+    if (checkContactQuorum(r)) {
         r->election_timer_start = r->now;
         r->update->flags |= RAFT_UPDATE_TIMEOUT;
+    } else if (r->now - r->election_timer_start >= r->election_timeout) {
+        infof("unable to contact majority of cluster -> step down");
+        convertToFollower(r);
+        return 0;
     }
 
     /* Possibly send heartbeats.
@@ -146,7 +150,6 @@ static int tickLeader(struct raft *r)
      *   timeouts.
      */
     replicationHeartbeat(r);
-    r->update->flags |= RAFT_UPDATE_TIMEOUT;
 
     /* If a server is being promoted, increment the timer of the current
      * round or abort the promotion.

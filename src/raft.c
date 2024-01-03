@@ -544,6 +544,36 @@ raft_index raft_commit_index(struct raft *r)
     return r->commit_index;
 }
 
+/* Return the time at which the next leader timeout should be triggered. */
+static raft_time leaderTimeout(struct raft *r)
+{
+    raft_time timeout;
+    raft_time last_send = 0;
+    unsigned i;
+
+    /* Find the oldest last_send timestamp. */
+    for (i = 0; i < r->configuration.n; i++) {
+        if (last_send == 0 || progressGetLastSend(r, i) < last_send) {
+            last_send = progressGetLastSend(r, i);
+        }
+    }
+
+    /* We always send a heartbeat at the beginning of our term, so if all
+     * last_send timestamps are 0 it means that are no voters to send hearbeats
+     * to. So just return the timeout for the quorum check. */
+    if (last_send == 0) {
+        return r->election_timer_start + r->election_timeout;
+    }
+
+    /* The next timeout is either for heartbeat or a quorum check. */
+    timeout = last_send + r->heartbeat_timeout;
+    if (timeout > r->election_timer_start + r->election_timeout) {
+        timeout = r->election_timer_start + r->election_timeout;
+    }
+
+    return timeout;
+}
+
 raft_time raft_timeout(struct raft *r)
 {
     raft_time timeout;
@@ -554,8 +584,8 @@ raft_time raft_timeout(struct raft *r)
             timeout = electionTimerExpiration(r);
             break;
         case RAFT_LEADER:
-            /* TODO: keep track of the last heartbeat timestamp */
-            timeout = r->now + r->heartbeat_timeout;
+            /* The next timeout is either for heartbeat or a quorum check. */
+            timeout = leaderTimeout(r);
             break;
         default:
             timeout = 0;
