@@ -105,14 +105,16 @@ AC_TYPE_UINT64_T
 # on 32-bit architecture be 8 bytes instead of the normal 4.
 AC_SYS_LARGEFILE
 
+CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
+  -std=c11 \
+  -g \
+  -pipe \
+])
+
 AS_IF([test "x$enable_hardening" != "xno"],
       [CC_CHECK_FLAGS_APPEND([AM_CFLAGS],[CFLAGS],[ \
-        -std=c11 \
-        -g \
-        --mcet \
         -fcf-protection \
         --param=ssp-buffer-size=4 \
-        -pipe \
         -fdiagnostics-color \
         -fexceptions \
         -fstack-clash-protection \
