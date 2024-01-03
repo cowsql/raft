@@ -14,7 +14,9 @@ enum operation_type {
     OPERATION_ENTRIES = 0,
     OPERATION_SNAPSHOT,
     OPERATION_SEND,
-    OPERATION_TRANSMIT
+    OPERATION_TRANSMIT,
+    OPERATION_CONFIGURATION,
+    OPERATION_TAKE_SNAPSHOT
 };
 
 /* Track pending async operations. */
@@ -46,6 +48,10 @@ struct operation
             raft_id from;
             struct raft_message message;
         } transmit;
+        struct
+        {
+            raft_index index;
+        } configuration;
     };
     queue queue;
 };
@@ -610,22 +616,45 @@ static void serverProcessMessages(struct test_server *s,
     }
 }
 
+static void serverMaybeTakeSnapshot(struct test_server *s)
+{
+    struct operation *operation;
+    struct raft *r = &s->raft;
+    raft_index last_snapshot_index = 0;
+
+    if (s->disk.snapshot != NULL) {
+        last_snapshot_index = s->disk.snapshot->metadata.index;
+    }
+
+    if (raft_commit_index(r) - last_snapshot_index < r->snapshot.threshold) {
+        return;
+    }
+
+    operation = munit_malloc(sizeof *operation);
+    operation->type = OPERATION_TAKE_SNAPSHOT;
+    operation->id = s->raft.id;
+
+    operation->completion = s->cluster->time;
+
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+}
+
 static void serverProcessCommitIndex(struct test_server *s)
 {
-    struct raft *r = &s->raft;
-    struct raft_event event;
-    struct raft_update update;
-    int rv;
+    struct operation *operation = munit_malloc(sizeof *operation);
 
-    event.time = s->cluster->time;
-    event.type = RAFT_CONFIGURATION;
+    operation->type = OPERATION_CONFIGURATION;
+    operation->id = s->raft.id;
+
+    operation->completion = s->cluster->time;
 
     /* XXX: we should check if the given index is actually associated with a
      * configuration */
-    event.configuration.index = raft_commit_index(r);
+    operation->configuration.index = raft_commit_index(&s->raft);
 
-    rv = raft_step(r, &event, &update);
-    munit_assert_int(rv, ==, 0);
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+
+    serverMaybeTakeSnapshot(s);
 }
 
 /* Fire the given event using raft_step() and process the resulting struct
@@ -906,6 +935,63 @@ static void serverCompleteTransmit(struct test_server *s,
     serverStep(s, &event);
 }
 
+static void serverCompleteConfiguration(struct test_server *s,
+                                        struct operation *operation)
+{
+    struct raft *r = &s->raft;
+    struct raft_event event;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_CONFIGURATION;
+    event.configuration.index = operation->configuration.index;
+
+    /* The commit index is still the same as when the operation was created. */
+    munit_assert_ullong(raft_commit_index(r), ==, event.configuration.index);
+
+    serverStep(s, &event);
+
+    /* The last call to raft_step() did not change the commit index. */
+    munit_assert_ullong(raft_commit_index(r), ==, event.configuration.index);
+}
+
+static void serverCompleteTakeSnapshot(struct test_server *s,
+                                       struct operation *operation)
+{
+    struct raft *r = &s->raft;
+    struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
+    struct raft_event event;
+
+    (void)operation;
+
+    /* XXX: this assumes that the current term is the term of the last committed
+     * entry. */
+    snapshot->metadata.index = raft_commit_index(r);
+    snapshot->metadata.term = raft_current_term(r);
+
+    /* XXX: assume there is no uncommitted configuration. */
+    munit_assert_ullong(r->configuration_uncommitted_index, ==, 0);
+    confCopy(&r->configuration, &snapshot->metadata.configuration);
+
+    snapshot->data.len = 8;
+    snapshot->data.base = munit_malloc(snapshot->data.len);
+
+    diskSetSnapshot(&s->disk, snapshot);
+
+    event.time = s->cluster->time;
+    event.type = RAFT_SNAPSHOT;
+
+    event.snapshot.metadata.index = snapshot->metadata.index;
+    event.snapshot.metadata.term = snapshot->metadata.term;
+    confCopy(&snapshot->metadata.configuration,
+             &event.snapshot.metadata.configuration);
+    event.snapshot.metadata.configuration_index =
+        snapshot->metadata.configuration_index;
+
+    event.snapshot.trailing = r->snapshot.trailing;
+
+    serverStep(s, &event);
+}
+
 /* Complete either a @raft_io or transmit operation. */
 static void serverCompleteOperation(struct test_server *s,
                                     struct operation *operation)
@@ -927,6 +1013,12 @@ static void serverCompleteOperation(struct test_server *s,
             break;
         case OPERATION_TRANSMIT:
             serverCompleteTransmit(s, operation);
+            break;
+        case OPERATION_CONFIGURATION:
+            serverCompleteConfiguration(s, operation);
+            break;
+        case OPERATION_TAKE_SNAPSHOT:
+            serverCompleteTakeSnapshot(s, operation);
             break;
         default:
             munit_errorf("unexpected operation type %d", operation->type);
