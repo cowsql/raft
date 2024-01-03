@@ -274,7 +274,7 @@ CODE_COVERAGE_DIRECTORY=./src
 CODE_COVERAGE_OUTPUT_DIRECTORY=coverage
 CODE_COVERAGE_OUTPUT_FILE=coverage.info
 if LCOV_VERSION_2
-CODE_COVERAGE_LCOV_SHOPTS_DEFAULT=--ignore-errors unused,unused --rc branch_coverage=1
+CODE_COVERAGE_LCOV_SHOPTS_DEFAULT=--ignore-errors unused,unused --ignore-errors gcov,gcov --rc branch_coverage=1
 endif
 CODE_COVERAGE_IGNORE_PATTERN="/usr/include/*"
 CODE_COVERAGE_BRANCH_COVERAGE=1
