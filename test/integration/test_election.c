@@ -86,10 +86,11 @@ TEST_V1(election, TwoVoters, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
-        "           replicate 1 new entry (2^2)\n"
-        "           probe server 2 sending 1 entry (2^2)\n");
+        "           probe server 2 sending a heartbeat (no entries)\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
+    CLUSTER_TRACE(
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n");
 
     return MUNIT_OK;
 }
@@ -127,20 +128,22 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
         "           remote term is higher (2 vs 1) -> bump term\n"
         "           remote log is equal (1^1) -> grant vote\n");
 
-    /* Disconnect the second server, so the first server does not receive the
-     * result and eventually starts a new election round. */
+    /* Disconnect server 2 from server 1, so server 1 does not receive the
+     * result. Then stop and restart server 1, artifcially resetting its term,
+     * so it will ask again server 2's vote for term 2. */
     CLUSTER_DISCONNECT(2, 1);
+    CLUSTER_STOP(1 /* ID */);
+    CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
+    CLUSTER_SET_VOTE(1 /* ID */, 0 /* vote */);
+    CLUSTER_START(1);
     CLUSTER_TRACE(
-        "[ 200] 1 > timeout as candidate\n"
-        "           stay candidate, start election for term 3\n");
+        "[ 110] 1 > term 1, 1 entry (1^1)\n"
+        "[ 210] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n");
 
-    /* Reconnecting the two servers eventually makes the first server win the
-     * election. */
-    CLUSTER_RECONNECT(2, 1);
-
+    /* Server 2 grants again its vote. */
     CLUSTER_TRACE(
-        "[ 210] 2 > recv request vote from server 1\n"
-        "           remote term is higher (3 vs 2) -> bump term\n"
+        "[ 220] 2 > recv request vote from server 1\n"
         "           remote log is equal (1^1) -> grant vote\n");
 
     return MUNIT_OK;
@@ -150,21 +153,19 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
 TEST_V1(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
+    unsigned id;
 
     /* Bootstrap a cluster with 2 voters having each 2 equal entries. */
-    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
-    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
-    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
-    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
-    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
-    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
-
-    CLUSTER_START(1 /* ID */);
-    CLUSTER_START(2 /* ID */);
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 2 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+        CLUSTER_ADD_ENTRY(id, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+        CLUSTER_START(id);
+    }
 
     CLUSTER_TRACE(
         "[   0] 1 > term 2, 2 entries (1^1..2^1)\n"
-        "[   0] 2 > term 1, 2 entries (1^1..2^1)\n");
+        "[   0] 2 > term 2, 2 entries (1^1..2^1)\n");
 
     CLUSTER_TRACE(
         "[ 100] 1 > timeout as follower\n"
@@ -172,25 +173,25 @@ TEST_V1(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
 
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
-        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote term is higher (3 vs 2) -> bump term\n"
         "           remote log is equal (2^1) -> grant vote\n");
 
     return MUNIT_OK;
 }
 
 /* If the requester last log entry index is higher, the vote is granted. */
-TEST_V1(election, GrantIfLastIndexIsHigher, setUp, tearDown, 0, NULL)
+TEST_V1(election, GrantIfRemoteLastIndexIsHigher, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
     /* Bootstrap a cluster with 2 voters, the first having 2 entries. */
     CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
-    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
-    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
-
     CLUSTER_START(1 /* ID */);
+
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
     CLUSTER_START(2 /* ID */);
 
     CLUSTER_TRACE(
@@ -209,6 +210,39 @@ TEST_V1(election, GrantIfLastIndexIsHigher, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* If the requester last log entry term is higher, the vote is granted. */
+TEST_V1(election, GrantIfRemoteLastTermIsHigher, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+
+    /* Bootstrap a cluster with 2 voters. Both have 2 entries, however server
+     * 1's last entry at index 2 has term 2, while server's 2 has term 1. */
+    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+    CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_COMMAND, 2 /* term */, 0 /* payload */);
+    CLUSTER_START(1 /* ID */);
+
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+    CLUSTER_START(2 /* ID */);
+
+    CLUSTER_TRACE(
+        "[   0] 1 > term 2, 2 entries (1^1..2^2)\n"
+        "[   0] 2 > term 1, 2 entries (1^1..2^1)\n");
+
+    CLUSTER_TRACE(
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n");
+
+    CLUSTER_TRACE(
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote log is more recent (2^2 vs 2^1) -> grant vote\n");
+
+    return MUNIT_OK;
+}
+
 /* If a candidate receives a vote request response granting the vote but the
  * quorum is not reached, it stays candidate. */
 TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
@@ -216,8 +250,8 @@ TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     unsigned id;
 
-    /* Bootstrap and start a cluster with 5 voters. */
-    for (id = 1; id <= 4; id++) {
+    /* Bootstrap and start 2 servers, having a configuration with 4 voters. */
+    for (id = 1; id <= 2; id++) {
         CLUSTER_SET_TERM(id, 1 /* term */);
         CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 4 /* servers */, 4 /* voters */);
         CLUSTER_START(id);
@@ -225,29 +259,21 @@ TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
 
     CLUSTER_TRACE(
         "[   0] 1 > term 1, 1 entry (1^1)\n"
-        "[   0] 2 > term 1, 1 entry (1^1)\n"
-        "[   0] 3 > term 1, 1 entry (1^1)\n"
-        "[   0] 4 > term 1, 1 entry (1^1)\n");
+        "[   0] 2 > term 1, 1 entry (1^1)\n");
 
     /* The first server converts to candidate and sends vote requests. */
     CLUSTER_TRACE(
         "[ 100] 1 > timeout as follower\n"
         "           convert to candidate, start election for term 2\n");
 
-    /* All servers receive the request, grant their vote and send the reply. */
+    /* Server 2 receives the request, grants its vote and sends the reply. */
     CLUSTER_TRACE(
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log is equal (1^1) -> grant vote\n"
-        "[ 110] 3 > recv request vote from server 1\n"
-        "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log is equal (1^1) -> grant vote\n"
-        "[ 110] 4 > recv request vote from server 1\n"
-        "           remote term is higher (2 vs 1) -> bump term\n"
         "           remote log is equal (1^1) -> grant vote\n");
 
-    /* The first server receives the first RequestVote result RPC but stays
-     * candidate since it has only 2 votes, and 3 are required. */
+    /* Server 1 receives server 2's RequestVote result RPC but stays candidate
+     * since it has only 2 votes, and 3 are required. */
     CLUSTER_TRACE(
         "[ 120] 1 > recv request vote result from server 2\n"
         "           quorum not reached, only 2 votes out of 4\n");
@@ -255,19 +281,20 @@ TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* The vote request gets rejected if our term is higher. */
-TEST_V1(election, RejectIfHigherTerm, setUp, tearDown, 0, NULL)
+/* The vote request gets rejected if the term of the candidate is lower. */
+TEST_V1(election, RejectIfRemoteTermLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
     /* Bootstrap a cluster with 2 voters. The second server is at term 3 */
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
-    CLUSTER_SET_TERM(2 /* ID */, 3 /* term */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
-    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
-
     CLUSTER_START(1 /* ID */);
+
+    CLUSTER_SET_TERM(2 /* ID */, 3 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
     CLUSTER_START(2 /* ID */);
+
     CLUSTER_TRACE(
         "[   0] 1 > term 1, 1 entry (1^1)\n"
         "[   0] 2 > term 3, 1 entry (1^1)\n");
@@ -321,11 +348,8 @@ TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
         "           remote log is equal (1^1) -> grant vote\n"
         "[ 120] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
-        "           replicate 1 new entry (2^2)\n"
-        "           probe server 2 sending 1 entry (2^2)\n"
-        "           probe server 3 sending 1 entry (2^2)\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
 
     /* Server 1 receives the vote from server 3 as well. */
     CLUSTER_TRACE(
@@ -337,29 +361,18 @@ TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
     CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 30 /* timeout */, 0 /* delta */);
 
     CLUSTER_TRACE(
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
         "[ 130] 3 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (2^2)\n"
-        "[ 140] 3 > persisted 1 entry (2^2)\n"
-        "           send success result to 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 3\n"
         "[ 140] 2 > timeout as follower\n"
         "           convert to candidate, start election for term 3\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
-
-    /* Server 2 stays candidate since its requests get rejected. */
+    /* Server 3 rejects the vote request because it has a leader. */
     CLUSTER_TRACE(
-        "[ 150] 1 > recv append entries result from server 3\n"
-        "           commit 1 new entry (2^2)\n"
         "[ 150] 1 > recv request vote from server 2\n"
         "           local server is leader -> reject\n"
         "[ 150] 3 > recv request vote from server 2\n"
-        "           local server has a leader (server 1) -> reject\n"
-        "[ 160] 2 > recv request vote result from server 3\n"
-        "           remote term is lower (2 vs 3) -> ignore\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
+        "           local server has a leader (server 1) -> reject\n");
 
     return MUNIT_OK;
 }
@@ -379,7 +392,7 @@ TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
 
     /* Disconnect server 2 from server 1 and change its randomized election
      * timeout to match the one of server 1. This way server 2 will convert to
-     * candidate but not receive vote requests. */
+     * candidate but not receive vote requests from server 1 (and viceversa). */
     CLUSTER_DISCONNECT(1, 2);
     CLUSTER_DISCONNECT(2, 1);
     CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 100 /* timeout */, 0 /* delta */);
@@ -408,27 +421,12 @@ TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
         "[ 110] 3 > recv request vote from server 2\n"
         "           already voted for server 1 -> don't grant vote\n");
 
-    /* Server 1 receives the vote result from server 2 and becomes leader. */
-    CLUSTER_TRACE(
-        "[ 120] 1 > recv request vote result from server 3\n"
-        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
-        "           replicate 1 new entry (2^2)\n"
-        "           probe server 2 sending 1 entry (2^2)\n"
-        "           probe server 3 sending 1 entry (2^2)\n");
-
-    /* Server 2 is still candidate because its vote request got rejected. */
-    CLUSTER_TRACE(
-        "[ 120] 2 > recv request vote result from server 3\n"
-        "           vote not granted\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
-
     return MUNIT_OK;
 }
 
 /* If the requester last log entry term is lower than ours, the vote is not
  * granted. */
-TEST_V1(election, RejectIfLastTermIsLower, setUp, tearDown, 0, NULL)
+TEST_V1(election, RejectIfRemoteLastTermIsLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned i;
@@ -464,7 +462,7 @@ TEST_V1(election, RejectIfLastTermIsLower, setUp, tearDown, 0, NULL)
 
 /* If the requester last log entry index is lower, the vote is not
  * granted. */
-TEST_V1(election, RejectIfLastIndexIsLower, setUp, tearDown, 0, NULL)
+TEST_V1(election, RejectIfRemoteLastIndexIsLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -494,28 +492,6 @@ TEST_V1(election, RejectIfLastIndexIsLower, setUp, tearDown, 0, NULL)
         "[ 110] 2 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
         "           remote log shorter (1^1 vs 2^1) -> don't grant vote\n");
-
-    /* Server 1 receives the response and stays candidate. */
-    CLUSTER_TRACE(
-        "[ 120] 1 > recv request vote result from server 2\n"
-        "           vote not granted\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_CANDIDATE);
-
-    /* Eventually the second server becomes leader because it has a longer
-     * log. */
-    CLUSTER_TRACE(
-        "[ 130] 2 > timeout as follower\n"
-        "           convert to candidate, start election for term 3\n"
-        "[ 140] 1 > recv request vote from server 2\n"
-        "           remote term is higher (3 vs 2) -> bump term, step down\n"
-        "           remote log is longer (2^1 vs 1^1) -> grant vote\n"
-        "[ 150] 2 > recv request vote result from server 1\n"
-        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
-        "           replicate 1 new entry (3^3)\n"
-        "           probe server 1 sending 1 entry (3^3)\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_LEADER);
 
     return MUNIT_OK;
 }
@@ -597,9 +573,6 @@ TEST_V1(election, SkipNonVoters, setUp, tearDown, 0, NULL)
         "[ 130] 2 > timeout as follower\n"
         "           convert to candidate, start election for term 2\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_CANDIDATE);
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
-
     return MUNIT_OK;
 }
 
@@ -611,77 +584,53 @@ TEST_V1(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     unsigned id;
 
-    /* Bootstrap a cluster with 5 servers, all voters. */
-    for (id = 1; id <= 5; id++) {
+    /* Bootstrap a cluster with 3 servers, all voters. */
+    for (id = 1; id <= 3; id++) {
         CLUSTER_SET_TERM(id, 1 /* term */);
-        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 5 /* servers */, 5 /* voters */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
         CLUSTER_START(id);
     }
 
-    /* Lower the randomized election timeout of server 5, so it becomes
-     * candidate just after server 1. */
-    CLUSTER_SET_ELECTION_TIMEOUT(5 /* ID */, 100 /* timeout */, 20 /* delta */);
+    /* Disconnect server 1 from server 2 and viceversa. */
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_DISCONNECT(2, 1);
 
-    /* Disconnect server 1 from all others except server 2. */
-    CLUSTER_DISCONNECT(1, 3);
-    CLUSTER_DISCONNECT(3, 1);
-    CLUSTER_DISCONNECT(1, 4);
-    CLUSTER_DISCONNECT(4, 1);
-    CLUSTER_DISCONNECT(1, 5);
-    CLUSTER_DISCONNECT(5, 1);
-
-    /* Disconnect server 5 from all others except the server 2. */
-    CLUSTER_DISCONNECT(5, 1);
-    CLUSTER_DISCONNECT(1, 5);
-    CLUSTER_DISCONNECT(5, 3);
-    CLUSTER_DISCONNECT(3, 5);
-    CLUSTER_DISCONNECT(5, 4);
-    CLUSTER_DISCONNECT(4, 5);
-
-    /* Server 1 becomes candidate, server 5 one is still follower. */
+    /* Server 1 becomes candidate, server 2 is still follower. */
     CLUSTER_TRACE(
         "[   0] 1 > term 1, 1 entry (1^1)\n"
         "[   0] 2 > term 1, 1 entry (1^1)\n"
         "[   0] 3 > term 1, 1 entry (1^1)\n"
-        "[   0] 4 > term 1, 1 entry (1^1)\n"
-        "[   0] 5 > term 1, 1 entry (1^1)\n"
         "[ 100] 1 > timeout as follower\n"
         "           convert to candidate, start election for term 2\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(5)), ==, RAFT_FOLLOWER);
-
-    /* Server 2 receives a RequestVote RPC and grants its vote. */
+    /* Server 3 receives a RequestVote RPC and grants its vote. */
     CLUSTER_TRACE(
-        "[ 110] 2 > recv request vote from server 1\n"
+        "[ 110] 3 > recv request vote from server 1\n"
         "           remote term is higher (2 vs 1) -> bump term\n"
         "           remote log is equal (1^1) -> grant vote\n");
 
-    munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(2)), ==, 1);
-
-    /* Disconnect server 1 from server 2, so it doesn't receive further
+    /* Disconnect server 3 from server 1, so it doesn't receive further
      * messages. */
-    CLUSTER_DISCONNECT(1, 2);
-    CLUSTER_DISCONNECT(2, 1);
+    CLUSTER_DISCONNECT(3, 1);
+    CLUSTER_DISCONNECT(1, 3);
 
-    /* Server 5 server eventually becomes candidate */
+    /* Server 2 server eventually becomes candidate */
     CLUSTER_TRACE(
-        "[ 120] 5 > timeout as follower\n"
+        "[ 130] 2 > timeout as follower\n"
         "           convert to candidate, start election for term 2\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(5)), ==, RAFT_CANDIDATE);
-
-    /* Server 2 receives a RequestVote RPC from server 5 but rejects its vote
+    /* Server 3 receives a RequestVote RPC from server 2 but rejects its vote
      * since it has already voted for server 1. */
     CLUSTER_TRACE(
-        "[ 130] 2 > recv request vote from server 5\n"
+        "[ 140] 3 > recv request vote from server 2\n"
         "           already voted for server 1 -> don't grant vote\n");
 
     /* Server 5 receives the response and stays candidate. */
     CLUSTER_TRACE(
-        "[ 140] 5 > recv request vote result from server 2\n"
+        "[ 150] 2 > recv request vote result from server 3\n"
         "           vote not granted\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(5)), ==, RAFT_CANDIDATE);
+    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
 
     return MUNIT_OK;
 }
@@ -737,8 +686,7 @@ TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 140] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
-        "           replicate 1 new entry (2^2)\n"
-        "           probe server 2 sending 1 entry (2^2)\n");
+        "           probe server 2 sending a heartbeat (no entries)\n");
 
     return MUNIT_OK;
 }
@@ -749,7 +697,7 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     unsigned id;
 
-    /* Bootstrap a cluster with 5 servers, all voters with pre-vote enabled. */
+    /* Bootstrap a cluster with 3 servers, all voters with pre-vote enabled. */
     for (id = 1; id <= 3; id++) {
         CLUSTER_SET_TERM(id, 1 /* term */);
         raft_set_pre_vote(CLUSTER_RAFT(id), true);
@@ -806,7 +754,7 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
         "           remote log is equal (1^1) -> grant vote\n");
 
     /* Server 1 crashes. */
-    CLUSTER_KILL(1);
+    CLUSTER_STOP(1);
 
     /* Server 2 times out and starts an election. It doesn't increment its term
      * yet. It also can't reset its vote since it's still in the same term. */
@@ -844,9 +792,8 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 300] 2 > recv request vote result from server 3\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
-        "           replicate 1 new entry (2^3)\n"
-        "           probe server 1 sending 1 entry (2^3)\n"
-        "           probe server 3 sending 1 entry (2^3)\n");
+        "           probe server 1 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
 
     return MUNIT_OK;
 }
@@ -858,7 +805,7 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     unsigned id;
 
-    /* Bootstrap a cluster with 5 servers, all voters with pre-vote enabled.
+    /* Bootstrap a cluster with 3 servers, all voters with pre-vote enabled.
      *
      * Server 3 is 1 term ahead of the other servers, this will allow it to send
      * stale pre-vote responses that pass the term checks. */
@@ -877,8 +824,6 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
         "[   0] 2 > term 1, 1 entry (1^1)\n"
         "[   0] 3 > term 2, 1 entry (1^1)\n");
 
-    /* The first server eventually times out and converts to candidate, but it
-     * does not increment its term yet.*/
     /* Server 1 eventually times out and converts to candidate, but it does not
      * increment its term yet.*/
     CLUSTER_TRACE(
@@ -912,10 +857,6 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
         "           votes quorum reached -> pre-vote successful\n");
     munit_assert_ulong(raft_current_term(CLUSTER_RAFT(1)), ==, 2);
     munit_assert_ulong(raft_voted_for(CLUSTER_RAFT(1)), ==, 1);
-
-    /* Disconnect server 1, this ensures no RequestVote RPCs are delivered */
-    CLUSTER_DISCONNECT(1, 2);
-    CLUSTER_DISCONNECT(1, 3);
 
     /* Server one eventually receives server 3's delayed RequestVote result for
      * the pre-vote message, but does not count it as real vote. */
@@ -979,8 +920,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
      * election. */
     CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 150 /* timeout */, 0 /* delta */);
 
-    /* Server 1 wins elections for term 2, with votes from server 2 and
-     * server 3. It starts replicating an empty entry to them. */
+    /* Server 1 wins elections for term 2, with a vote from server 3. */
     CLUSTER_TRACE(
         "[   0] 1 > term 1, 1 entry (1^1)\n"
         "[   0] 2 > term 1, 1 entry (1^1)\n"
@@ -993,17 +933,11 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
         "           remote log is equal (1^1) -> grant vote\n"
         "[ 120] 1 > recv request vote result from server 3\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
-        "           replicate 1 new entry (2^2)\n"
-        "           probe server 2 sending 1 entry (2^2)\n"
-        "           probe server 3 sending 1 entry (2^2)\n"
-        "           probe server 4 sending 1 entry (2^2)\n"
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           probe server 4 sending a heartbeat (no entries)\n"
         "[ 130] 3 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (2^2)\n"
-        "[ 130] 4 > recv append entries from server 1\n"
-        "           remote term is higher (2 vs 1) -> bump term\n"
-        "           start persisting 1 new entry (2^2)\n");
+        "           no new entries to persist\n");
 
     /* Demote server 2 to stand-by. */
     entry.term = 2;
@@ -1015,43 +949,42 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
 
     CLUSTER_TRACE(
         "[ 130] 1 > submit 1 new client entry\n"
-        "           replicate 1 new entry (3^2)\n");
+        "           replicate 1 new configuration entry (2^2)\n");
 
-    /* While the configuration change is in progress, server 2  times out and
-     * starts an (unsuccessful) election. */
+    /* While the configuration change is in progress, server 2 times out and
+     * starts an unsuccessful election. */
     CLUSTER_TRACE(
-        "[ 140] 3 > persisted 1 entry (2^2)\n"
-        "           send success result to 1\n"
-        "[ 140] 4 > persisted 1 entry (2^2)\n"
-        "           send success result to 1\n"
-        "[ 140] 1 > persisted 1 entry (3^2)\n"
+        "[ 130] 4 > recv append entries from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > persisted 1 entry (2^2)\n"
         "           next uncommitted entry (2^2) has 1 vote out of 2\n"
-        "[ 150] 1 > recv append entries result from server 3\n"
-        "           pipeline server 3 sending 1 entry (3^2)\n"
-        "           commit 1 new entry (2^2)\n"
-        "[ 150] 1 > recv append entries result from server 4\n"
-        "           pipeline server 4 sending 1 entry (3^2)\n"
+        "[ 140] 1 > recv append entries result from server 3\n"
+        "           pipeline server 3 sending 1 entry (2^2)\n"
+        "[ 140] 1 > recv append entries result from server 4\n"
+        "           pipeline server 4 sending 1 entry (2^2)\n"
+        "[ 150] 3 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^2)\n"
+        "[ 150] 4 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^2)\n"
         "[ 150] 2 > timeout as follower\n"
         "           convert to candidate, start election for term 2\n"
-        "[ 160] 3 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (3^2)\n"
-        "[ 160] 4 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (3^2)\n"
+        "[ 160] 3 > persisted 1 entry (2^2)\n"
+        "           send success result to 1\n"
+        "[ 160] 4 > persisted 1 entry (2^2)\n"
+        "           send success result to 1\n"
         "[ 160] 3 > recv request vote from server 2\n"
-        "           local server has a leader (server 1) -> reject\n"
-        "[ 160] 1 > timeout as leader\n"
-        "           probe server 2 sending 3 entries (1.1..3.2)\n"
-        "[ 170] 3 > persisted 1 entry (3^2)\n"
-        "           send success result to 1\n"
-        "[ 170] 4 > persisted 1 entry (3^2)\n"
-        "           send success result to 1\n"
-        "[ 170] 2 > recv request vote result from server 3\n"
-        "           vote not granted\n");
+        "           local server has a leader (server 1) -> reject\n");
 
     /* The configuration change is committed. */
     CLUSTER_TRACE(
-        "[ 180] 1 > recv append entries result from server 3\n"
-        "           commit 1 new entry (3^2)\n");
+        "[ 170] 1 > recv append entries result from server 3\n"
+        "           commit 1 new entry (2^2)\n"
+        "[ 170] 1 > recv append entries result from server 4\n"
+        "[ 170] 2 > recv request vote result from server 3\n"
+        "           vote not granted\n"
+        "[ 170] 1 > timeout as leader\n"
+        "           probe server 2 sending 1 entry (2^2)\n");
 
     /* Promote server 4 to voter. */
     entry.term = 2;
@@ -1061,41 +994,28 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     raft_configuration_close(&configuration);
 
     test_cluster_submit(&f->cluster_, 1, &entry);
-
     CLUSTER_TRACE(
-        "[ 180] 1 > submit 1 new client entry\n"
-        "           replicate 1 new entry (4^2)\n"
-        "           pipeline server 3 sending 1 entry (4^2)\n"
-        "           pipeline server 4 sending 1 entry (4^2)\n");
+        "[ 170] 1 > submit 1 new client entry\n"
+        "           replicate 1 new configuration entry (3^2)\n"
+        "           pipeline server 3 sending 1 entry (3^2)\n"
+        "           pipeline server 4 sending 1 entry (3^2)\n");
 
-    /* Wait for server 4 to become aware that it's a voter. */
+    /* Wait for server 4 to persist the configuration change and apply it,
+     * becoming aware that it's a voter. */
     CLUSTER_TRACE(
-        "[ 180] 1 > recv append entries result from server 4\n"
-        "[ 190] 1 > persisted 1 entry (4^2)\n"
-        "           next uncommitted entry (4^2) has 1 vote out of 3\n"
-        "[ 190] 3 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (4^2)\n"
-        "[ 190] 4 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (4^2)\n"
-        "[ 200] 3 > persisted 1 entry (4^2)\n"
+        "[ 180] 1 > persisted 1 entry (3^2)\n"
+        "           next uncommitted entry (3^2) has 1 vote out of 3\n"
+        "[ 180] 3 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (3^2)\n"
+        "[ 180] 4 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (3^2)\n"
+        "[ 190] 3 > persisted 1 entry (3^2)\n"
         "           send success result to 1\n"
-        "[ 200] 4 > persisted 1 entry (4^2)\n"
-        "           send success result to 1\n"
-        "[ 200] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "[ 210] 1 > recv append entries result from server 3\n"
-        "           commit 1 new entry (4^2)\n"
-        "[ 210] 1 > recv append entries result from server 4\n"
-        "[ 240] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           pipeline server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
-        "[ 250] 3 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 250] 4 > recv append entries from server 1\n"
-        "           no new entries to persist\n");
+        "[ 190] 4 > persisted 1 entry (3^2)\n"
+        "           send success result to 1\n");
 
-    munit_assert_ulong(raft_commit_index(CLUSTER_RAFT(4)), ==, 4);
+    munit_assert_int(CLUSTER_RAFT(4)->configuration.servers[3].role, ==,
+                     RAFT_VOTER);
 
     /* Server 2 is still candidate. */
     munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
@@ -1108,17 +1028,20 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     /* Server 2 to gets contacted by server 1, steps down and receives
      * entries from it */
     CLUSTER_TRACE(
-        "[ 260] 1 > recv append entries result from server 3\n"
-        "[ 260] 1 > recv append entries result from server 4\n"
-        "[ 280] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           pipeline server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
-        "[ 290] 2 > recv append entries from server 1\n"
+        "[ 200] 1 > recv append entries result from server 3\n"
+        "           commit 1 new entry (3^2)\n"
+        "[ 200] 1 > recv append entries result from server 4\n"
+        "[ 220] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 230] 2 > recv append entries from server 1\n"
         "           discovered leader (1) -> step down \n"
-        "           start persisting 3 new entries (2^2..4^2)\n");
-
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_FOLLOWER);
+        "           start persisting 2 new entries (2^2..3^2)\n"
+        "[ 230] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 230] 4 > recv append entries from server 1\n"
+        "           no new entries to persist\n");
 
     /* Create a network partition, with server 1 and 4 in one partition and
      * server 2 and 3 in another partition. */
@@ -1131,6 +1054,8 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     CLUSTER_DISCONNECT(4, 3);
     CLUSTER_DISCONNECT(3, 4);
 
+    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_FOLLOWER);
+
     /* Eventually both server 2 and server 3 time out and start elections,
      * because they have been disconnected from the leader.
      *
@@ -1139,37 +1064,33 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
      * configuration at index 3, because it did receive the configuration at
      * index 4, but hasn't persisted it yet. */
     CLUSTER_TRACE(
-        "[ 290] 4 > recv append entries from server 1\n"
+        "[ 240] 1 > recv append entries result from server 4\n"
+        "[ 270] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 280] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
-        "[ 300] 1 > recv append entries result from server 4\n"
+        "[ 290] 1 > recv append entries result from server 4\n"
         "[ 320] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           pipeline server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
         "[ 330] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 340] 1 > recv append entries result from server 4\n"
-        "[ 360] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           probe server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
-        "[ 370] 4 > recv append entries from server 1\n"
+        "[ 370] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 380] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
-        "[ 380] 1 > recv append entries result from server 4\n"
-        "[ 400] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           probe server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
-        "[ 410] 4 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 410] 3 > timeout as follower\n"
+        "[ 380] 2 > timeout as follower\n"
         "           convert to candidate, start election for term 3\n"
-        "[ 420] 1 > recv append entries result from server 4\n"
-        "[ 440] 1 > timeout as leader\n"
-        "           probe server 2 sending 4 entries (1.1..4.2)\n"
-        "           probe server 3 sending a heartbeat with no entries\n"
-        "           pipeline server 4 sending a heartbeat with no entries\n"
-        "[ 440] 2 > timeout as follower\n"
+        "[ 390] 1 > recv append entries result from server 4\n"
+        "[ 390] 3 > recv request vote from server 2\n"
+        "           local server has a leader (server 1) -> reject\n"
+        "[ 390] 3 > timeout as follower\n"
         "           convert to candidate, start election for term 3\n");
 
     munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
@@ -1181,11 +1102,41 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
      * Server 2 also can't win the election, because the last index it sends is
      * the index of its last persisted entry (entry 1), and so server 3 doesn't
      * grant its vote. */
-    for (i = 0; i < 100; i++) {
+    CLUSTER_TRACE(
+        "[ 400] 2 > recv request vote result from server 3\n"
+        "           remote term is lower (2 vs 3) -> ignore\n"
+        "[ 420] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 430] 4 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 440] 1 > recv append entries result from server 4\n"
+        "[ 470] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 480] 4 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 490] 1 > recv append entries result from server 4\n"
+        "[ 520] 1 > timeout as leader\n"
+        "           probe server 2 sending 2 entries (2^2..3^2)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "           pipeline server 4 sending a heartbeat (no entries)\n"
+        "[ 530] 4 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 530] 2 > timeout as candidate\n"
+        "           stay candidate, start election for term 4\n"
+        "[ 540] 1 > recv append entries result from server 4\n"
+        "[ 540] 3 > recv request vote from server 2\n"
+        "           remote term is higher (4 vs 3) -> bump term, step down\n"
+        "           remote log older (1^1 vs 3^2) -> don't grant vote\n");
+
+    for (i = 0; i < 40; i++) {
         test_cluster_step(&f->cluster_);
     }
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
-    munit_assert_int(raft_state(CLUSTER_RAFT(3)), ==, RAFT_CANDIDATE);
+    munit_assert_int(raft_state(CLUSTER_RAFT(2)), !=, RAFT_LEADER);
+    munit_assert_int(raft_state(CLUSTER_RAFT(3)), !=, RAFT_LEADER);
 
     /* Server 1 is still leader, since it can contact server 4. */
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);

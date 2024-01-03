@@ -135,14 +135,14 @@ TEST(raft_add, committed, setup, tear_down, 0, NULL)
     munit_assert_int(server->role, ==, RAFT_SPARE);
 
     /* The new configuration is marked as uncommitted. */
-    ASSERT_CONFIGURATION_INDEXES(0, 1, 3);
+    ASSERT_CONFIGURATION_INDEXES(0, 1, 2);
 
     /* The next/match indexes now include an entry for the new server. */
-    munit_assert_int(raft->leader_state.progress[2].next_index, ==, 4);
+    munit_assert_int(raft->leader_state.progress[2].next_index, ==, 3);
     munit_assert_int(raft->leader_state.progress[2].match_index, ==, 0);
 
-    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 2000);
-    ASSERT_CONFIGURATION_INDEXES(0, 3, 0);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 2, 2000);
+    ASSERT_CONFIGURATION_INDEXES(0, 2, 0);
 
     /* The new configuration is marked as committed. */
 
@@ -200,14 +200,14 @@ TEST(raft_remove, committed, setup, tear_down, 0, NULL)
     struct fixture *f = data;
     GROW;
     ADD(0, 3, 0);
-    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 2000);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 2, 2000);
     ASSIGN(0, 3, RAFT_STANDBY);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 2, 2000);
+    CLUSTER_STEP_UNTIL_APPLIED(2, 1, 2000);
     CLUSTER_STEP_N(2);
     REMOVE(0, 3, 0);
-    ASSERT_CONFIGURATION_INDEXES(0, 4, 5);
-    CLUSTER_STEP_UNTIL_APPLIED(0, 5, 2000);
-    ASSERT_CONFIGURATION_INDEXES(0, 5, 0);
+    ASSERT_CONFIGURATION_INDEXES(0, 3, 4);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 4, 2000);
+    ASSERT_CONFIGURATION_INDEXES(0, 4, 0);
     munit_assert_int(CLUSTER_RAFT(0)->configuration.n, ==, 2);
     return MUNIT_OK;
 }
@@ -217,8 +217,8 @@ TEST(raft_remove, self, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     REMOVE(0, 1, 0);
-    CLUSTER_STEP_UNTIL_APPLIED(0, 2, 2000);
-    CLUSTER_STEP_UNTIL_APPLIED(1, 2, 10000);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 1, 2000);
+    CLUSTER_STEP_UNTIL_APPLIED(1, 1, 10000);
     return MUNIT_OK;
 }
 
@@ -229,9 +229,9 @@ TEST(raft_remove, selfThreeNodeClusterReplicate, setup, tear_down, 0, NULL)
     /* Add a third node */
     GROW;
     ADD(0, 3, 0);
-    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 2000);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 2, 2000);
     ASSIGN(0, 3, RAFT_VOTER);
-    CLUSTER_STEP_UNTIL_APPLIED(0, 4, 2000);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 2000);
 
     /* Verify node with id 1 is the leader */
     raft_id leader_id = 0xDEADBEEF;
@@ -260,7 +260,7 @@ TEST(raft_remove, selfThreeNodeClusterReplicate, setup, tear_down, 0, NULL)
     munit_assert_ptr_null(leader_address);
 
     /* The original leader has applied the REMOVE entry */
-    CLUSTER_STEP_UNTIL_APPLIED(0, 5, 10000);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 4, 10000);
 
     /* At this point the other nodes have replicated the new config, but have
      * not yet applied it, they miss a heartbeat from the leader informing them
@@ -271,8 +271,8 @@ TEST(raft_remove, selfThreeNodeClusterReplicate, setup, tear_down, 0, NULL)
 
     /* The other nodes applied the barrier after
      * the config change and therefore commit the new config . */
-    CLUSTER_STEP_UNTIL_APPLIED(1, 6, 10000);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 6, 10000);
+    CLUSTER_STEP_UNTIL_APPLIED(1, 5, 10000);
+    CLUSTER_STEP_UNTIL_APPLIED(2, 5, 10000);
 
     /* The removed leader doesn't know who the leader is */
     raft_leader(CLUSTER_RAFT(0), &leader_id, &leader_address);

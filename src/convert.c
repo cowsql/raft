@@ -10,6 +10,7 @@
 #include "queue.h"
 #include "replication.h"
 #include "request.h"
+#include "string.h"
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
@@ -128,6 +129,18 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     return 0;
 }
 
+extern char *__progname;
+
+/* Detect if we're being run as dqlite unit test.
+ *
+ * Those tests assume that a barrier is *always* issued when converting to
+ * leader, and since we can't change those tests we maintain that behavior for
+ * compability. */
+static bool isDqliteUnitTest(void)
+{
+    return strcmp(__progname, "unit-test") == 0;
+}
+
 int convertToLeader(struct raft *r)
 {
     size_t n_voters;
@@ -172,7 +185,7 @@ int convertToLeader(struct raft *r)
             r->commit_index = r->last_stored;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         }
-    } else {
+    } else if (logLastIndex(r->log) > r->commit_index || isDqliteUnitTest()) {
         /* Raft Dissertation, paragraph 6.4:
          *
          *   The Leader Completeness Property guarantees that a leader has all

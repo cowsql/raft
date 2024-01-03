@@ -6,7 +6,7 @@
 
 /* Defaults */
 #define DEFAULT_ELECTION_TIMEOUT 100
-#define DEFAULT_HEARTBEAT_TIMEOUT 40
+#define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
@@ -277,6 +277,8 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     }
 
     if (info->diagnostic.level > 3) {
+        fprintf(stderr, " TRACE %llu > %s\n", server->raft.id,
+                info->diagnostic.message);
         return;
     }
 
