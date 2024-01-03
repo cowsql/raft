@@ -63,7 +63,9 @@ int replicationSendAppendEntriesDone(struct raft *r,
             tracef("failed to send append entries to server %llu: %s",
                    message->server_id, raft_strerror(status));
             /* Go back to probe mode. */
-            progressToProbe(r, i);
+            if (progressState(r, i) != PROGRESS__PROBE) {
+                progressToProbe(r, i);
+            }
         }
     }
 
@@ -110,14 +112,14 @@ static int sendAppendEntries(struct raft *r,
     args->leader_commit = r->commit_index;
 
     if (args->n_entries == 0) {
-        infof("%s server %llu sending a heartbeat with no entries",
+        infof("%s server %llu sending a heartbeat (no entries)",
               progressStateName(r, i), server->id);
     } else if (args->n_entries == 1) {
         infof("%s server %llu sending 1 entry (%llu^%llu)",
               progressStateName(r, i), server->id, next_index,
               args->entries[0].term);
     } else {
-        infof("%s server %llu sending %u entries (%llu.%llu..%llu.%llu)",
+        infof("%s server %llu sending %u entries (%llu^%llu..%llu^%llu)",
               progressStateName(r, i), server->id, args->n_entries, next_index,
               args->entries[0].term, next_index + args->n_entries - 1,
               args->entries[args->n_entries - 1].term);
@@ -207,8 +209,7 @@ static int sendSnapshot(struct raft *r, const unsigned i)
         goto err;
     }
 
-    infof("sending snapshot with last index %llu to %llu", args->last_index,
-          server->id);
+    infof("sending snapshot (%llu^%llu)", args->last_index, args->last_term);
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
@@ -269,7 +270,7 @@ int replicationProgress(struct raft *r, unsigned i)
          * we're not doing so already. */
         if (prev_term == 0 && !progress_state_is_snapshot) {
             assert(prev_index < snapshot_index);
-            infof("missing entry at index %lld -> send snapshot", prev_index);
+            infof("missing entry at index %lld -> needs snapshot", prev_index);
             goto send_snapshot;
         }
     }
@@ -283,7 +284,7 @@ int replicationProgress(struct raft *r, unsigned i)
     return sendAppendEntries(r, i, prev_index, prev_term);
 
 send_snapshot:
-    if (progressGetRecentRecv(r, i)) {
+    if (progressGetLastRecv(r, i) >= r->now - r->election_timeout) {
         /* Only send a snapshot when we have heard from the server */
         return sendSnapshot(r, i);
     } else {
@@ -441,7 +442,7 @@ int replicationPersistEntriesDone(struct raft *r,
             rv = followerPersistEntriesDone(r, index, entries, n, status);
             break;
         default:
-            if (status != 0) {
+            if (status == 0) {
                 updateLastStored(r, index, entries, n);
             }
             rv = 0;
@@ -542,7 +543,7 @@ int replicationUpdate(struct raft *r,
     assert(r->state == RAFT_LEADER);
     assert(i < r->configuration.n);
 
-    progressMarkRecentRecv(r, i);
+    progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
 
@@ -1116,8 +1117,10 @@ int replicationInstallSnapshot(struct raft *r,
 
     assert(!(r->update->flags & RAFT_UPDATE_SNAPSHOT));
 
-    r->update->flags |= RAFT_UPDATE_SNAPSHOT;
+    infof("start persisting snapshot (%llu^%llu)", metadata.index,
+          metadata.term);
 
+    r->update->flags |= RAFT_UPDATE_SNAPSHOT;
     r->update->snapshot.metadata = metadata;
     r->update->snapshot.offset = 0;
     r->update->snapshot.chunk = args->data;
@@ -1130,15 +1133,15 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
 {
     assert(index > 0);
 
+    if (r->configuration_uncommitted_index != index) {
+        return 0;
+    }
+
     /* If this is an uncommitted configuration that we had already applied when
      * submitting the configuration change (for leaders) or upon receiving it
      * via an AppendEntries RPC (for followers), then reset the uncommitted
      * index, since that uncommitted configuration is now committed. */
-    if (r->configuration_uncommitted_index == index) {
-        infof("configuration at index:%llu is committed.", index);
-        r->configuration_uncommitted_index = 0;
-    }
-
+    r->configuration_uncommitted_index = 0;
     r->configuration_committed_index = index;
 
     if (r->state == RAFT_LEADER) {
@@ -1247,12 +1250,13 @@ static void replicationQuorum(struct raft *r, raft_index index)
         // assert(logTermOf(r->log, index) > 0);
         assert(term <= r->current_term);
 
+        uncommitted = index;
+        votes = replicationCountVotes(r, index);
+
         /* Don't commit entries from previous terms by counting replicas. */
         if (term < r->current_term) {
             break;
         }
-
-        votes = replicationCountVotes(r, index);
 
         if (votes > n_voters / 2) {
             unsigned n = (unsigned)(index - r->commit_index);
@@ -1269,7 +1273,6 @@ static void replicationQuorum(struct raft *r, raft_index index)
         }
 
         /* Try with the previous uncommitted index, if any. */
-        uncommitted = index;
         index -= 1;
     }
 

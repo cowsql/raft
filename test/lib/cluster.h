@@ -344,12 +344,10 @@ static bool v1 = false;
     }
 
 /* Kill the I'th server. */
-#define CLUSTER_KILL(I)                     \
-    if (v1) {                               \
-        test_cluster_kill(&f->cluster_, I); \
-    } else {                                \
-        raft_fixture_kill(&f->cluster, I);  \
-    }
+#define CLUSTER_KILL(I) raft_fixture_kill(&f->cluster, I);
+
+/* Stop the server with the given ID. */
+#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
 
 /* Revive the I'th server */
 #define CLUSTER_REVIVE(I) raft_fixture_revive(&f->cluster, I);
@@ -493,6 +491,9 @@ static bool v1 = false;
     } else {                              \
         CLUSTER_SET_TERM_V0(__VA_ARGS__); \
     }
+
+#define CLUSTER_SET_VOTE(ID, VOTE) \
+    test_cluster_set_vote(&f->cluster_, ID, VOTE);
 
 #define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
     test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
@@ -706,6 +707,10 @@ struct raft *test_cluster_raft(struct test_cluster *c, raft_id id);
  * before starting the server. */
 void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term);
 
+/* Set the persisted vote of the given server to the given value. Must me called
+ * before starting the server. */
+void test_cluster_set_vote(struct test_cluster *c, raft_id id, raft_id term);
+
 /* Set the last persisted snapshot of the given server. Must me called before
  * starting the server. */
 void test_cluster_set_snapshot(struct test_cluster *c,
@@ -737,6 +742,9 @@ void test_cluster_set_disk_latency(struct test_cluster *c,
 /* Start the server with the given @id, using the current state persisted on its
  * disk. */
 void test_cluster_start(struct test_cluster *c, raft_id id);
+
+/* Stop the server with the given @id. */
+void test_cluster_stop(struct test_cluster *c, raft_id id);
 
 /* Submit a new entry. */
 void test_cluster_submit(struct test_cluster *c,

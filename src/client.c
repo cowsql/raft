@@ -74,7 +74,23 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     index = logLastIndex(r->log) + 1;
 
     if (n == 1) {
-        infof("replicate 1 new entry (%llu^%llu)", index, entries[0].term);
+        const char *type;
+        switch (entries[0].type) {
+            case RAFT_COMMAND:
+                type = "command";
+                break;
+            case RAFT_BARRIER:
+                type = "barrier";
+                break;
+            case RAFT_CHANGE:
+                type = "configuration";
+                break;
+            default:
+                type = "unknown";
+                break;
+        }
+        infof("replicate 1 new %s entry (%llu^%llu)", type, index,
+              entries[0].term);
     } else {
         infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
               entries[0].term, index + n - 1, entries[n - 1].term);

@@ -6,12 +6,13 @@
 
 /* Defaults */
 #define DEFAULT_ELECTION_TIMEOUT 100
-#define DEFAULT_HEARTBEAT_TIMEOUT 40
+#define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
 enum operation_type {
     OPERATION_ENTRIES = 0,
+    OPERATION_SNAPSHOT,
     OPERATION_SEND,
     OPERATION_TRANSMIT
 };
@@ -33,6 +34,13 @@ struct operation
             struct raft_entry *batch;
             unsigned n;
         } entries;
+        struct
+        {
+            struct raft_snapshot_metadata metadata;
+            size_t offset;
+            struct raft_buffer chunk;
+            bool last;
+        } snapshot;
         struct
         {
             raft_id from;
@@ -89,6 +97,12 @@ static void diskClose(struct test_disk *d)
 static void diskSetTerm(struct test_disk *d, raft_term term)
 {
     d->term = term;
+}
+
+/* Set the persisted vote. */
+static void diskSetVote(struct test_disk *d, raft_id vote)
+{
+    d->voted_for = vote;
 }
 
 /* Set the persisted snapshot. */
@@ -263,6 +277,8 @@ static void serverTrace(struct raft_tracer *t, int type, const void *data)
     }
 
     if (info->diagnostic.level > 3) {
+        fprintf(stderr, " TRACE %llu > %s\n", server->raft.id,
+                info->diagnostic.message);
         return;
     }
 
@@ -308,8 +324,6 @@ static void serverInit(struct test_server *s,
     unsigned delta;
     int rv;
 
-    diskInit(&s->disk);
-
     s->tracer.impl = s;
     s->tracer.version = 2;
     s->tracer.trace = serverTrace;
@@ -354,8 +368,7 @@ static void serverInit(struct test_server *s,
     s->running = false;
 }
 
-/* Release all resources used by a server object. */
-static void serverClose(struct test_server *s)
+static void serverStop(struct test_server *s)
 {
     struct raft_event event;
     struct raft_update update;
@@ -367,6 +380,19 @@ static void serverClose(struct test_server *s)
     rv = raft_step(&s->raft, &event, &update);
     munit_assert_int(rv, ==, 0);
 
+    s->running = false;
+
+    /* Re-initialized the raft object. */
+    raft_close(&s->raft, NULL);
+    serverInit(s, s->raft.id, s->cluster);
+}
+
+/* Release all resources used by a server object. */
+static void serverClose(struct test_server *s)
+{
+    if (s->running) {
+        serverStop(s);
+    }
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
 }
@@ -416,6 +442,27 @@ static void serverProcessEntries(struct test_server *s,
     QUEUE_PUSH(&s->cluster->operations, &operation->queue);
 }
 
+static void serverProcessSnapshot(struct test_server *s,
+                                  struct raft_snapshot_metadata *metadata,
+                                  size_t offset,
+                                  struct raft_buffer *chunk,
+                                  bool last)
+{
+    struct operation *operation = munit_malloc(sizeof *operation);
+
+    operation->type = OPERATION_SNAPSHOT;
+    operation->id = s->raft.id;
+
+    operation->completion = s->cluster->time + s->disk_latency;
+
+    operation->snapshot.metadata = *metadata;
+    operation->snapshot.offset = offset;
+    operation->snapshot.chunk = *chunk;
+    operation->snapshot.last = last;
+
+    QUEUE_PUSH(&s->cluster->operations, &operation->queue);
+}
+
 static void serverProcessMessages(struct test_server *s,
                                   struct raft_message *messages,
                                   unsigned n)
@@ -438,6 +485,24 @@ static void serverProcessMessages(struct test_server *s,
     }
 }
 
+static void serverProcessCommitIndex(struct test_server *s)
+{
+    struct raft *r = &s->raft;
+    struct raft_event event;
+    struct raft_update update;
+    int rv;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_CONFIGURATION;
+
+    /* XXX: we should check if the given index is actually associated with a
+     * configuration */
+    event.configuration.index = raft_commit_index(r);
+
+    rv = raft_step(r, &event, &update);
+    munit_assert_int(rv, ==, 0);
+}
+
 /* Fire the given event using raft_step() and process the resulting struct
  * raft_update object. */
 static void serverStep(struct test_server *s, struct raft_event *event)
@@ -456,12 +521,18 @@ static void serverStep(struct test_server *s, struct raft_event *event)
     }
 
     if (update.flags & RAFT_UPDATE_VOTED_FOR) {
-        diskSetTerm(&s->disk, raft_voted_for(r));
+        diskSetVote(&s->disk, raft_voted_for(r));
     }
 
     if (update.flags & RAFT_UPDATE_ENTRIES) {
         serverProcessEntries(s, update.entries.index, update.entries.batch,
                              update.entries.n);
+    }
+
+    if (update.flags & RAFT_UPDATE_SNAPSHOT) {
+        serverProcessSnapshot(s, &update.snapshot.metadata,
+                              update.snapshot.offset, &update.snapshot.chunk,
+                              update.snapshot.last);
     }
 
     if (update.flags & RAFT_UPDATE_MESSAGES) {
@@ -470,6 +541,10 @@ static void serverStep(struct test_server *s, struct raft_event *event)
 
     if (update.flags & RAFT_UPDATE_TIMEOUT) {
         s->timeout = raft_timeout(&s->raft);
+    }
+
+    if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
+        serverProcessCommitIndex(s);
     }
 }
 
@@ -618,6 +693,34 @@ static void serverCompleteEntries(struct test_server *s,
     serverStep(s, &event);
 }
 
+static void serverCompleteSnapshot(struct test_server *s,
+                                   struct operation *operation)
+{
+    struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
+    struct raft_event event;
+
+    snapshot->metadata.index = operation->snapshot.metadata.index;
+    snapshot->metadata.term = operation->snapshot.metadata.term;
+    confCopy(&operation->snapshot.metadata.configuration,
+             &snapshot->metadata.configuration);
+    snapshot->metadata.configuration_index =
+        operation->snapshot.metadata.configuration_index;
+
+    snapshot->data = operation->snapshot.chunk;
+
+    diskSetSnapshot(&s->disk, snapshot);
+
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = operation->snapshot.metadata;
+    event.persisted_snapshot.offset = operation->snapshot.offset;
+    event.persisted_snapshot.chunk = operation->snapshot.chunk;
+    event.persisted_snapshot.last = operation->snapshot.last;
+    event.persisted_snapshot.status = 0;
+
+    serverStep(s, &event);
+}
+
 static void serverCompleteSend(struct test_server *s,
                                struct operation *operation)
 {
@@ -714,6 +817,9 @@ static void serverCompleteOperation(struct test_server *s,
         case OPERATION_ENTRIES:
             serverCompleteEntries(s, operation);
             break;
+        case OPERATION_SNAPSHOT:
+            serverCompleteSnapshot(s, operation);
+            break;
         case OPERATION_SEND:
             serverCompleteSend(s, operation);
             break;
@@ -734,6 +840,7 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     (void)params;
 
     for (i = 0; i < TEST_CLUSTER_N_SERVERS; i++) {
+        diskInit(&c->servers[i].disk);
         serverInit(&c->servers[i], i + 1, c);
     }
 
@@ -777,6 +884,25 @@ static void serverCancelEntries(struct test_server *s,
     serverStep(s, &event);
 }
 
+static void serverCancelSnapshot(struct test_server *s,
+                                 struct operation *operation)
+{
+    struct raft_event event;
+
+    event.time = s->cluster->time;
+    event.type = RAFT_PERSISTED_SNAPSHOT;
+    event.persisted_snapshot.metadata = operation->snapshot.metadata;
+    event.persisted_snapshot.offset = operation->snapshot.offset;
+    event.persisted_snapshot.chunk = operation->snapshot.chunk;
+    event.persisted_snapshot.last = operation->snapshot.last;
+    event.persisted_snapshot.status = RAFT_CANCELED;
+
+    /* XXX: this should probably be done by raft core */
+    raft_free(operation->snapshot.chunk.base);
+
+    serverStep(s, &event);
+}
+
 void test_cluster_tear_down(struct test_cluster *c)
 {
     unsigned i;
@@ -798,6 +924,10 @@ void test_cluster_tear_down(struct test_cluster *c)
             case OPERATION_ENTRIES:
                 server = clusterGetServer(c, operation->id);
                 serverCancelEntries(server, operation);
+                break;
+            case OPERATION_SNAPSHOT:
+                server = clusterGetServer(c, operation->id);
+                serverCancelSnapshot(server, operation);
                 break;
             case OPERATION_TRANSMIT:
                 clearTransmitOperation(operation);
@@ -835,6 +965,13 @@ void test_cluster_set_term(struct test_cluster *c, raft_id id, raft_term term)
     struct test_server *server = clusterGetServer(c, id);
     munit_assert_false(server->running);
     diskSetTerm(&server->disk, term);
+}
+
+void test_cluster_set_vote(struct test_cluster *c, raft_id id, raft_id vote)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    munit_assert_false(server->running);
+    diskSetVote(&server->disk, vote);
 }
 
 void test_cluster_set_snapshot(struct test_cluster *c,
@@ -884,6 +1021,12 @@ void test_cluster_start(struct test_cluster *c, raft_id id)
 {
     struct test_server *server = clusterGetServer(c, id);
     serverStart(server);
+}
+
+void test_cluster_stop(struct test_cluster *c, raft_id id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    serverStop(server);
 }
 
 void test_cluster_submit(struct test_cluster *c,

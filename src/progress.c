@@ -21,7 +21,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->next_index = last_index + 1;
     p->match_index = 0;
     p->last_send = 0;
-    p->recent_recv = false;
+    p->last_recv = 0;
     p->snapshot.index = 0;
     p->snapshot.last_send = 0;
     p->state = PROGRESS__PROBE;
@@ -158,6 +158,7 @@ raft_index progressMatchIndex(struct raft *r, unsigned i)
 void progressUpdateLastSend(struct raft *r, unsigned i)
 {
     r->leader_state.progress[i].last_send = r->now;
+    r->update->flags |= RAFT_UPDATE_TIMEOUT;
 }
 
 void progressUpdateSnapshotLastSend(struct raft *r, unsigned i)
@@ -165,16 +166,9 @@ void progressUpdateSnapshotLastSend(struct raft *r, unsigned i)
     r->leader_state.progress[i].snapshot.last_send = r->now;
 }
 
-bool progressResetRecentRecv(struct raft *r, const unsigned i)
+void progressUpdateLastRecv(struct raft *r, unsigned i)
 {
-    bool prev = r->leader_state.progress[i].recent_recv;
-    r->leader_state.progress[i].recent_recv = false;
-    return prev;
-}
-
-void progressMarkRecentRecv(struct raft *r, const unsigned i)
-{
-    r->leader_state.progress[i].recent_recv = true;
+    r->leader_state.progress[i].last_recv = r->now;
 }
 
 inline void progressSetFeatures(struct raft *r,
@@ -189,9 +183,14 @@ inline raft_flags progressGetFeatures(struct raft *r, const unsigned i)
     return r->leader_state.progress[i].features;
 }
 
-bool progressGetRecentRecv(const struct raft *r, const unsigned i)
+raft_time progressGetLastSend(const struct raft *r, const unsigned i)
 {
-    return r->leader_state.progress[i].recent_recv;
+    return r->leader_state.progress[i].last_send;
+}
+
+raft_time progressGetLastRecv(const struct raft *r, const unsigned i)
+{
+    return r->leader_state.progress[i].last_recv;
 }
 
 void progressToSnapshot(struct raft *r, unsigned i)

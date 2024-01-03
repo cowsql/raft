@@ -358,6 +358,23 @@ static int stepPersistedEntries(struct raft *r,
     return rv;
 }
 
+static int stepPersistedSnapshot(struct raft *r,
+                                 struct raft_snapshot_metadata *metadata,
+                                 size_t offset,
+                                 struct raft_buffer *chunk,
+                                 bool last,
+                                 int status)
+{
+    int rv;
+    infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
+    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last,
+                                        status);
+    if (rv != 0) {
+        return rv;
+    }
+    return 0;
+}
+
 /* Handle the completion of a send message operation. */
 static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
@@ -456,12 +473,11 @@ int raft_step(struct raft *r,
                                       event->persisted_entries.status);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
-            rv = replicationPersistSnapshotDone(
-                r, &event->persisted_snapshot.metadata,
-                event->persisted_snapshot.offset,
-                &event->persisted_snapshot.chunk,
-                event->persisted_snapshot.last,
-                event->persisted_snapshot.status);
+            rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
+                                       event->persisted_snapshot.offset,
+                                       &event->persisted_snapshot.chunk,
+                                       event->persisted_snapshot.last,
+                                       event->persisted_snapshot.status);
             break;
         case RAFT_SENT:
             rv = stepSent(r, &event->sent.message, event->sent.status);
@@ -528,6 +544,36 @@ raft_index raft_commit_index(struct raft *r)
     return r->commit_index;
 }
 
+/* Return the time at which the next leader timeout should be triggered. */
+static raft_time leaderTimeout(struct raft *r)
+{
+    raft_time timeout;
+    raft_time last_send = 0;
+    unsigned i;
+
+    /* Find the oldest last_send timestamp. */
+    for (i = 0; i < r->configuration.n; i++) {
+        if (last_send == 0 || progressGetLastSend(r, i) < last_send) {
+            last_send = progressGetLastSend(r, i);
+        }
+    }
+
+    /* We always send a heartbeat at the beginning of our term, so if all
+     * last_send timestamps are 0 it means that are no voters to send hearbeats
+     * to. So just return the timeout for the quorum check. */
+    if (last_send == 0) {
+        return r->election_timer_start + r->election_timeout;
+    }
+
+    /* The next timeout is either for heartbeat or a quorum check. */
+    timeout = last_send + r->heartbeat_timeout;
+    if (timeout > r->election_timer_start + r->election_timeout) {
+        timeout = r->election_timer_start + r->election_timeout;
+    }
+
+    return timeout;
+}
+
 raft_time raft_timeout(struct raft *r)
 {
     raft_time timeout;
@@ -538,8 +584,8 @@ raft_time raft_timeout(struct raft *r)
             timeout = electionTimerExpiration(r);
             break;
         case RAFT_LEADER:
-            /* TODO: keep track of the last heartbeat timestamp */
-            timeout = r->now + r->heartbeat_timeout;
+            /* The next timeout is either for heartbeat or a quorum check. */
+            timeout = leaderTimeout(r);
             break;
         default:
             timeout = 0;

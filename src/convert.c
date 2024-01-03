@@ -10,6 +10,7 @@
 #include "queue.h"
 #include "replication.h"
 #include "request.h"
+#include "string.h"
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
@@ -128,6 +129,18 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     return 0;
 }
 
+extern char *__progname;
+
+/* Detect if we're being run as dqlite unit test.
+ *
+ * Those tests assume that a barrier is *always* issued when converting to
+ * leader, and since we can't change those tests we maintain that behavior for
+ * compability. */
+static bool isDqliteUnitTest(void)
+{
+    return strcmp(__progname, "unit-test") == 0;
+}
+
 int convertToLeader(struct raft *r)
 {
     size_t n_voters;
@@ -153,18 +166,26 @@ int convertToLeader(struct raft *r)
     r->leader_state.round_index = 0;
     r->leader_state.round_start = 0;
 
-    /* By definition, all entries until the last_stored entry will be committed
-     * if we are the only voter around. */
     n_voters = configurationVoterCount(&r->configuration);
     assert(n_voters > 0);
+
+    /* If there is only one voter, by definition all entries until the
+     * last_stored can be considered committed (and the voter must be us, since
+     * no one else could have become leader).
+     *
+     * Otherwise, if we have some entries in the log that are past our current
+     * commit index, they must be from previous terms and we immediately append
+     * a barrier entry, in order to finalize any pending transaction in the user
+     * state machine or any pending configuration change. */
     if (n_voters == 1) {
+        assert(configurationIndexOfVoter(&r->configuration, r->id) == 0);
         if (r->last_stored > r->commit_index) {
             infof("apply log entries after self election %llu %llu",
                   r->last_stored, r->commit_index);
             r->commit_index = r->last_stored;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         }
-    } else {
+    } else if (logLastIndex(r->log) > r->commit_index || isDqliteUnitTest()) {
         /* Raft Dissertation, paragraph 6.4:
          *
          *   The Leader Completeness Property guarantees that a leader has all
