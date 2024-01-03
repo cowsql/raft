@@ -798,27 +798,28 @@ struct raft_log;
     }
 
 /* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                       \
-    struct                                                                     \
-    {                                                                          \
-        raft_time now;   /* Current time, updated via raft_step() */           \
-        unsigned random; /* Pseudo-random number generator state */            \
-        struct raft_update *update;    /* Pointer passed to raft_step() */     \
-        struct raft_message *messages; /* Pre-allocated message queue */       \
-        unsigned n_messages_cap;       /* Capacity of the message queue */     \
-        /* Index of the last snapshot that was taken */                        \
-        raft_index configuration_last_snapshot_index;                          \
-        /* Fields used by the v0 compatibility code */                         \
-        struct                                                                 \
-        {                                                                      \
-            unsigned short prev_state; /* Used to detect lost leadership */    \
-            void *pending[2];          /* Pending client requests */           \
-            void *requests[2];         /* Completed client requests */         \
-            void (*step_cb)(struct raft *);    /* Invoked after raft_step() */ \
-            struct raft_change *change;        /* Pending membership change */ \
-            raft_index snapshot_index;         /* Last persisted snapshot */   \
-            struct raft_buffer snapshot_chunk; /* Cache of snapshot data */    \
-        } legacy;                                                              \
+#define RAFT__EXTENSIONS                                                     \
+    struct                                                                   \
+    {                                                                        \
+        raft_time now;   /* Current time, updated via raft_step() */         \
+        unsigned random; /* Pseudo-random number generator state */          \
+        struct raft_message *messages; /* Pre-allocated message queue */     \
+        unsigned n_messages_cap;       /* Capacity of the message queue */   \
+        unsigned unused;               /* XXX: For backward ABI compat */    \
+        /* Index of the last snapshot that was taken */                      \
+        raft_index configuration_last_snapshot_index;                        \
+        /* Fields used by the v0 compatibility code */                       \
+        struct                                                               \
+        {                                                                    \
+            void *requests[2];              /* Completed client requests */  \
+            void (*step_cb)(struct raft *); /* Invoked after raft_step() */  \
+            unsigned short prev_state;  /* Used to detect lost leadership */ \
+            void *pending[2];           /* Pending client requests */        \
+            struct raft_change *change; /* Pending membership change */      \
+            raft_index snapshot_index;  /* Last persisted snapshot */        \
+            struct raft_buffer snapshot_chunk; /* Cache of snapshot data */  \
+        } legacy;                                                            \
+        struct raft_update *update; /* Pointer passed to raft_step() */      \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -994,10 +995,12 @@ struct raft
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
+            struct raft_change *change;     /* XXX: unused, for ABI compat. */
             raft_id promotee_id;            /* ID of server being promoted. */
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
+            void *requests[2];              /* XXX: unused, for ABI compat. */
             uint64_t reserved[8];           /* Future use */
         } leader_state;
     };
