@@ -1250,12 +1250,13 @@ static void replicationQuorum(struct raft *r, raft_index index)
         // assert(logTermOf(r->log, index) > 0);
         assert(term <= r->current_term);
 
+        uncommitted = index;
+        votes = replicationCountVotes(r, index);
+
         /* Don't commit entries from previous terms by counting replicas. */
         if (term < r->current_term) {
             break;
         }
-
-        votes = replicationCountVotes(r, index);
 
         if (votes > n_voters / 2) {
             unsigned n = (unsigned)(index - r->commit_index);
@@ -1272,7 +1273,6 @@ static void replicationQuorum(struct raft *r, raft_index index)
         }
 
         /* Try with the previous uncommitted index, if any. */
-        uncommitted = index;
         index -= 1;
     }
 
