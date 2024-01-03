@@ -63,7 +63,9 @@ int replicationSendAppendEntriesDone(struct raft *r,
             tracef("failed to send append entries to server %llu: %s",
                    message->server_id, raft_strerror(status));
             /* Go back to probe mode. */
-            progressToProbe(r, i);
+            if (progressState(r, i) != PROGRESS__PROBE) {
+                progressToProbe(r, i);
+            }
         }
     }
 
