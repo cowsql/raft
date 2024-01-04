@@ -1235,16 +1235,24 @@ void test_cluster_step(struct test_cluster *c)
 
 void test_cluster_elapse(struct test_cluster *c, unsigned msecs)
 {
-    struct test_server *server;
-    struct operation *operation;
     raft_time time = c->time + msecs;
 
-    server = clusterGetServerWithEarliestTimeout(c);
-    munit_assert_ullong(time, <, server->timeout);
+    while (1) {
+        struct test_server *server;
+        struct operation *operation;
 
-    operation = clusterGetOperationWithEarliestCompletion(c);
-    if (operation != NULL) {
-        munit_assert_ullong(time, <=, operation->completion);
+        server = clusterGetServerWithEarliestTimeout(c);
+        operation = clusterGetOperationWithEarliestCompletion(c);
+
+        /* If no server and no operation is due to timeout/complete before the
+         * target time, then we can jump directly to that time. */
+        if (time <= server->timeout &&
+            (operation == NULL || time <= operation->completion)) {
+            break;
+        }
+
+        /* Otherwise, process those events first. */
+        test_cluster_step(c);
     }
 
     c->time = time;
