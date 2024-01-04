@@ -431,6 +431,16 @@ static int stepReceive(struct raft *r,
     return recvMessage(r, id, address, message);
 }
 
+int stepSnapshot(struct raft *r,
+                 struct raft_snapshot_metadata *metadata,
+                 unsigned trailing)
+{
+    const char *suffix = trailing == 1 ? "y" : "ies";
+    infof("new snapshot (%llu^%llu), %u trailing entr%s", metadata->index,
+          metadata->term, trailing, suffix);
+    return replicationSnapshot(r, metadata, trailing);
+}
+
 int raft_step(struct raft *r,
               struct raft_event *event,
               struct raft_update *update)
@@ -491,8 +501,8 @@ int raft_step(struct raft *r,
                 r, event->configuration.index);
             break;
         case RAFT_SNAPSHOT:
-            rv = replicationSnapshot(r, &event->snapshot.metadata,
-                                     event->snapshot.trailing);
+            rv = stepSnapshot(r, &event->snapshot.metadata,
+                              event->snapshot.trailing);
             break;
         case RAFT_TIMEOUT:
             state_name = raft_state_name(r->state);
