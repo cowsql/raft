@@ -113,46 +113,50 @@ static int fsmSnapshotFail(struct raft_fsm *fsm,
 SUITE(snapshot)
 
 /* Install a snapshot on a follower that has fallen behind. */
-TEST_V1(snapshot, InstallOne, setUp, tearDown, 0, NULL)
+TEST_V1(snapshot, Install, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
+    struct raft_configuration configuration;
     struct raft_entry entry;
     unsigned id;
+    int rv;
 
     /* Set very low threshold and trailing entries number */
     raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
     raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
 
-    /* Don't let server 3 time out */
-    raft_set_election_timeout(CLUSTER_RAFT(3), 200);
+    /* Don't let server 2 time out (just for terser traces). */
+    raft_set_election_timeout(CLUSTER_RAFT(2), 200);
 
-    /* Bootstrap and start a cluster with 3 voters. */
-    for (id = 1; id <= 3; id++) {
+    /* Bootstrap and start a cluster with 1 voter and 1 stand-by. */
+    for (id = 1; id <= 2; id++) {
         CLUSTER_SET_TERM(id, 1 /* term */);
-        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+
+        CLUSTER_FILL_CONFIGURATION(&configuration, 2, 1, 1 /* stand-by */);
+        entry.type = RAFT_CHANGE;
+        entry.term = 1;
+        rv = raft_configuration_encode(&configuration, &entry.buf);
+        munit_assert_int(rv, ==, 0);
+        raft_configuration_close(&configuration);
+        test_cluster_add_entry(&f->cluster_, id, &entry);
+        raft_free(entry.buf.base);
+
         CLUSTER_START(id);
     }
 
-    /* Server 3 won't receive any entry from server 1. */
-    CLUSTER_DISCONNECT(1, 3);
+    /* Server 2 won't receive any entry from server 1. */
+    CLUSTER_DISCONNECT(1, 2);
 
     /* Server 1 becomes leader. */
     CLUSTER_TRACE(
         "[   0] 1 > term 1, 1 entry (1^1)\n"
-        "[   0] 2 > term 1, 1 entry (1^1)\n"
-        "[   0] 3 > term 1, 1 entry (1^1)\n"
-        "[ 100] 1 > timeout as follower\n"
-        "           convert to candidate, start election for term 2\n"
-        "[ 110] 2 > recv request vote from server 1\n"
-        "           remote term is higher (2 vs 1) -> bump term\n"
-        "           remote log is equal (1^1) -> grant vote\n"
-        "[ 120] 1 > recv request vote result from server 2\n"
-        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           self elect and convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n"
-        "           probe server 3 sending a heartbeat (no entries)\n");
+        "[   0] 2 > term 1, 1 entry (1^1)\n");
 
     /* Submit an entry which will to force a snapshot to be taken. */
-    entry.term = 2;
+    CLUSTER_ELAPSE(10);
+    entry.term = 1;
     entry.type = RAFT_COMMAND;
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
@@ -160,50 +164,30 @@ TEST_V1(snapshot, InstallOne, setUp, tearDown, 0, NULL)
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
-        "[ 120] 1 > submit 1 new client entry\n"
-        "           replicate 1 new command entry (2^2)\n"
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
-        "[ 130] 2 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 140] 1 > recv append entries result from server 2\n"
-        "           pipeline server 2 sending 1 entry (2^2)\n"
-        "[ 150] 2 > recv append entries from server 1\n"
-        "           start persisting 1 new entry (2^2)\n"
-        "[ 160] 2 > persisted 1 entry (2^2)\n"
-        "           send success result to 1\n"
-        "[ 170] 1 > recv append entries result from server 2\n"
-        "           commit 1 new entry (2^2)\n"
-        "[ 170] 1 > new snapshot (2^2), 0 trailing entries\n");
+        "[  10] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^1)\n"
+        "[  20] 1 > persisted 1 entry (2^1)\n"
+        "           commit 1 new entry (2^1)\n"
+        "[  20] 1 > new snapshot (2^1), 0 trailing entries\n");
 
-    /* Reconnect server 3, which eventually receives the snapshot. */
-    CLUSTER_RECONNECT(1, 3);
+    /* Reconnect server 2, which eventually receives the snapshot. */
+    CLUSTER_RECONNECT(1, 2);
     CLUSTER_TRACE(
-        "[ 170] 1 > timeout as leader\n"
+        "[  50] 1 > timeout as leader\n"
         "           missing previous entry at index 1 -> needs snapshot\n"
-        "           probe server 3 sending a heartbeat (no entries)\n"
-        "[ 180] 3 > recv append entries from server 1\n"
-        "           remote term is higher (2 vs 1) -> bump term\n"
-        "           missing previous entry (2^2) -> reject\n"
-        "[ 190] 1 > recv append entries result from server 3\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[  60] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^1) -> reject\n"
+        "[  70] 1 > recv append entries result from server 2\n"
         "           log mismatch -> send old entries\n"
         "           missing previous entry at index 1 -> needs snapshot\n"
-        "           sending snapshot (2^2) to server 2\n"
-        "[ 190] 1 > timeout as leader\n"
-        "           pipeline server 2 sending a heartbeat (no entries)\n"
-        "[ 200] 3 > recv install snapshot from server 1\n"
-        "           start persisting snapshot (2^2)\n"
-        "[ 200] 2 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 210] 3 > persisted snapshot (2^2)\n"
+        "           sending snapshot (2^1) to server 2\n"
+        "[  80] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (2^1)\n"
+        "[  90] 2 > persisted snapshot (2^1)\n"
         "           send success result to 1\n"
-        "[ 210] 1 > recv append entries result from server 2\n"
-        "[ 220] 1 > recv append entries result from server 3\n"
-        "           pipeline server 3 sending a heartbeat (no entries)\n");
-
-    test_cluster_step(&f->cluster_);
-    test_cluster_step(&f->cluster_);
-    test_cluster_step(&f->cluster_);
+        "[ 100] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n");
 
     return MUNIT_OK;
 }
