@@ -137,8 +137,7 @@ static int sendAppendEntries(struct raft *r,
 
     if (progressState(r, i) == PROGRESS__PIPELINE) {
         /* Optimistically update progress. */
-        progressOptimisticNextIndex(r, i,
-                                    args->prev_log_index + 1 + args->n_entries);
+        progressSetNextIndex(r, i, args->prev_log_index + 1 + args->n_entries);
     }
 
     progressUpdateLastSend(r, i);

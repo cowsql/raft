@@ -282,9 +282,7 @@ bool progressMaybeDecrement(struct raft *r,
     return true;
 }
 
-void progressOptimisticNextIndex(struct raft *r,
-                                 unsigned i,
-                                 raft_index next_index)
+void progressSetNextIndex(struct raft *r, unsigned i, raft_index next_index)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     p->next_index = next_index;
