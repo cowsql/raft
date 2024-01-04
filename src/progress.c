@@ -25,7 +25,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->last_send = ULLONG_MAX;
     p->last_recv = ULLONG_MAX;
     p->snapshot.index = 0;
-    p->snapshot.last_send = 0;
+    p->snapshot.last_send = ULLONG_MAX;
     p->state = PROGRESS__PROBE;
     p->catch_up = RAFT_CATCH_UP_NONE;
     p->features = 0;
@@ -134,6 +134,9 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
 
     switch (p->state) {
         case PROGRESS__SNAPSHOT:
+            /* We are in snapshot mode, so we must have sent a snapshot. */
+            assert(p->snapshot.last_send != ULLONG_MAX);
+
             /* Snapshot timed out, move to PROBE */
             if (r->now - p->snapshot.last_send >= r->install_snapshot_timeout) {
                 tracef("snapshot timed out for index:%u", i);
