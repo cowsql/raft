@@ -205,6 +205,10 @@ static int maybeSelfElect(struct raft *r)
         return rv;
     }
     assert(r->state == RAFT_LEADER);
+
+    /* Send initial heartbeat. */
+    replicationHeartbeat(r);
+
     return 0;
 }
 
