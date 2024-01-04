@@ -23,7 +23,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->next_index = last_index + 1;
     p->match_index = 0;
     p->last_send = ULLONG_MAX;
-    p->last_recv = 0;
+    p->last_recv = ULLONG_MAX;
     p->snapshot.index = 0;
     p->snapshot.last_send = 0;
     p->state = PROGRESS__PROBE;

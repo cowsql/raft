@@ -1,3 +1,5 @@
+#include <limits.h>
+
 #include "../include/raft.h"
 #include "assert.h"
 #include "configuration.h"
@@ -108,7 +110,14 @@ static bool checkContactQuorum(struct raft *r)
     for (i = 0; i < r->configuration.n; i++) {
         struct raft_server *server = &r->configuration.servers[i];
         raft_time last_recv = progressGetLastRecv(r, i);
-        bool is_recent = last_recv >= r->election_timer_start;
+        bool is_recent = false;
+
+        /* A contact is recent if it happened after the last election timer
+         * reset. */
+        if (last_recv != ULLONG_MAX && last_recv >= r->election_timer_start) {
+            is_recent = true;
+        }
+
         if ((server->role == RAFT_VOTER && is_recent) || server->id == r->id) {
             contacts++;
         }

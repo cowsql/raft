@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <string.h>
 
 #include "assert.h"
@@ -234,12 +235,20 @@ int replicationProgress(struct raft *r, unsigned i)
     raft_index prev_index;
     raft_term prev_term;
     int max = MAX_APPEND_ENTRIES;
-    bool is_online = progressGetLastRecv(r, i) >= r->now - r->election_timeout;
+    raft_time last_recv = progressGetLastRecv(r, i);
+    bool is_online;
     bool needs_snapshot = false;
 
     assert(r->state == RAFT_LEADER);
     assert(server->id != r->id);
     assert(next_index >= 1);
+
+    if (last_recv == ULLONG_MAX) {
+        is_online = false;
+    } else {
+        assert(r->now >= last_recv);
+        is_online = r->now - last_recv < r->election_timeout;
+    }
 
     /* From Section 3.5:
      *
