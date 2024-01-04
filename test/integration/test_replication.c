@@ -623,7 +623,6 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
     entry.term = 2;
     entry.type = RAFT_COMMAND;
     entry.buf.len = 8;
-
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
     test_cluster_submit(&f->cluster_, 1, &entry);

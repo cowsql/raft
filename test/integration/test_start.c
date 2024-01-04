@@ -109,7 +109,7 @@ TEST_V1(start, OneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
         "[ 140] 1 > recv append entries result from server 2\n"
         "           log mismatch -> send old entries\n"
         "           missing previous entry at index 1 -> needs snapshot\n"
-        "           sending snapshot (6^2)\n"
+        "           sending snapshot (6^2) to server 2\n"
         "[ 150] 2 > recv install snapshot from server 1\n"
         "           start persisting snapshot (6^2)\n"
         "[ 160] 2 > persisted snapshot (6^2)\n"
@@ -165,7 +165,7 @@ TEST_V1(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
         "[ 140] 1 > recv append entries result from server 2\n"
         "           log mismatch -> send old entries\n"
         "           missing previous entry at index 1 -> needs snapshot\n"
-        "           sending snapshot (6^2)\n");
+        "           sending snapshot (6^2 to server 2)\n");
 
     test_cluster_step(&f->cluster_);
     test_cluster_step(&f->cluster_);
