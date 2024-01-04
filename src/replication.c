@@ -209,7 +209,8 @@ static int sendSnapshot(struct raft *r, const unsigned i)
         goto err;
     }
 
-    infof("sending snapshot (%llu^%llu)", args->last_index, args->last_term);
+    infof("sending snapshot (%llu^%llu) to server %llu", args->last_index,
+          args->last_term, server->id);
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
@@ -232,6 +233,9 @@ int replicationProgress(struct raft *r, unsigned i)
     raft_index next_index = progressNextIndex(r, i);
     raft_index prev_index;
     raft_term prev_term;
+    int max = MAX_APPEND_ENTRIES;
+    bool is_online = progressGetLastRecv(r, i) >= r->now - r->election_timeout;
+    bool needs_snapshot = false;
 
     assert(r->state == RAFT_LEADER);
     assert(server->id != r->id);
@@ -250,50 +254,62 @@ int replicationProgress(struct raft *r, unsigned i)
      *   that the follower's log is identical to its own log up through the new
      *   entries (Log Matching Property in Figure 3.2).
      */
+    prev_index = next_index - 1;
+
     if (next_index == 1) {
-        /* We're including the very first entry, so prevIndex and prevTerm are
-         * null. If the first entry is not available anymore, send the last
-         * snapshot if we're not already sending one. */
-        if (snapshot_index > 0 && !progress_state_is_snapshot) {
-            raft_index last_index = logLastIndex(r->log);
-            assert(last_index > 0); /* The log can't be empty */
-            goto send_snapshot;
-        }
-        prev_index = 0;
+        /* This is the first entry, so prevIndex and prevTerm are null. */
         prev_term = 0;
+
+        /* If we don't have entry 1 anymore in our log, we need to send a
+         * snapshot. */
+        if (logTermOf(r->log, 1) == 0) {
+            needs_snapshot = true;
+        }
     } else {
         /* Set prevIndex and prevTerm to the index and term of the entry at
          * next_index - 1. */
-        prev_index = next_index - 1;
         prev_term = logTermOf(r->log, prev_index);
-        /* If the entry is not anymore in our log, send the last snapshot if
-         * we're not doing so already. */
-        if (prev_term == 0 && !progress_state_is_snapshot) {
-            assert(prev_index < snapshot_index);
-            infof("missing previous entry at index %lld -> needs snapshot",
-                  prev_index);
-            goto send_snapshot;
+
+        /* We need to send a snapshot if one of the following two cases is true:
+         *
+         * - prev_term is 0: In this case we don't have information about the
+         *   previous entry (i.e. it's not in the log and also it's not the last
+         *   entry included in the last snapshot)
+         *
+         * - prev_index is not thelast entry in the log and we don't have
+         *   anymore the entry at next_index.
+         */
+        if (prev_term == 0 || (logLastIndex(r->log) > prev_index &&
+                               logTermOf(r->log, next_index) == 0)) {
+            needs_snapshot = true;
         }
     }
 
-    /* Send empty AppendEntries RPC when installing a snaphot */
-    if (progress_state_is_snapshot) {
-        prev_index = logLastIndex(r->log);
-        prev_term = logLastTerm(r->log);
+    /* If we have to send entries that are not anymore in our log, send the last
+     * snapshot if we're not doing so already. */
+    if (needs_snapshot || progress_state_is_snapshot) {
+        infof("missing previous entry at index %lld -> needs snapshot",
+              prev_index);
+
+        assert(snapshot_index > 0);
+
+        if (!progress_state_is_snapshot && is_online) {
+            return sendSnapshot(r, i);
+        }
+
+        /* Set the next index to the snapshot index + 1, so when we receive
+         * the AppendEntries result for the empty heartbeat, we don't
+         * consider the result as stale. */
+        progressSetNextIndex(r, i, snapshot_index + 1);
+
+        /* Send heartbeats anchored to the snapshot index */
+        prev_index = snapshot_index;
+        prev_term = logSnapshotTerm(r->log);
+        assert(prev_term > 0);
+        max = 0;
     }
 
-    return sendAppendEntries(r, i, prev_index, prev_term);
-
-send_snapshot:
-    if (progressGetLastRecv(r, i) >= r->now - r->election_timeout) {
-        /* Only send a snapshot when we have heard from the server */
-        return sendSnapshot(r, i);
-    } else {
-        /* Send empty AppendEntries RPC when we haven't heard from the server */
-        prev_index = logLastIndex(r->log);
-        prev_term = logLastTerm(r->log);
-        return sendAppendEntries(r, i, prev_index, prev_term);
-    }
+    return sendAppendEntries(r, i, prev_index, prev_term, max);
 }
 
 /* Possibly trigger I/O requests for newly appended log entries or heartbeats.
@@ -772,6 +788,7 @@ static int checkLogMatchingProperty(struct raft *r,
 
     /* If this is the very first entry, there's nothing to check. */
     if (args->prev_log_index == 0) {
+        assert(args->prev_log_term == 0);
         return 0;
     }
 

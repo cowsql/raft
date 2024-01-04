@@ -198,11 +198,18 @@ void progressToSnapshot(struct raft *r, unsigned i)
     struct raft_progress *p = &r->leader_state.progress[i];
     p->state = PROGRESS__SNAPSHOT;
     p->snapshot.index = logSnapshotIndex(r->log);
+
+    /* Set the next_index to the snapshot index + 1. While the snapshot is being
+     * installed (or while we wait for the server to come online, before even
+     * sending the snapshot) we'll send heartbeats using this next index, so
+     * when we get back results we don't consider them as stale. */
+    p->next_index = p->snapshot.index + 1;
 }
 
 void progressAbortSnapshot(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
+    p->next_index = p->match_index + 1;
     p->snapshot.index = 0;
     p->state = PROGRESS__PROBE;
 }
@@ -306,12 +313,8 @@ void progressToProbe(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
 
-    /* If the current state is snapshot, we know that the pending snapshot has
-     * been sent to this peer successfully, so we probe from snapshot_index +
-     * 1.*/
     if (p->state == PROGRESS__SNAPSHOT) {
         assert(p->snapshot.index > 0);
-        p->next_index = max(p->match_index + 1, p->snapshot.index);
         p->snapshot.index = 0;
     } else {
         p->next_index = p->match_index + 1;
