@@ -124,10 +124,10 @@ int logAppendConfiguration(struct raft_log *l,
 
 /* Acquire at most @max entries from the given index onwards.
  *
- * If @max is 0, no limit is applied. */
+ * If @max is -1, no limit is applied. */
 int logAcquireAtMost(struct raft_log *l,
                      raft_index index,
-                     unsigned max,
+                     int max,
                      struct raft_entry *entries[],
                      unsigned *n);
 

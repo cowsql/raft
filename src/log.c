@@ -693,7 +693,7 @@ const struct raft_entry *logGet(struct raft_log *l, const raft_index index)
 
 int logAcquireAtMost(struct raft_log *l,
                      const raft_index index,
-                     unsigned max,
+                     int max,
                      struct raft_entry *entries[],
                      unsigned *n)
 {
@@ -708,7 +708,7 @@ int logAcquireAtMost(struct raft_log *l,
     /* Get the array index of the first entry to acquire. */
     i = locateEntry(l, index);
 
-    if (i == l->size) {
+    if (i == l->size || max == 0) {
         *n = 0;
         *entries = NULL;
         return 0;
@@ -727,8 +727,8 @@ int logAcquireAtMost(struct raft_log *l,
 
     assert(*n > 0);
 
-    if (max > 0 && *n > max) {
-        *n = max;
+    if (max != -1 && *n > (unsigned)max) {
+        *n = (unsigned)max;
     }
 
     *entries = raft_calloc(*n, sizeof **entries);
@@ -751,7 +751,7 @@ int logAcquire(struct raft_log *l,
                struct raft_entry *entries[],
                unsigned *n)
 {
-    return logAcquireAtMost(l, index, 0, entries, n);
+    return logAcquireAtMost(l, index, -1, entries, n);
 }
 
 /* Return true if the given batch is referenced by any entry currently in the

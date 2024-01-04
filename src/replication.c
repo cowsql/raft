@@ -81,7 +81,8 @@ int replicationSendAppendEntriesDone(struct raft *r,
 static int sendAppendEntries(struct raft *r,
                              const unsigned i,
                              const raft_index prev_index,
-                             const raft_term prev_term)
+                             const raft_term prev_term,
+                             int max)
 {
     struct raft_server *server = &r->configuration.servers[i];
     struct raft_message message;
@@ -95,8 +96,8 @@ static int sendAppendEntries(struct raft *r,
 
     /* TODO: implement a limit to the total *size* of the entries being sent,
      * not only the number. Also, make the number and the size configurable. */
-    rv = logAcquireAtMost(r->log, next_index, MAX_APPEND_ENTRIES,
-                          &args->entries, &args->n_entries);
+    rv = logAcquireAtMost(r->log, next_index, max, &args->entries,
+                          &args->n_entries);
     if (rv != 0) {
         goto err;
     }
