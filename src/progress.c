@@ -7,6 +7,7 @@
 #include "log.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 #ifndef max
@@ -139,7 +140,8 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
 
             /* Snapshot timed out, move to PROBE */
             if (r->now - p->snapshot.last_send >= r->install_snapshot_timeout) {
-                tracef("snapshot timed out for index:%u", i);
+                infof("timeout install snapshot at index %llu",
+                      p->snapshot.index);
                 result = true;
                 progressAbortSnapshot(r, i);
             } else {
@@ -379,4 +381,5 @@ int progressCatchUpStatus(struct raft *r, unsigned i)
     return p->catch_up;
 }
 
+#undef infof
 #undef tracef

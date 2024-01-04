@@ -385,6 +385,7 @@ static void serverInit(struct test_server *s,
 
     serverSetElectionTimeout(s, DEFAULT_ELECTION_TIMEOUT, delta);
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
+    raft_set_install_snapshot_timeout(&s->raft, 50);
 
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;

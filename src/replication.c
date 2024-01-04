@@ -230,7 +230,6 @@ int replicationProgress(struct raft *r, unsigned i)
 {
     struct raft_server *server = &r->configuration.servers[i];
     bool progress_state_is_snapshot = progressState(r, i) == PROGRESS__SNAPSHOT;
-    raft_index snapshot_index = logSnapshotIndex(r->log);
     raft_index next_index = progressNextIndex(r, i);
     raft_index prev_index;
     raft_term prev_term;
@@ -285,7 +284,7 @@ int replicationProgress(struct raft *r, unsigned i)
          *   previous entry (i.e. it's not in the log and also it's not the last
          *   entry included in the last snapshot)
          *
-         * - prev_index is not thelast entry in the log and we don't have
+         * - prev_index is not the last entry in the log and we don't have
          *   anymore the entry at next_index.
          */
         if (prev_term == 0 || (logLastIndex(r->log) > prev_index &&
@@ -297,6 +296,8 @@ int replicationProgress(struct raft *r, unsigned i)
     /* If we have to send entries that are not anymore in our log, send the last
      * snapshot if we're not doing so already. */
     if (needs_snapshot || progress_state_is_snapshot) {
+        raft_index snapshot_index = logSnapshotIndex(r->log);
+
         infof("missing previous entry at index %lld -> needs snapshot",
               prev_index);
 
