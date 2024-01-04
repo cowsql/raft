@@ -1,3 +1,5 @@
+#include <limits.h>
+
 #include "progress.h"
 
 #include "assert.h"
@@ -20,7 +22,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
 {
     p->next_index = last_index + 1;
     p->match_index = 0;
-    p->last_send = 0;
+    p->last_send = ULLONG_MAX;
     p->last_recv = 0;
     p->snapshot.index = 0;
     p->snapshot.last_send = 0;
@@ -106,8 +108,8 @@ bool progressIsUpToDate(struct raft *r, unsigned i)
 bool progressShouldReplicate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    bool needs_heartbeat = r->now - p->last_send >= r->heartbeat_timeout;
     raft_index last_index = logLastIndex(r->log);
+    bool needs_heartbeat = false;
     bool result = false;
 
     /* We must be in a valid state. */
@@ -117,6 +119,18 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
     /* The next index to send must be lower than the highest index in our
      * log. */
     assert(p->next_index <= last_index + 1);
+
+    /* The last_send field is either at its max value (we never sent any
+     * message), or it must be lower or equal than the current time.*/
+    assert(p->last_send == ULLONG_MAX || p->last_send <= r->now);
+
+    /* If we never sent any AppendEntries message to this follower, or if the
+     * last time we sent it an AppendEntries message was more than a heartbeat
+     * timeout ago, we need to send a heartbeat. */
+    if (p->last_send == ULLONG_MAX ||
+        r->now - p->last_send >= r->heartbeat_timeout) {
+        needs_heartbeat = true;
+    }
 
     switch (p->state) {
         case PROGRESS__SNAPSHOT:
