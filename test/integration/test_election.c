@@ -109,7 +109,7 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
     }
 
     /* Prevent server 2 from timing out. */
-    CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 1000 /* timeout */, 0 /* delta */);
+    CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 250 /* timeout */, 0 /* delta */);
 
     /* Now start the cluster. */
     CLUSTER_START(1 /* ID */);
