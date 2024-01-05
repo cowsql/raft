@@ -1,3 +1,5 @@
+#include <limits.h>
+
 #include "progress.h"
 
 #include "assert.h"
@@ -5,6 +7,7 @@
 #include "log.h"
 #include "tracing.h"
 
+#define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 #ifndef max
@@ -20,10 +23,10 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
 {
     p->next_index = last_index + 1;
     p->match_index = 0;
-    p->last_send = 0;
-    p->last_recv = 0;
+    p->last_send = ULLONG_MAX;
+    p->last_recv = ULLONG_MAX;
     p->snapshot.index = 0;
-    p->snapshot.last_send = 0;
+    p->snapshot.last_send = ULLONG_MAX;
     p->state = PROGRESS__PROBE;
     p->catch_up = RAFT_CATCH_UP_NONE;
     p->features = 0;
@@ -106,8 +109,8 @@ bool progressIsUpToDate(struct raft *r, unsigned i)
 bool progressShouldReplicate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    bool needs_heartbeat = r->now - p->last_send >= r->heartbeat_timeout;
     raft_index last_index = logLastIndex(r->log);
+    bool needs_heartbeat = false;
     bool result = false;
 
     /* We must be in a valid state. */
@@ -118,11 +121,27 @@ bool progressShouldReplicate(struct raft *r, unsigned i)
      * log. */
     assert(p->next_index <= last_index + 1);
 
+    /* The last_send field is either at its max value (we never sent any
+     * message), or it must be lower or equal than the current time.*/
+    assert(p->last_send == ULLONG_MAX || p->last_send <= r->now);
+
+    /* If we never sent any AppendEntries message to this follower, or if the
+     * last time we sent it an AppendEntries message was more than a heartbeat
+     * timeout ago, we need to send a heartbeat. */
+    if (p->last_send == ULLONG_MAX ||
+        r->now - p->last_send >= r->heartbeat_timeout) {
+        needs_heartbeat = true;
+    }
+
     switch (p->state) {
         case PROGRESS__SNAPSHOT:
+            /* We are in snapshot mode, so we must have sent a snapshot. */
+            assert(p->snapshot.last_send != ULLONG_MAX);
+
             /* Snapshot timed out, move to PROBE */
             if (r->now - p->snapshot.last_send >= r->install_snapshot_timeout) {
-                tracef("snapshot timed out for index:%u", i);
+                infof("timeout install snapshot at index %llu",
+                      p->snapshot.index);
                 result = true;
                 progressAbortSnapshot(r, i);
             } else {
@@ -198,11 +217,18 @@ void progressToSnapshot(struct raft *r, unsigned i)
     struct raft_progress *p = &r->leader_state.progress[i];
     p->state = PROGRESS__SNAPSHOT;
     p->snapshot.index = logSnapshotIndex(r->log);
+
+    /* Set the next_index to the snapshot index + 1. While the snapshot is being
+     * installed (or while we wait for the server to come online, before even
+     * sending the snapshot) we'll send heartbeats using this next index, so
+     * when we get back results we don't consider them as stale. */
+    p->next_index = p->snapshot.index + 1;
 }
 
 void progressAbortSnapshot(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
+    p->next_index = p->match_index + 1;
     p->snapshot.index = 0;
     p->state = PROGRESS__PROBE;
 }
@@ -282,9 +308,7 @@ bool progressMaybeDecrement(struct raft *r,
     return true;
 }
 
-void progressOptimisticNextIndex(struct raft *r,
-                                 unsigned i,
-                                 raft_index next_index)
+void progressSetNextIndex(struct raft *r, unsigned i, raft_index next_index)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     p->next_index = next_index;
@@ -308,12 +332,8 @@ void progressToProbe(struct raft *r, const unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
 
-    /* If the current state is snapshot, we know that the pending snapshot has
-     * been sent to this peer successfully, so we probe from snapshot_index +
-     * 1.*/
     if (p->state == PROGRESS__SNAPSHOT) {
         assert(p->snapshot.index > 0);
-        p->next_index = max(p->match_index + 1, p->snapshot.index);
         p->snapshot.index = 0;
     } else {
         p->next_index = p->match_index + 1;
@@ -361,4 +381,5 @@ int progressCatchUpStatus(struct raft *r, unsigned i)
     return p->catch_up;
 }
 
+#undef infof
 #undef tracef

@@ -12,8 +12,8 @@ int recvAppendEntriesResult(struct raft *r,
                             const char *address,
                             const struct raft_append_entries_result *result)
 {
-    int match;
     const struct raft_server *server;
+    int match;
     int rv;
 
     assert(r != NULL);

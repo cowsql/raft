@@ -115,12 +115,11 @@ int progressState(struct raft *r, unsigned i);
 /* Return the progress mode name for the i'th server. */
 const char *progressStateName(struct raft *r, unsigned i);
 
-/* Optimistically update the next index of the given server.
+/* Update the next index of the given server.
  *
- * Called in pipeline mode after sending new entries. */
-void progressOptimisticNextIndex(struct raft *r,
-                                 unsigned i,
-                                 raft_index next_index);
+ * Called in pipeline mode after sending new entries, or before sending a
+ * snapshot when waiting for a server to come online. */
+void progressSetNextIndex(struct raft *r, unsigned i, raft_index next_index);
 
 /* Return false if the given @index comes from an outdated message. Otherwise
  * update the progress and returns true. To be called when receiving a

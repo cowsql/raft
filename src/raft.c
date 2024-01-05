@@ -205,6 +205,10 @@ static int maybeSelfElect(struct raft *r)
         return rv;
     }
     assert(r->state == RAFT_LEADER);
+
+    /* Send initial heartbeat. */
+    replicationHeartbeat(r);
+
     return 0;
 }
 
@@ -431,6 +435,16 @@ static int stepReceive(struct raft *r,
     return recvMessage(r, id, address, message);
 }
 
+int stepSnapshot(struct raft *r,
+                 struct raft_snapshot_metadata *metadata,
+                 unsigned trailing)
+{
+    const char *suffix = trailing == 1 ? "y" : "ies";
+    infof("new snapshot (%llu^%llu), %u trailing entr%s", metadata->index,
+          metadata->term, trailing, suffix);
+    return replicationSnapshot(r, metadata, trailing);
+}
+
 int raft_step(struct raft *r,
               struct raft_event *event,
               struct raft_update *update)
@@ -491,8 +505,8 @@ int raft_step(struct raft *r,
                 r, event->configuration.index);
             break;
         case RAFT_SNAPSHOT:
-            rv = replicationSnapshot(r, &event->snapshot.metadata,
-                                     event->snapshot.trailing);
+            rv = stepSnapshot(r, &event->snapshot.metadata,
+                              event->snapshot.trailing);
             break;
         case RAFT_TIMEOUT:
             state_name = raft_state_name(r->state);
@@ -548,20 +562,21 @@ raft_index raft_commit_index(struct raft *r)
 static raft_time leaderTimeout(struct raft *r)
 {
     raft_time timeout;
-    raft_time last_send = 0;
+    raft_time last_send = ULLONG_MAX;
     unsigned i;
 
     /* Find the oldest last_send timestamp. */
     for (i = 0; i < r->configuration.n; i++) {
-        if (last_send == 0 || progressGetLastSend(r, i) < last_send) {
+        if (progressGetLastSend(r, i) < last_send) {
             last_send = progressGetLastSend(r, i);
         }
     }
 
     /* We always send a heartbeat at the beginning of our term, so if all
-     * last_send timestamps are 0 it means that are no voters to send hearbeats
-     * to. So just return the timeout for the quorum check. */
-    if (last_send == 0) {
+     * last_send timestamps are ULLONG_MAX it means that there are no
+     * voters/stand-bys to send hearbeats to. So just return the timeout for the
+     * quorum check. */
+    if (last_send == ULLONG_MAX) {
         return r->election_timer_start + r->election_timeout;
     }
 

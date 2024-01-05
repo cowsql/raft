@@ -31,7 +31,6 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
     }
 
     event.type = RAFT_SENT;
-    event.time = r->io->time(r->io);
     event.sent.message = req->message;
     event.sent.status = status;
 
@@ -90,7 +89,6 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     struct raft *r = req->r;
     struct raft_event event;
 
-    event.time = r->io->time(r->io);
     event.type = RAFT_PERSISTED_ENTRIES;
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
@@ -156,7 +154,6 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     struct raft *r = req->r;
     struct raft_event event;
 
-    event.time = r->io->time(r->io);
     event.type = RAFT_PERSISTED_SNAPSHOT;
     event.persisted_snapshot.metadata = req->metadata;
     event.persisted_snapshot.offset = req->offset;
@@ -280,7 +277,6 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
 
 abort:
     event.type = RAFT_SENT;
-    event.time = r->io->time(r->io);
     event.sent.message = req->message;
     event.sent.status = status;
 
@@ -370,7 +366,6 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
 
     event.type = RAFT_SNAPSHOT;
     memset(&event.reserved, 0, sizeof event.reserved);
-    event.time = r->io->time(r->io);
     event.snapshot.metadata = metadata;
     event.snapshot.trailing = 0;
     LegacyForwardToRaftIo(r, &event);
@@ -666,7 +661,6 @@ static void legacyCheckChangeRequest(struct raft *r,
         assert(*events != NULL);
 
         event = &(*events)[*n_events - 1];
-        event->time = r->io->time(r->io);
         event->type = RAFT_SUBMIT;
         event->submit.entries = entry;
         event->submit.n = 1;
@@ -798,7 +792,6 @@ static int legacyApply(struct raft *r,
                 *events = raft_realloc(*events, *n_events * sizeof **events);
                 assert(*events != NULL);
                 event = &(*events)[*n_events - 1];
-                event->time = r->io->time(r->io);
                 event->type = RAFT_CONFIGURATION;
                 event->configuration.index = index;
 
@@ -957,6 +950,7 @@ static int legacyHandleEvent(struct raft *r,
     int rv;
 
     event = &(*events)[i];
+    event->time = r->io->time(r->io);
 
     rv = raft_step(r, event, &update);
     if (rv != 0) {

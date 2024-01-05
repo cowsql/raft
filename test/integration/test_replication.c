@@ -623,7 +623,6 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
     entry.term = 2;
     entry.type = RAFT_COMMAND;
     entry.buf.len = 8;
-
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
     test_cluster_submit(&f->cluster_, 1, &entry);
@@ -891,7 +890,7 @@ TEST_V1(replication, FollowerHasMissingEntries, setUp, tearDown, 0, NULL)
      * it, because it's missing the one before. */
     CLUSTER_TRACE(
         "[ 130] 2 > recv append entries from server 1\n"
-        "           missing entry (2^1) -> reject\n");
+        "           missing previous entry (2^1) -> reject\n");
 
     /* Server 1 sends the missing entry. */
     CLUSTER_TRACE(
@@ -1478,7 +1477,7 @@ TEST_V1(replication,
     }
 
     /* Set a high election timeout on server 2, so it won't become candidate */
-    CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 500 /* timeout */, 0 /* delta */);
+    CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 250 /* timeout */, 0 /* delta */);
 
     /* Disconnect server 3 from the other two. */
     CLUSTER_DISCONNECT(3, 1);
@@ -1852,7 +1851,7 @@ TEST_V1(replication,
 
     /* Set a very high election timeout on server 1, so it won't step down
      * for a while, even if disconnected. */
-    CLUSTER_SET_ELECTION_TIMEOUT(1, 1000 /* timeout */, 0 /* delta */);
+    CLUSTER_SET_ELECTION_TIMEOUT(1, 500 /* timeout */, 0 /* delta */);
 
     /* Server 2 and 3 eventually timeout and start an election, server 2
      * wins (lower election timeouts to make that happen faster). */
