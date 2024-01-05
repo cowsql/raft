@@ -805,7 +805,7 @@ struct raft_log;
         unsigned random; /* Pseudo-random number generator state */          \
         struct raft_message *messages; /* Pre-allocated message queue */     \
         unsigned n_messages_cap;       /* Capacity of the message queue */   \
-        unsigned unused;               /* XXX: For backward ABI compat */    \
+        unsigned unused1;              /* XXX: For backward ABI compat */    \
         /* Index of the last snapshot that was taken */                      \
         raft_index configuration_last_snapshot_index;                        \
         /* Fields used by the v0 compatibility code */                       \
@@ -1023,8 +1023,7 @@ struct raft
      * of voting servers. */
     raft_time election_timer_start;
 
-    /* In-progress leadership transfer request, if any. */
-    struct raft_transfer *transfer;
+    struct raft_transfer *transfer; /* Used by the legacy compatibility layer */
 
     /*
      * Information about the last snapshot that was taken (if any).

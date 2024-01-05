@@ -565,9 +565,11 @@ int replicationUpdate(struct raft *r,
     unsigned i;
     int rv;
 
+    assert(r->state == RAFT_LEADER);
+    assert(server->id != 0);
+
     i = configurationIndexOf(&r->configuration, server->id);
 
-    assert(r->state == RAFT_LEADER);
     assert(i < r->configuration.n);
 
     progressUpdateLastRecv(r, i);
@@ -642,11 +644,11 @@ int replicationUpdate(struct raft *r,
     /* If we are transferring leadership to this follower, check if its log
      * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
      * already did). */
-    if (r->transfer != NULL && r->transfer->id == server->id) {
-        if (progressIsUpToDate(r, i) && r->transfer->send.data == NULL) {
+    if (r->leader_state.transferee == server->id) {
+        if (progressIsUpToDate(r, i) && !r->leader_state.transferring) {
             rv = membershipLeadershipTransferStart(r);
             if (rv != 0) {
-                membershipLeadershipTransferClose(r);
+                r->leader_state.transferee = 0;
             }
         }
     }

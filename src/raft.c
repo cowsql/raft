@@ -88,7 +88,6 @@ int raft_init(struct raft *r,
     r->commit_index = 0;
     r->last_stored = 0;
     r->state = RAFT_UNAVAILABLE;
-    r->transfer = NULL;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
@@ -129,6 +128,7 @@ int raft_init(struct raft *r,
         r->legacy.step_cb = NULL;
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
+        r->transfer = NULL;
     }
     return 0;
 
@@ -473,10 +473,6 @@ int raft_step(struct raft *r,
         case RAFT_STOP:
             if (r->state != RAFT_UNAVAILABLE) {
                 convertToUnavailable(r);
-                if (r->io != NULL) {
-                    LegacyFailPendingRequests(r);
-                    LegacyFireCompletedRequests(r);
-                }
             }
             rv = 0;
             break;
@@ -630,11 +626,10 @@ int raft_catch_up(const struct raft *r, raft_id id, int *status)
 
 raft_id raft_transferee(const struct raft *r)
 {
-    if (r->transfer == NULL) {
+    if (r->state != RAFT_LEADER) {
         return 0;
     }
-    assert(r->transfer->id != 0);
-    return r->transfer->id;
+    return r->leader_state.transferee;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)

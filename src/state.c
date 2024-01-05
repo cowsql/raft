@@ -22,7 +22,7 @@ void raft_leader(struct raft *r, raft_id *id, const char **address)
             *address = r->follower_state.current_leader.address;
             return;
         case RAFT_LEADER:
-            if (r->transfer != NULL) {
+            if (r->leader_state.transferee != 0) {
                 *id = 0;
                 *address = NULL;
                 return;

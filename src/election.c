@@ -20,7 +20,8 @@ struct followerOrCandidateState
 };
 
 /* Return a pointer to either the follower or candidate state. */
-struct followerOrCandidateState *getFollowerOrCandidateState(struct raft *r)
+struct followerOrCandidateState *getFollowerOrCandidateState(
+    const struct raft *r)
 {
     struct followerOrCandidateState *state;
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);
@@ -56,7 +57,7 @@ bool electionTimerExpired(struct raft *r)
     return now - r->election_timer_start >= state->randomized_election_timeout;
 }
 
-raft_time electionTimerExpiration(struct raft *r)
+raft_time electionTimerExpiration(const struct raft *r)
 {
     struct followerOrCandidateState *state;
     assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE);

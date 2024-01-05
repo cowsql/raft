@@ -857,6 +857,17 @@ static void legacyPersistedEntriesFailure(struct raft *r,
     }
 }
 
+static void legacyLeadershipTransferClose(struct raft *r)
+{
+    struct raft_transfer *req = r->transfer;
+    assert(raft_transferee(r) == 0);
+    r->transfer = NULL;
+    if (req->cb != NULL) {
+        req->type = RAFT_TRANSFER_;
+        QUEUE_PUSH(&r->legacy.requests, &req->queue);
+    }
+}
+
 static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
 {
     assert(r->legacy.prev_state != r->state);
@@ -875,6 +886,14 @@ static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
 
     if (raft_state(r) == RAFT_LEADER) {
         assert(r->legacy.change == NULL);
+    }
+
+    if (raft_state(r) == RAFT_UNAVAILABLE) {
+        if (r->transfer != NULL) {
+            legacyLeadershipTransferClose(r);
+        }
+        LegacyFailPendingRequests(r);
+        LegacyFireCompletedRequests(r);
     }
 
     r->legacy.prev_state = r->state;
@@ -1020,6 +1039,23 @@ static int legacyHandleEvent(struct raft *r,
         }
     }
 
+    /* If there's a pending leadership transfer request, and no leadership
+     * transfer is in progress, check if it has completed. */
+    if (r->transfer != NULL && raft_transferee(r) == 0) {
+        /* If we are leader it means that the request was aborted. If we are
+         * follower we wait until we find a new leader. */
+        if (raft_state(r) == RAFT_LEADER) {
+            legacyLeadershipTransferClose(r);
+        } else if (raft_state(r) == RAFT_FOLLOWER) {
+            raft_id leader_id;
+            const char *leader_address;
+            raft_leader(r, &leader_id, &leader_address);
+            if (leader_id != 0) {
+                legacyLeadershipTransferClose(r);
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -1057,4 +1093,19 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     }
 
     return 0;
+}
+
+void LegacyLeadershipTransferInit(struct raft *r,
+                                  struct raft_transfer *req,
+                                  raft_id id,
+                                  raft_transfer_cb cb)
+{
+    assert(r->state == RAFT_LEADER);
+    assert(r->leader_state.transferee == 0);
+    assert(!r->leader_state.transferring);
+
+    req->cb = cb;
+    req->id = id;
+
+    r->transfer = req;
 }

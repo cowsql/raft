@@ -231,10 +231,6 @@ err:
 
 void convertToUnavailable(struct raft *r)
 {
-    /* Abort any pending leadership transfer request. */
-    if (r->transfer != NULL) {
-        membershipLeadershipTransferClose(r);
-    }
     convertClear(r);
     convertSetState(r, RAFT_UNAVAILABLE);
 }

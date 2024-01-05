@@ -64,7 +64,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     assert(entries != NULL);
     assert(n > 0);
 
-    if (r->state != RAFT_LEADER || r->transfer != NULL) {
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
         ErrMsgFromCode(r->errmsg, rv);
         goto err;
@@ -513,6 +513,12 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     unsigned i;
     int rv;
 
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
+        rv = RAFT_NOTLEADER;
+        ErrMsgFromCode(r->errmsg, rv);
+        goto err;
+    }
+
     if (server_id == 0) {
         server_id = clientSelectTransferee(r);
         if (server_id == 0) {
@@ -534,10 +540,13 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     i = configurationIndexOf(&r->configuration, server->id);
     assert(i < r->configuration.n);
 
+    r->leader_state.transferee = server_id;
+    r->leader_state.transfer_start = r->now;
+
     if (progressIsUpToDate(r, i)) {
         rv = membershipLeadershipTransferStart(r);
         if (rv != 0) {
-            r->transfer = NULL;
+            r->leader_state.transferee = 0;
             goto err;
         }
     }
@@ -559,7 +568,7 @@ int raft_transfer(struct raft *r,
     unsigned i;
     int rv;
 
-    if (r->state != RAFT_LEADER || r->transfer != NULL) {
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
         ErrMsgFromCode(r->errmsg, rv);
         goto err;
@@ -586,7 +595,7 @@ int raft_transfer(struct raft *r,
     i = configurationIndexOf(&r->configuration, server->id);
     assert(i < r->configuration.n);
 
-    membershipLeadershipTransferInit(r, req, id, cb);
+    LegacyLeadershipTransferInit(r, req, id, cb);
 
     event.time = r->io->time(r->io);
     event.type = RAFT_TRANSFER;
