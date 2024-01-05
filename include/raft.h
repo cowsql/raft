@@ -1138,6 +1138,12 @@ enum {
 RAFT_API int raft_catch_up(const struct raft *r, raft_id id, int *status);
 
 /**
+ * Return the ID of the server that leadership is being transfered to, or #0 if
+ * no leadership transfer is in progress.
+ */
+RAFT_API raft_id raft_transferee(const struct raft *r);
+
+/**
  * Bootstrap this raft instance using the given configuration. The instance
  * must not have been started yet and must be completely pristine, otherwise
  * #RAFT_CANTBOOTSTRAP will be returned.

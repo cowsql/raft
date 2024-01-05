@@ -628,6 +628,15 @@ int raft_catch_up(const struct raft *r, raft_id id, int *status)
     return 0;
 }
 
+raft_id raft_transferee(const struct raft *r)
+{
+    if (r->transfer == NULL) {
+        return 0;
+    }
+    assert(r->transfer->id != 0);
+    return r->transfer->id;
+}
+
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
