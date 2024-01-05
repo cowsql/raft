@@ -995,12 +995,12 @@ struct raft
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
-            struct raft_change *change;     /* XXX: unused, for ABI compat. */
+            struct raft_change *unused1;    /* XXX: unused, for ABI compat. */
             raft_id promotee_id;            /* ID of server being promoted. */
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
-            void *requests[2];              /* XXX: unused, for ABI compat. */
+            void *unused2[2];               /* XXX: unused, for ABI compat. */
             union {
                 uint64_t reserved[8]; /* Future use */
                 struct
