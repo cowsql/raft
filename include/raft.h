@@ -1001,7 +1001,15 @@ struct raft
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
             void *requests[2];              /* XXX: unused, for ABI compat. */
-            uint64_t reserved[8];           /* Future use */
+            union {
+                uint64_t reserved[8]; /* Future use */
+                struct
+                {
+                    raft_id transferee; /* Server ID of aleadership transfer */
+                    raft_time transfer_start;
+                    bool transferring; /* True if after sending TimeoutNow */
+                };
+            };
         } leader_state;
     };
 

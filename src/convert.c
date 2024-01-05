@@ -166,6 +166,10 @@ int convertToLeader(struct raft *r)
     r->leader_state.round_index = 0;
     r->leader_state.round_start = 0;
 
+    /* Reset leadership transfer. */
+    r->leader_state.transferee = 0;
+    r->leader_state.transferring = false;
+
     n_voters = configurationVoterCount(&r->configuration);
     assert(n_voters > 0);
 
