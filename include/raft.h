@@ -805,7 +805,7 @@ struct raft_log;
         unsigned random; /* Pseudo-random number generator state */          \
         struct raft_message *messages; /* Pre-allocated message queue */     \
         unsigned n_messages_cap;       /* Capacity of the message queue */   \
-        unsigned unused;               /* XXX: For backward ABI compat */    \
+        unsigned unused1;              /* XXX: For backward ABI compat */    \
         /* Index of the last snapshot that was taken */                      \
         raft_index configuration_last_snapshot_index;                        \
         /* Fields used by the v0 compatibility code */                       \
@@ -995,13 +995,21 @@ struct raft
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
-            struct raft_change *change;     /* XXX: unused, for ABI compat. */
+            struct raft_change *unused1;    /* XXX: unused, for ABI compat. */
             raft_id promotee_id;            /* ID of server being promoted. */
             unsigned short round_number;    /* Current sync round. */
             raft_index round_index;         /* Target of the current round. */
             raft_time round_start;          /* Start of current round. */
-            void *requests[2];              /* XXX: unused, for ABI compat. */
-            uint64_t reserved[8];           /* Future use */
+            void *unused2[2];               /* XXX: unused, for ABI compat. */
+            union {
+                uint64_t reserved[8]; /* Future use */
+                struct
+                {
+                    raft_id transferee; /* Server ID of aleadership transfer */
+                    raft_time transfer_start;
+                    bool transferring; /* True if after sending TimeoutNow */
+                };
+            };
         } leader_state;
     };
 
@@ -1015,8 +1023,7 @@ struct raft
      * of voting servers. */
     raft_time election_timer_start;
 
-    /* In-progress leadership transfer request, if any. */
-    struct raft_transfer *transfer;
+    struct raft_transfer *transfer; /* Used by the legacy compatibility layer */
 
     /*
      * Information about the last snapshot that was taken (if any).
@@ -1106,23 +1113,23 @@ RAFT_API int raft_step(struct raft *r,
 /**
  * Return the current term of this server.
  */
-RAFT_API raft_term raft_current_term(struct raft *r);
+RAFT_API raft_term raft_current_term(const struct raft *r);
 
 /**
  * Return the ID of the server that this server has voted for, or #0 if it not
  * vote.
  */
-RAFT_API raft_id raft_voted_for(struct raft *r);
+RAFT_API raft_id raft_voted_for(const struct raft *r);
 
 /**
  * Return the commit index of this server.
  */
-RAFT_API raft_index raft_commit_index(struct raft *r);
+RAFT_API raft_index raft_commit_index(const struct raft *r);
 
 /**
  * Return the time at which the next RAFT_TIMEOUT event should be fired.
  */
-RAFT_API raft_time raft_timeout(struct raft *r);
+RAFT_API raft_time raft_timeout(const struct raft *r);
 
 /**
  * Return information about the progress of a server that is catching up with
@@ -1135,7 +1142,13 @@ enum {
     RAFT_CATCH_UP_FINISHED
 };
 
-RAFT_API int raft_catch_up(struct raft *r, raft_id id, int *status);
+RAFT_API int raft_catch_up(const struct raft *r, raft_id id, int *status);
+
+/**
+ * Return the ID of the server that leadership is being transfered to, or #0 if
+ * no leadership transfer is in progress.
+ */
+RAFT_API raft_id raft_transferee(const struct raft *r);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance

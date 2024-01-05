@@ -207,6 +207,15 @@ static int tickLeader(struct raft *r)
         }
     }
 
+    /* If there is a leadership transfer request in progress, check if it's
+     * expired. */
+    if (r->leader_state.transferee != 0) {
+        if (r->now - r->leader_state.transfer_start >= r->election_timeout) {
+            r->leader_state.transferee = 0;
+            r->leader_state.transferring = false;
+        }
+    }
+
     return 0;
 }
 
@@ -251,14 +260,6 @@ void tickCb(struct raft_io *io)
     rv = LegacyForwardToRaftIo(r, &event);
     if (rv != 0) {
         goto err;
-    }
-
-    /* For all states: if there is a leadership transfer request in progress,
-     * check if it's expired. */
-    if (r->transfer != NULL) {
-        if (r->now - r->transfer->start >= r->election_timeout) {
-            membershipLeadershipTransferClose(r);
-        }
     }
 
     return;

@@ -17,7 +17,7 @@ int membershipCanChangeConfiguration(struct raft *r)
 {
     int rv;
 
-    if (r->state != RAFT_LEADER || r->transfer != NULL) {
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
         goto err;
     }
@@ -191,26 +191,19 @@ int membershipRollback(struct raft *r)
     return 0;
 }
 
-void membershipLeadershipTransferInit(struct raft *r,
-                                      struct raft_transfer *req,
-                                      raft_id id,
-                                      raft_transfer_cb cb)
-{
-    req->cb = cb;
-    req->id = id;
-    req->start = r->now;
-    req->send.data = NULL;
-    r->transfer = req;
-}
-
 int membershipLeadershipTransferStart(struct raft *r)
 {
     const struct raft_server *server;
     struct raft_message message;
     int rv;
-    assert(r->transfer->send.data == NULL);
-    server = configurationGet(&r->configuration, r->transfer->id);
+
+    assert(r->state == RAFT_LEADER);
+    assert(r->leader_state.transferee != 0);
+    assert(!r->leader_state.transferring);
+
+    server = configurationGet(&r->configuration, r->leader_state.transferee);
     assert(server != NULL);
+
     if (server == NULL) {
         return -1;
     }
@@ -219,12 +212,6 @@ int membershipLeadershipTransferStart(struct raft *r)
     message.timeout_now.term = r->current_term;
     message.timeout_now.last_log_index = logLastIndex(r->log);
     message.timeout_now.last_log_term = logLastTerm(r->log);
-
-    /* Set the data attribute of the raft_io_send object embedded in
-     * raft_transfer. This is needed because we historically used it as a flag
-     * to indicate that a transfer request was sent. See the replicationUpdate
-     * function. */
-    r->transfer->send.data = r;
 
     message.server_id = server->id;
     message.server_address = server->address;
@@ -235,17 +222,11 @@ int membershipLeadershipTransferStart(struct raft *r)
                         server->id);
         return rv;
     }
-    return 0;
-}
 
-void membershipLeadershipTransferClose(struct raft *r)
-{
-    struct raft_transfer *req = r->transfer;
-    r->transfer = NULL;
-    if (req->cb != NULL) {
-        req->type = RAFT_TRANSFER_;
-        QUEUE_PUSH(&r->legacy.requests, &req->queue);
-    }
+    /* Set the leadership transfer in progress flag. */
+    r->leader_state.transferring = true;
+
+    return 0;
 }
 
 #undef infof

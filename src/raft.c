@@ -88,7 +88,6 @@ int raft_init(struct raft *r,
     r->commit_index = 0;
     r->last_stored = 0;
     r->state = RAFT_UNAVAILABLE;
-    r->transfer = NULL;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
@@ -129,6 +128,7 @@ int raft_init(struct raft *r,
         r->legacy.step_cb = NULL;
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
+        r->transfer = NULL;
     }
     return 0;
 
@@ -473,10 +473,6 @@ int raft_step(struct raft *r,
         case RAFT_STOP:
             if (r->state != RAFT_UNAVAILABLE) {
                 convertToUnavailable(r);
-                if (r->io != NULL) {
-                    LegacyFailPendingRequests(r);
-                    LegacyFireCompletedRequests(r);
-                }
             }
             rv = 0;
             break;
@@ -543,23 +539,23 @@ out:
     return 0;
 }
 
-raft_term raft_current_term(struct raft *r)
+raft_term raft_current_term(const struct raft *r)
 {
     return r->current_term;
 }
 
-raft_term raft_voted_for(struct raft *r)
+raft_term raft_voted_for(const struct raft *r)
 {
     return r->voted_for;
 }
 
-raft_index raft_commit_index(struct raft *r)
+raft_index raft_commit_index(const struct raft *r)
 {
     return r->commit_index;
 }
 
 /* Return the time at which the next leader timeout should be triggered. */
-static raft_time leaderTimeout(struct raft *r)
+static raft_time leaderTimeout(const struct raft *r)
 {
     raft_time timeout;
     raft_time last_send = ULLONG_MAX;
@@ -589,7 +585,7 @@ static raft_time leaderTimeout(struct raft *r)
     return timeout;
 }
 
-raft_time raft_timeout(struct raft *r)
+raft_time raft_timeout(const struct raft *r)
 {
     raft_time timeout;
     switch (r->state) {
@@ -610,7 +606,7 @@ raft_time raft_timeout(struct raft *r)
     return timeout;
 }
 
-int raft_catch_up(struct raft *r, raft_id id, int *status)
+int raft_catch_up(const struct raft *r, raft_id id, int *status)
 {
     unsigned i;
 
@@ -626,6 +622,14 @@ int raft_catch_up(struct raft *r, raft_id id, int *status)
     *status = progressCatchUpStatus(r, i);
 
     return 0;
+}
+
+raft_id raft_transferee(const struct raft *r)
+{
+    if (r->state != RAFT_LEADER) {
+        return 0;
+    }
+    return r->leader_state.transferee;
 }
 
 void raft_set_election_timeout(struct raft *r, const unsigned msecs)
