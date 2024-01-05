@@ -155,6 +155,6 @@ void progressCatchUpAbort(struct raft *r, unsigned i);
 void progressCatchUpFinish(struct raft *r, unsigned i);
 
 /* Return the information about the catch-up progress of a server. */
-int progressCatchUpStatus(struct raft *r, unsigned i);
+int progressCatchUpStatus(const struct raft *r, unsigned i);
 
 #endif /* PROGRESS_H_ */

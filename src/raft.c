@@ -543,23 +543,23 @@ out:
     return 0;
 }
 
-raft_term raft_current_term(struct raft *r)
+raft_term raft_current_term(const struct raft *r)
 {
     return r->current_term;
 }
 
-raft_term raft_voted_for(struct raft *r)
+raft_term raft_voted_for(const struct raft *r)
 {
     return r->voted_for;
 }
 
-raft_index raft_commit_index(struct raft *r)
+raft_index raft_commit_index(const struct raft *r)
 {
     return r->commit_index;
 }
 
 /* Return the time at which the next leader timeout should be triggered. */
-static raft_time leaderTimeout(struct raft *r)
+static raft_time leaderTimeout(const struct raft *r)
 {
     raft_time timeout;
     raft_time last_send = ULLONG_MAX;
@@ -589,7 +589,7 @@ static raft_time leaderTimeout(struct raft *r)
     return timeout;
 }
 
-raft_time raft_timeout(struct raft *r)
+raft_time raft_timeout(const struct raft *r)
 {
     raft_time timeout;
     switch (r->state) {
@@ -610,7 +610,7 @@ raft_time raft_timeout(struct raft *r)
     return timeout;
 }
 
-int raft_catch_up(struct raft *r, raft_id id, int *status)
+int raft_catch_up(const struct raft *r, raft_id id, int *status)
 {
     unsigned i;
 

@@ -1106,23 +1106,23 @@ RAFT_API int raft_step(struct raft *r,
 /**
  * Return the current term of this server.
  */
-RAFT_API raft_term raft_current_term(struct raft *r);
+RAFT_API raft_term raft_current_term(const struct raft *r);
 
 /**
  * Return the ID of the server that this server has voted for, or #0 if it not
  * vote.
  */
-RAFT_API raft_id raft_voted_for(struct raft *r);
+RAFT_API raft_id raft_voted_for(const struct raft *r);
 
 /**
  * Return the commit index of this server.
  */
-RAFT_API raft_index raft_commit_index(struct raft *r);
+RAFT_API raft_index raft_commit_index(const struct raft *r);
 
 /**
  * Return the time at which the next RAFT_TIMEOUT event should be fired.
  */
-RAFT_API raft_time raft_timeout(struct raft *r);
+RAFT_API raft_time raft_timeout(const struct raft *r);
 
 /**
  * Return information about the progress of a server that is catching up with
@@ -1135,7 +1135,7 @@ enum {
     RAFT_CATCH_UP_FINISHED
 };
 
-RAFT_API int raft_catch_up(struct raft *r, raft_id id, int *status);
+RAFT_API int raft_catch_up(const struct raft *r, raft_id id, int *status);
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance

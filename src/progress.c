@@ -375,7 +375,7 @@ void progressCatchUpFinish(struct raft *r, unsigned i)
     p->catch_up = RAFT_CATCH_UP_FINISHED;
 }
 
-int progressCatchUpStatus(struct raft *r, unsigned i)
+int progressCatchUpStatus(const struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     return p->catch_up;
