@@ -410,6 +410,8 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
     raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
     raft_set_snapshot_trailing(CLUSTER_RAFT(1), 1);
 
+    raft_set_install_snapshot_timeout(CLUSTER_RAFT(1), 100);
+
     /* Prevent server 3 from receving messages from server 1. */
     CLUSTER_DISCONNECT(1, 3);
 
@@ -514,9 +516,6 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
         "[ 210] 1 > recv append entries result from server 2\n"
         "[ 220] 2 > persisted 1 entry (4^2)\n"
         "           send success result to 1\n"
-        "[ 220] 1 > timeout as leader\n"
-        "           missing previous entry at index 3 -> needs snapshot\n"
-        "           snapshot server 3 sending a heartbeat (no entries)\n"
         "[ 230] 1 > recv append entries result from server 2\n"
         "           commit 1 new entry (4^2)\n");
 
@@ -525,16 +524,18 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 230] 1 > transfer leadership to 2\n"
         "           send timeout to 2\n"
-        "[ 230] 3 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
         "[ 240] 2 > recv timeout now from server 1\n"
         "           convert to candidate, start election for term 3\n"
-        "[ 240] 1 > recv append entries result from server 3\n"
+        "[ 240] 1 > timeout as leader\n"
+        "           missing previous entry at index 3 -> needs snapshot\n"
+        "           snapshot server 3 sending a heartbeat (no entries)\n"
         "[ 250] 1 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term, step down\n"
         "           remote log is equal (4^2) -> grant vote\n"
         "[ 250] 3 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term\n"
+        "[ 250] 3 > recv append entries from server 1\n"
+        "           local term is higher (3 vs 2) -> reject\n"
         "[ 260] 2 > recv request vote result from server 1\n"
         "           quorum reached with 2 votes out of 3 -> convert to leader\n"
         "           replicate 1 new barrier entry (5^3)\n"
@@ -542,6 +543,8 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
         "           probe server 3 sending 1 entry (5^3)\n"
         "[ 260] 2 > recv request vote result from server 3\n"
         "           local server is leader -> ignore\n"
+        "[ 260] 1 > recv append entries result from server 3\n"
+        "           local server is not leader -> ignore\n"
         "[ 270] 2 > persisted 1 entry (5^3)\n"
         "           next uncommitted entry (4^2) has 1 vote out of 3\n"
         "[ 270] 1 > recv append entries from server 2\n"

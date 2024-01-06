@@ -204,7 +204,14 @@ inline raft_flags progressGetFeatures(struct raft *r, const unsigned i)
 
 raft_time progressGetLastSend(const struct raft *r, const unsigned i)
 {
-    return r->leader_state.progress[i].last_send;
+    struct raft_progress *p = &r->leader_state.progress[i];
+    raft_time last_send = p->last_send;
+
+    if (p->snapshot.last_send != ULLONG_MAX &&
+        p->snapshot.last_send > last_send) {
+        last_send = p->snapshot.last_send;
+    }
+    return last_send;
 }
 
 raft_time progressGetLastRecv(const struct raft *r, const unsigned i)
