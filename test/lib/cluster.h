@@ -751,6 +751,11 @@ void test_cluster_submit(struct test_cluster *c,
                          raft_id id,
                          struct raft_entry *entry);
 
+/* Fire a leadership transfer. */
+void test_cluster_transfer(struct test_cluster *c,
+                           raft_id id,
+                           raft_id transferee);
+
 /* Advance the cluster by completing a single asynchronous operation or firing a
  * timeout. */
 void test_cluster_step(struct test_cluster *c);
