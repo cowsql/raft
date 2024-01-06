@@ -113,6 +113,7 @@ test_integration_core_SOURCES = \
   test/integration/test_fixture.c \
   test/integration/test_heap.c \
   test/integration/test_init.c \
+  test/integration/test_legacy.c \
   test/integration/test_membership.c \
   test/integration/test_recover.c \
   test/integration/test_replication.c \

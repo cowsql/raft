@@ -64,20 +64,6 @@ static void tearDown(void *data)
         }                                                              \
     }
 
-static int ioMethodSnapshotPutFail(struct raft_io *raft_io,
-                                   unsigned trailing,
-                                   struct raft_io_snapshot_put *req,
-                                   const struct raft_snapshot *snapshot,
-                                   raft_io_snapshot_put_cb cb)
-{
-    (void)raft_io;
-    (void)trailing;
-    (void)req;
-    (void)snapshot;
-    (void)cb;
-    return -1;
-}
-
 #define SET_FAULTY_SNAPSHOT_PUT()                                        \
     {                                                                    \
         unsigned i;                                                      \
@@ -604,31 +590,6 @@ static MunitParameterEnum fsm_snapshot_async_params[] = {
     {CLUSTER_FSM_VERSION_PARAM, fsm_version},
     {NULL, NULL},
 };
-
-TEST(snapshot,
-     takeSnapshotSnapshotPutFail,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_SNAPSHOT_PUT();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
 
 TEST(snapshot, takeSnapshotFail, setUp, tearDown, 0, fsm_snapshot_async_params)
 {
