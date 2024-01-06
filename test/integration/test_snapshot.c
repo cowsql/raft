@@ -345,33 +345,6 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* No snapshots sent to killed nodes */
-TEST(snapshot, noSnapshotInstallToKilled, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Kill a server */
-    CLUSTER_KILL(2);
-
-    /* Apply a few of entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Wait a while */
-    CLUSTER_STEP_UNTIL_ELAPSED(4000);
-
-    /* Assert that the leader hasn't sent an InstallSnapshot RPC  */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-    return MUNIT_OK;
-}
-
 /* Install snapshot times out and leader retries, afterwards AppendEntries
  * resume */
 TEST(snapshot, installOneTimeOutAppendAfter, setUp, tearDown, 0, NULL)
