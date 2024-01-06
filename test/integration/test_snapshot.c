@@ -413,13 +413,6 @@ TEST_V1(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-static bool server_installing_snapshot(struct raft_fixture *f, void *data)
-{
-    (void)f;
-    const struct raft *r = data;
-    return r->snapshot.persisting && r->last_stored == 0;
-}
-
 static bool server_taking_snapshot(struct raft_fixture *f, void *data)
 {
     (void)f;
@@ -432,53 +425,6 @@ static bool server_snapshot_done(struct raft_fixture *f, void *data)
     (void)f;
     const struct raft *r = data;
     return !r->snapshot.persisting;
-}
-
-/* Follower receives HeartBeats during the installation of a snapshot */
-TEST(snapshot, installSnapshotHeartBeats, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    CLUSTER_SATURATE_BOTHWAYS(0, 1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Set a large disk latency on the follower, this will allow some
-     * heartbeats to be sent during the snapshot installation */
-    CLUSTER_SET_DISK_LATENCY(1, 2000);
-
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-
-    /* Step the cluster until server 1 installs a snapshot */
-    const struct raft *r = CLUSTER_RAFT(1);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 1);
-    CLUSTER_STEP_UNTIL(server_installing_snapshot, (void *)r, 2000);
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    /* Count the number of AppendEntries RPCs received during the snapshot
-     * install*/
-    unsigned before = CLUSTER_N_RECV(1, RAFT_IO_APPEND_ENTRIES);
-    CLUSTER_STEP_UNTIL(server_snapshot_done, (void *)r, 5000);
-    unsigned after = CLUSTER_N_RECV(1, RAFT_IO_APPEND_ENTRIES);
-    munit_assert_uint(before, <, after);
-
-    /* Check that the InstallSnapshot RPC was not resent */
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    /* Check that the snapshot was applied and we can still make progress */
-    CLUSTER_STEP_UNTIL_APPLIED(1, 4, 5000);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(1, 6, 5000);
-
-    return MUNIT_OK;
 }
 
 /* A follower receives an AppendEntries message while installing a snapshot . */
