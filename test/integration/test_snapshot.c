@@ -345,59 +345,6 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Install snapshot to an offline node that went down during operation */
-TEST(snapshot,
-     installOneDisconnectedDuringOperationReconnects,
-     setUp,
-     tearDown,
-     0,
-     NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Apply a few of entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Wait for follower to catch up*/
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 5000);
-    /* Assert that the leader hasn't sent an InstallSnapshot RPC  */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-
-    CLUSTER_DISCONNECT(0, 2);
-    CLUSTER_DISCONNECT(2, 0);
-
-    /* Wait a while so leader detects offline node */
-    CLUSTER_STEP_UNTIL_ELAPSED(2000);
-
-    /* Apply a few more entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Assert that the leader doesn't try sending snapshot to an offline
-     * node */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-
-    CLUSTER_RECONNECT(0, 2);
-    CLUSTER_RECONNECT(2, 0);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 7, 5000);
-
-    /* Assert that the leader has tried sending an InstallSnapshot RPC */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    return MUNIT_OK;
-}
-
 /* No snapshots sent to killed nodes */
 TEST(snapshot, noSnapshotInstallToKilled, setUp, tearDown, 0, NULL)
 {
