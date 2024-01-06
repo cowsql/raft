@@ -1056,8 +1056,8 @@ int replicationPersistSnapshotDone(struct raft *r,
     }
 
     if (status != 0) {
-        tracef("save snapshot %llu: %s", metadata->index,
-               raft_strerror(status));
+        infof("failed to persist snapshot %llu^%llu: %s", metadata->index,
+              metadata->term, raft_strerror(status));
         goto discard;
     }
 

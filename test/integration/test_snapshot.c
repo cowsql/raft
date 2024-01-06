@@ -345,51 +345,70 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Install 2 snapshots that both time out, launch a few regular AppendEntries
- * and assure the follower catches up */
-TEST(snapshot, installMultipleTimeOutAppendAfter, setUp, tearDown, 0, NULL)
+/* A follower crashes while persisting a snapshot. After it resumes it sends a
+ * reject response of the snapshot index. */
+TEST_V1(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    (void)params;
 
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
+    /* Server 1 has a snapshot with last index 2. */
+    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
+    CLUSTER_SET_SNAPSHOT(1, /* ID                                        */
+                         2, /* last index                                */
+                         2, /* last term                                 */
+                         2, /* N servers                                 */
+                         2, /* N voting                                  */
+                         1 /* conf index                                 */);
+    CLUSTER_START(1 /* ID */);
 
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    /* Server 2 has just the initial configuration entry at index 1. */
+    CLUSTER_SET_TERM(2, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+    CLUSTER_START(2);
 
-    /* Reconnect both servers and set a high disk latency on server 2 so
-     * that the InstallSnapshot RPC will time out */
-    CLUSTER_SET_DISK_LATENCY(2, 300);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
+    /* Server 1 becomes leader and eventually sends its snapshot to server 2. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 2, 1 snapshot (2^2)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote log is more recent (2^2 vs 1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^2) -> reject\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (2^2) to server 2\n");
 
-    /* Step until the snapshot times out */
-    CLUSTER_STEP_UNTIL_ELAPSED(400);
+    /* Server 2 receives the snapshot, but crashes while persisting it. Then it
+     * restarts. */
+    CLUSTER_TRACE(
+        "[ 150] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (2^2)\n");
+    CLUSTER_STOP(2);
+    CLUSTER_START(2);
+    CLUSTER_TRACE(
+        "[ 150] 2 > persisted snapshot (2^2)\n"
+        "           failed to persist snapshot 2^2: operation canceled\n"
+        "[ 150] 2 > term 3, voted for 1, 1 entry (1^1)\n");
 
-    /* Apply another few of entries, to force a new snapshot to be taken.
-     * Drop all traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect the follower */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    /* Append a few entries and make sure the follower catches up */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(2, 9, 5000);
-
-    /* Assert that the leader has sent multiple InstallSnapshot RPCs */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), >=, 2);
+    /* Server 1 eventually sends server 2 a heartbeat, which server 2 rejects.
+     * At that point server 1 sends again the snapshot. */
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 2 -> needs snapshot\n"
+        "           snapshot server 2 sending a heartbeat (no entries)\n"
+        "[ 180] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 0 -> needs snapshot\n"
+        "           sending snapshot (2^2) to server 2\n");
 
     return MUNIT_OK;
 }
