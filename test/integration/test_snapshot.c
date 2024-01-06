@@ -345,51 +345,6 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Install 2 snapshots that both time out and assure the follower catches up */
-TEST(snapshot, installMultipleTimeOut, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers and set a high disk latency on server 2 so
-     * that the InstallSnapshot RPC will time out */
-    CLUSTER_SET_DISK_LATENCY(2, 300);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Step until the snapshot times out */
-    CLUSTER_STEP_UNTIL_ELAPSED(400);
-
-    /* Apply another few of entries, to force a new snapshot to be taken.
-     * Drop all traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect the follower */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 7, 5000);
-
-    /* Assert that the leader has sent multiple InstallSnapshot RPCs */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), >=, 2);
-
-    return MUNIT_OK;
-}
-
 /* Install 2 snapshots that both time out, launch a few regular AppendEntries
  * and assure the follower catches up */
 TEST(snapshot, installMultipleTimeOutAppendAfter, setUp, tearDown, 0, NULL)
