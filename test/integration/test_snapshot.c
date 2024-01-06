@@ -626,46 +626,154 @@ TEST(snapshot, installSnapshotHeartBeats, setUp, tearDown, 0, NULL)
 }
 
 /* A follower receives an AppendEntries message while installing a snapshot . */
-TEST(snapshot, receiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
+TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_transfer transfer;
-    int rv;
-    return 0;
+    struct raft_entry entry;
+    unsigned id;
 
-    /* Set a very low threshold and trailing entries number on server 0. */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(0), 1);
+    /* Set a very low threshold and trailing entries number on server 1. */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 1);
 
-    /* Prevent server 2 from receving messages from server 1. */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
+    /* Prevent server 3 from receving messages from server 1. */
+    CLUSTER_DISCONNECT(1, 3);
 
-    /* Set a high disk latency on the follower, so it will take a while to
+    /* Set a high disk latency on server 3, so it will take a while to
      * complete installing the snapshot. */
-    CLUSTER_SET_DISK_LATENCY(2, 1000);
+    CLUSTER_SET_DISK_LATENCY(3, 250);
+
+    /* Increase the election timeout on server 3, so it won't convert to
+     * candidate. */
+    raft_set_election_timeout(CLUSTER_RAFT(3), 250);
+
+    /* Bootstrap and start a cluster with 3 voters. */
+    for (id = 1; id <= 3; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[   0] 3 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
 
     /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    entry.term = 2;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
 
-    /* Reconnect the follower and wait for it to receive a snapshot. */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    CLUSTER_STEP_UNTIL(server_installing_snapshot, CLUSTER_RAFT(2), 2000);
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
 
-    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 64);
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^2)\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 1 > persisted 1 entry (3^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending 2 entries (2^2..3^2)\n"
+        "[ 150] 2 > recv append entries from server 1\n"
+        "           start persisting 2 new entries (2^2..3^2)\n"
+        "[ 160] 2 > persisted 2 entry (2^2..3^2)\n"
+        "           send success result to 1\n"
+        "[ 170] 1 > recv append entries result from server 2\n"
+        "           commit 2 new entries (2^2..3^2)\n"
+        "[ 170] 1 > new snapshot (3^2), 1 trailing entry\n");
+
+    /* Reconnect server 3 and wait for it to receive the snapshot. */
+    CLUSTER_RECONNECT(1, 3);
+
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 180] 3 > recv append entries from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           missing previous entry (3^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 3\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (3^2) to server 3\n"
+        "[ 190] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "[ 200] 3 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (3^2)\n");
 
     /* Apply a new entry, server 0 won't send it to server 2 since it is
      * waiting for it to complete installing the snapshot. */
-    CLUSTER_MAKE_PROGRESS;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
+
+    CLUSTER_TRACE(
+        "[ 200] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (4^2)\n"
+        "           pipeline server 2 sending 1 entry (4^2)\n"
+        "[ 200] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 210] 1 > persisted 1 entry (4^2)\n"
+        "           next uncommitted entry (4^2) has 1 vote out of 3\n"
+        "[ 210] 2 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (4^2)\n"
+        "[ 210] 1 > recv append entries result from server 2\n"
+        "[ 220] 2 > persisted 1 entry (4^2)\n"
+        "           send success result to 1\n"
+        "[ 220] 1 > timeout as leader\n"
+        "           missing previous entry at index 3 -> needs snapshot\n"
+        "           snapshot server 3 sending a heartbeat (no entries)\n"
+        "[ 230] 1 > recv append entries result from server 2\n"
+        "           commit 1 new entry (4^2)\n");
 
     /* Transfer leadership from server 0 to server 1. */
-    rv = raft_transfer(CLUSTER_RAFT(0), &transfer, 2, NULL);
-    munit_assert_int(rv, ==, 0);
-    CLUSTER_STEP_UNTIL_STATE_IS(1, RAFT_LEADER, 1000);
-
-    /* Since server 1 hasn't taken a snapshot, it still has the entries that
-     * server 2 is missing, and will try to send them to it. */
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 2000);
+    test_cluster_transfer(&f->cluster_, 1, 2);
+    CLUSTER_TRACE(
+        "[ 230] 1 > transfer leadership to 2\n"
+        "           send timeout to 2\n"
+        "[ 230] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 240] 2 > recv timeout now from server 1\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 240] 1 > recv append entries result from server 3\n"
+        "[ 250] 1 > recv request vote from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term, step down\n"
+        "           remote log is equal (4^2) -> grant vote\n"
+        "[ 250] 3 > recv request vote from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term\n"
+        "[ 260] 2 > recv request vote result from server 1\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           replicate 1 new barrier entry (5^3)\n"
+        "           probe server 1 sending 1 entry (5^3)\n"
+        "           probe server 3 sending 1 entry (5^3)\n"
+        "[ 260] 2 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n"
+        "[ 270] 2 > persisted 1 entry (5^3)\n"
+        "           next uncommitted entry (4^2) has 1 vote out of 3\n"
+        "[ 270] 1 > recv append entries from server 2\n"
+        "           start persisting 1 new entry (5^3)\n"
+        "[ 270] 3 > recv append entries from server 2\n"
+        "           snapshot install in progress -> ignore\n");
 
     return MUNIT_OK;
 }

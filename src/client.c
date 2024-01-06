@@ -549,6 +549,8 @@ int ClientTransfer(struct raft *r, raft_id server_id)
             r->leader_state.transferee = 0;
             goto err;
         }
+    } else {
+        infof("wait for transferee to catch up");
     }
 
     return 0;
