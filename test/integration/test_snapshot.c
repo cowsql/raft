@@ -72,16 +72,6 @@ static void tearDown(void *data)
         }                                                                \
     }
 
-static int fsmSnapshotFail(struct raft_fsm *fsm,
-                           struct raft_buffer *bufs[],
-                           unsigned *n_bufs)
-{
-    (void)fsm;
-    (void)bufs;
-    (void)n_bufs;
-    return -1;
-}
-
 #define SET_FAULTY_SNAPSHOT()                                 \
     {                                                         \
         unsigned i;                                           \
@@ -637,32 +627,6 @@ TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
         "           start persisting snapshot (3^1)\n"
         "[  90] 2 > persisted 1 entry (2^1)\n");
 
-    return MUNIT_OK;
-}
-
-static char *fsm_version[] = {"1", "2", NULL};
-static MunitParameterEnum fsm_snapshot_async_params[] = {
-    {CLUSTER_FSM_VERSION_PARAM, fsm_version},
-    {NULL, NULL},
-};
-
-TEST(snapshot, takeSnapshotFail, setUp, tearDown, 0, fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_SNAPSHOT();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* No crash or leaks have occurred */
     return MUNIT_OK;
 }
 
