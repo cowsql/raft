@@ -630,43 +630,6 @@ TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* An UNAVAILABLE node doesn't install snapshots. */
-TEST(snapshot, unavailableDiscardsSnapshot, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* FIXME: this test uses raft_fixture_make_unavailable(), which is
-     * incompatible with the v1 API, since it calls convertToUnavailable()
-     * directly, bypassing raft_step(). */
-    return MUNIT_SKIP;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers */
-    CLUSTER_SET_DISK_LATENCY(2, 600);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Wait a while and check that the leader has sent a snapshot */
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    raft_fixture_make_unavailable(&f->cluster, 2);
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_uint64(raft_last_applied(CLUSTER_RAFT(2)), ==, 1);
-    return MUNIT_OK;
-}
-
 /* A new term starts while a node is installing a snapshot. */
 TEST(snapshot, newTermWhileInstalling, setUp, tearDown, 0, NULL)
 {
