@@ -29,7 +29,8 @@ static int tickFollower(struct raft *r)
      * receive one yet, just stay follower. */
     if (server == NULL) {
         infof("server not in current configuration -> stay follower");
-        return 0;
+        electionResetTimer(r);
+        goto out;
     }
 
     /* Check if we need to start an election.
@@ -49,6 +50,7 @@ static int tickFollower(struct raft *r)
         const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
             infof("%s server -> stay follower", raft_role_name(server->role));
+            electionResetTimer(r);
             goto out;
         }
         if (replicationInstallSnapshotBusy(r)) {

@@ -1185,8 +1185,13 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
          */
         server = configurationGet(&r->configuration, r->id);
         if (server == NULL || server->role != RAFT_VOTER) {
-            infof("leader removed from config or no longer voter server: %p",
-                  (void *)server);
+            const char *reason;
+            if (server == NULL) {
+                reason = "leader removed from config";
+            } else {
+                reason = "leader no longer voter";
+            }
+            infof("%s -> step down", reason);
             convertToFollower(r);
         }
     }
