@@ -263,6 +263,11 @@ int raft_add(struct raft *r,
     struct raft_configuration configuration;
     int rv;
 
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
+        rv = RAFT_NOTLEADER;
+        goto err;
+    }
+
     rv = membershipCanChangeConfiguration(r);
     if (rv != 0) {
         return rv;
@@ -347,6 +352,11 @@ int raft_assign(struct raft *r,
     int rv;
 
     r->now = r->io->time(r->io);
+
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
+        rv = RAFT_NOTLEADER;
+        goto err;
+    }
 
     if (role != RAFT_STANDBY && role != RAFT_VOTER && role != RAFT_SPARE) {
         rv = RAFT_BADROLE;
@@ -443,6 +453,11 @@ int raft_remove(struct raft *r,
     const struct raft_server *server;
     struct raft_configuration configuration;
     int rv;
+
+    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
+        rv = RAFT_NOTLEADER;
+        goto err;
+    }
 
     rv = membershipCanChangeConfiguration(r);
     if (rv != 0) {
