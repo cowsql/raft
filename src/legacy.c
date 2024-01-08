@@ -2,6 +2,8 @@
 #include "assert.h"
 #include "client.h"
 #include "configuration.h"
+#include "convert.h"
+#include "entry.h"
 #include "err.h"
 #include "log.h"
 #include "membership.h"
@@ -9,6 +11,7 @@
 #include "queue.h"
 #include "replication.h"
 #include "request.h"
+#include "snapshot.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -1533,3 +1536,156 @@ int raft_recover(struct raft *r, const struct raft_configuration *conf)
 
     return 0;
 }
+
+static void tickCb(struct raft_io *io)
+{
+    struct raft *r;
+    struct raft_event event;
+    int rv;
+
+    r = io->data;
+
+    event.type = RAFT_TIMEOUT;
+    event.time = r->io->time(io);
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err;
+    }
+
+    return;
+
+err:
+    convertToUnavailable(r);
+}
+
+static void recvCb(struct raft_io *io, struct raft_message *message)
+{
+    struct raft *r = io->data;
+    struct raft_event event;
+    int rv;
+
+    r->now = r->io->time(r->io);
+    if (r->state == RAFT_UNAVAILABLE) {
+        switch (message->type) {
+            case RAFT_IO_APPEND_ENTRIES:
+                entryBatchesDestroy(message->append_entries.entries,
+                                    message->append_entries.n_entries);
+                break;
+            case RAFT_IO_INSTALL_SNAPSHOT:
+                raft_configuration_close(&message->install_snapshot.conf);
+                raft_free(message->install_snapshot.data.base);
+                break;
+        }
+        return;
+    }
+
+    event.type = RAFT_RECEIVE;
+    event.time = r->now;
+    event.receive.id = message->server_id;
+    event.receive.address = message->server_address;
+    event.receive.message = message;
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        goto err;
+    }
+
+    return;
+
+err:
+    convertToUnavailable(r);
+}
+
+int raft_start(struct raft *r)
+{
+    struct raft_snapshot *snapshot;
+    struct raft_snapshot_metadata metadata;
+    raft_term term;
+    raft_id voted_for;
+    raft_index start_index;
+    struct raft_entry *entries;
+    size_t n_entries;
+    struct raft_event event;
+    int rv;
+
+    assert(r != NULL);
+    assert(r->state == RAFT_UNAVAILABLE);
+    assert(r->heartbeat_timeout != 0);
+    assert(r->heartbeat_timeout < r->election_timeout);
+    assert(r->install_snapshot_timeout != 0);
+    assert(logNumEntries(r->log) == 0);
+    assert(logSnapshotIndex(r->log) == 0);
+    assert(r->last_stored == 0);
+
+    tracef("starting");
+    rv = r->io->load(r->io, &term, &voted_for, &snapshot, &start_index,
+                     &entries, &n_entries);
+    if (rv != 0) {
+        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
+        return rv;
+    }
+    assert(start_index >= 1);
+    tracef("current_term:%llu voted_for:%llu start_index:%llu n_entries:%zu",
+           term, voted_for, start_index, n_entries);
+
+    /* If we have a snapshot, let's restore it. */
+    if (snapshot != NULL) {
+        tracef("restore snapshot with last index %llu and last term %llu",
+               snapshot->index, snapshot->term);
+
+        /* Save the snapshot data in the cache, it will be used by legacy compat
+         * code to avoid loading the snapshot asynchronously. */
+        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
+        if (rv != 0) {
+            tracef("restore snapshot %llu: %s", snapshot->index,
+                   errCodeToString(rv));
+            snapshotDestroy(snapshot);
+            entryBatchesDestroy(entries, n_entries);
+            return rv;
+        }
+        r->last_applied = snapshot->index;
+    } else if (n_entries > 1) {
+        r->last_applied = 1;
+    }
+
+    event.time = r->now;
+    event.type = RAFT_START;
+    event.start.term = term;
+    event.start.voted_for = voted_for;
+    event.start.metadata = NULL;
+    if (snapshot != NULL) {
+        metadata.index = snapshot->index;
+        metadata.term = snapshot->term;
+        metadata.configuration = snapshot->configuration;
+        metadata.configuration_index = snapshot->configuration_index;
+        event.start.metadata = &metadata;
+    }
+    event.start.start_index = start_index;
+    event.start.entries = entries;
+    event.start.n_entries = (unsigned)n_entries;
+
+    LegacyForwardToRaftIo(r, &event);
+
+    /* Start the I/O backend. The tickCb function is expected to fire every
+     * r->heartbeat_timeout milliseconds and recvCb whenever an RPC is
+     * received. */
+    rv = r->io->start(r->io, r->heartbeat_timeout, tickCb, recvCb);
+    if (rv != 0) {
+        tracef("io start failed %d", rv);
+        goto out;
+    }
+
+out:
+    if (snapshot != NULL) {
+        raft_free(snapshot->bufs);
+        raft_free(snapshot);
+    }
+    if (rv != 0) {
+        return rv;
+    }
+
+    return 0;
+}
+
+#undef tracef

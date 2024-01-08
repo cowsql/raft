@@ -71,44 +71,6 @@ int recvMessage(struct raft *r,
     return 0;
 }
 
-void recvCb(struct raft_io *io, struct raft_message *message)
-{
-    struct raft *r = io->data;
-    struct raft_event event;
-    int rv;
-
-    r->now = r->io->time(r->io);
-    if (r->state == RAFT_UNAVAILABLE) {
-        switch (message->type) {
-            case RAFT_IO_APPEND_ENTRIES:
-                entryBatchesDestroy(message->append_entries.entries,
-                                    message->append_entries.n_entries);
-                break;
-            case RAFT_IO_INSTALL_SNAPSHOT:
-                raft_configuration_close(&message->install_snapshot.conf);
-                raft_free(message->install_snapshot.data.base);
-                break;
-        }
-        return;
-    }
-
-    event.type = RAFT_RECEIVE;
-    event.time = r->now;
-    event.receive.id = message->server_id;
-    event.receive.address = message->server_address;
-    event.receive.message = message;
-
-    rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
-    }
-
-    return;
-
-err:
-    convertToUnavailable(r);
-}
-
 int recvBumpCurrentTerm(struct raft *r, raft_term term)
 {
     char msg[128];

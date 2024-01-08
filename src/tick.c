@@ -248,26 +248,4 @@ int Tick(struct raft *r)
     return rv;
 }
 
-void tickCb(struct raft_io *io)
-{
-    struct raft *r;
-    struct raft_event event;
-    int rv;
-
-    r = io->data;
-
-    event.type = RAFT_TIMEOUT;
-    event.time = r->io->time(io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
-    }
-
-    return;
-
-err:
-    convertToUnavailable(r);
-}
-
 #undef infof

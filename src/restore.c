@@ -6,9 +6,7 @@
 #include "err.h"
 #include "legacy.h"
 #include "log.h"
-#include "recv.h"
 #include "snapshot.h"
-#include "tick.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -141,97 +139,6 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
     r->commit_index = metadata->index;
     r->last_stored = metadata->index;
     r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
-
-    return 0;
-}
-
-int raft_start(struct raft *r)
-{
-    struct raft_snapshot *snapshot;
-    struct raft_snapshot_metadata metadata;
-    raft_term term;
-    raft_id voted_for;
-    raft_index start_index;
-    struct raft_entry *entries;
-    size_t n_entries;
-    struct raft_event event;
-    int rv;
-
-    assert(r != NULL);
-    assert(r->state == RAFT_UNAVAILABLE);
-    assert(r->heartbeat_timeout != 0);
-    assert(r->heartbeat_timeout < r->election_timeout);
-    assert(r->install_snapshot_timeout != 0);
-    assert(logNumEntries(r->log) == 0);
-    assert(logSnapshotIndex(r->log) == 0);
-    assert(r->last_stored == 0);
-
-    tracef("starting");
-    rv = r->io->load(r->io, &term, &voted_for, &snapshot, &start_index,
-                     &entries, &n_entries);
-    if (rv != 0) {
-        ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        return rv;
-    }
-    assert(start_index >= 1);
-    tracef("current_term:%llu voted_for:%llu start_index:%llu n_entries:%zu",
-           term, voted_for, start_index, n_entries);
-
-    /* If we have a snapshot, let's restore it. */
-    if (snapshot != NULL) {
-        tracef("restore snapshot with last index %llu and last term %llu",
-               snapshot->index, snapshot->term);
-
-        /* Save the snapshot data in the cache, it will be used by legacy compat
-         * code to avoid loading the snapshot asynchronously. */
-        rv = r->fsm->restore(r->fsm, &snapshot->bufs[0]);
-        if (rv != 0) {
-            tracef("restore snapshot %llu: %s", snapshot->index,
-                   errCodeToString(rv));
-            snapshotDestroy(snapshot);
-            entryBatchesDestroy(entries, n_entries);
-            return rv;
-        }
-        r->last_applied = snapshot->index;
-    } else if (n_entries > 1) {
-        r->last_applied = 1;
-    }
-
-    event.time = r->now;
-    event.type = RAFT_START;
-    event.start.term = term;
-    event.start.voted_for = voted_for;
-    event.start.metadata = NULL;
-    if (snapshot != NULL) {
-        metadata.index = snapshot->index;
-        metadata.term = snapshot->term;
-        metadata.configuration = snapshot->configuration;
-        metadata.configuration_index = snapshot->configuration_index;
-        event.start.metadata = &metadata;
-    }
-    event.start.start_index = start_index;
-    event.start.entries = entries;
-    event.start.n_entries = (unsigned)n_entries;
-
-    LegacyForwardToRaftIo(r, &event);
-
-    /* Start the I/O backend. The tickCb function is expected to fire every
-     * r->heartbeat_timeout milliseconds and recvCb whenever an RPC is
-     * received. */
-    rv = r->io->start(r->io, r->heartbeat_timeout, tickCb, recvCb);
-    if (rv != 0) {
-        tracef("io start failed %d", rv);
-        goto out;
-    }
-
-out:
-    if (snapshot != NULL) {
-        raft_free(snapshot->bufs);
-        raft_free(snapshot);
-    }
-    if (rv != 0) {
-        return rv;
-    }
 
     return 0;
 }

@@ -11,10 +11,6 @@ int recvMessage(struct raft *r,
                 const char *address,
                 struct raft_message *message);
 
-/* Callback to be passed to the raft_io implementation. It will be invoked upon
- * receiving an RPC message. */
-void recvCb(struct raft_io *io, struct raft_message *message);
-
 /* Compare a request's term with the server's current term.
  *
  * The match output parameter will be set to 0 if the local term matches the
