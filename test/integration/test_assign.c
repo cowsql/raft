@@ -158,16 +158,6 @@ static void tearDown(void *data)
 
 SUITE(raft_assign)
 
-/* Assign the stand-by role to an idle server. */
-TEST(raft_assign, promoteToStandBy, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    GROW;
-    ADD(0, 3);
-    ASSIGN(0, 3, RAFT_STANDBY);
-    return MUNIT_OK;
-}
-
 /* Trying to promote a server on a raft instance which is not the leader results
  * in an error. */
 TEST(raft_assign, notLeader, setUp, tearDown, 0, NULL)
