@@ -1,12 +1,6 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
-/******************************************************************************
- *
- * Fixture
- *
- *****************************************************************************/
-
 struct fixture
 {
     FIXTURE_CLUSTER;
@@ -15,12 +9,7 @@ struct fixture
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
-    SETUP_CLUSTER(3);
-    if (!v1) {
-        CLUSTER_BOOTSTRAP;
-        CLUSTER_START();
-        CLUSTER_ELECT(0);
-    }
+    SETUP_CLUSTER_V1();
     return f;
 }
 
@@ -30,85 +19,6 @@ static void tearDown(void *data)
     TEAR_DOWN_CLUSTER;
     free(f);
 }
-
-/******************************************************************************
- *
- * Helper macros
- *
- *****************************************************************************/
-
-/* Set the snapshot threshold on all servers of the cluster */
-#define SET_SNAPSHOT_THRESHOLD(VALUE)                            \
-    {                                                            \
-        unsigned i;                                              \
-        for (i = 0; i < CLUSTER_N; i++) {                        \
-            raft_set_snapshot_threshold(CLUSTER_RAFT(i), VALUE); \
-        }                                                        \
-    }
-
-/* Set the snapshot trailing logs number on all servers of the cluster */
-#define SET_SNAPSHOT_TRAILING(VALUE)                            \
-    {                                                           \
-        unsigned i;                                             \
-        for (i = 0; i < CLUSTER_N; i++) {                       \
-            raft_set_snapshot_trailing(CLUSTER_RAFT(i), VALUE); \
-        }                                                       \
-    }
-
-/* Set the snapshot timeout on all servers of the cluster */
-#define SET_SNAPSHOT_TIMEOUT(VALUE)                                    \
-    {                                                                  \
-        unsigned i;                                                    \
-        for (i = 0; i < CLUSTER_N; i++) {                              \
-            raft_set_install_snapshot_timeout(CLUSTER_RAFT(i), VALUE); \
-        }                                                              \
-    }
-
-static int ioMethodSnapshotPutFail(struct raft_io *raft_io,
-                                   unsigned trailing,
-                                   struct raft_io_snapshot_put *req,
-                                   const struct raft_snapshot *snapshot,
-                                   raft_io_snapshot_put_cb cb)
-{
-    (void)raft_io;
-    (void)trailing;
-    (void)req;
-    (void)snapshot;
-    (void)cb;
-    return -1;
-}
-
-#define SET_FAULTY_SNAPSHOT_PUT()                                        \
-    {                                                                    \
-        unsigned i;                                                      \
-        for (i = 0; i < CLUSTER_N; i++) {                                \
-            CLUSTER_RAFT(i)->io->snapshot_put = ioMethodSnapshotPutFail; \
-        }                                                                \
-    }
-
-static int fsmSnapshotFail(struct raft_fsm *fsm,
-                           struct raft_buffer *bufs[],
-                           unsigned *n_bufs)
-{
-    (void)fsm;
-    (void)bufs;
-    (void)n_bufs;
-    return -1;
-}
-
-#define SET_FAULTY_SNAPSHOT()                                 \
-    {                                                         \
-        unsigned i;                                           \
-        for (i = 0; i < CLUSTER_N; i++) {                     \
-            CLUSTER_RAFT(i)->fsm->snapshot = fsmSnapshotFail; \
-        }                                                     \
-    }
-
-/******************************************************************************
- *
- * Successfully install a snapshot
- *
- *****************************************************************************/
 
 SUITE(snapshot)
 
@@ -345,582 +255,445 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Install snapshot to an offline node that went down during operation */
-TEST(snapshot,
-     installOneDisconnectedDuringOperationReconnects,
-     setUp,
-     tearDown,
-     0,
-     NULL)
+/* A follower crashes while persisting a snapshot. After it resumes it sends a
+ * reject response of the snapshot index. */
+TEST_V1(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    (void)params;
 
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
+    /* Server 1 has a snapshot with last index 2. */
+    CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
+    CLUSTER_SET_SNAPSHOT(1, /* ID                                        */
+                         2, /* last index                                */
+                         2, /* last term                                 */
+                         2, /* N servers                                 */
+                         2, /* N voting                                  */
+                         1 /* conf index                                 */);
+    CLUSTER_START(1 /* ID */);
 
-    /* Apply a few of entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    /* Server 2 has just the initial configuration entry at index 1. */
+    CLUSTER_SET_TERM(2, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+    CLUSTER_START(2);
 
-    /* Wait for follower to catch up*/
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 5000);
-    /* Assert that the leader hasn't sent an InstallSnapshot RPC  */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
+    /* Server 1 becomes leader and eventually sends its snapshot to server 2. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 2, 1 snapshot (2^2)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (3 vs 1) -> bump term\n"
+        "           remote log is more recent (2^2 vs 1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^2) -> reject\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (2^2) to server 2\n");
 
-    CLUSTER_DISCONNECT(0, 2);
-    CLUSTER_DISCONNECT(2, 0);
+    /* Server 2 receives the snapshot, but crashes while persisting it. Then it
+     * restarts. */
+    CLUSTER_TRACE(
+        "[ 150] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (2^2)\n");
+    CLUSTER_STOP(2);
+    CLUSTER_START(2);
+    CLUSTER_TRACE(
+        "[ 150] 2 > persisted snapshot (2^2)\n"
+        "           failed to persist snapshot 2^2: operation canceled\n"
+        "[ 150] 2 > term 3, voted for 1, 1 entry (1^1)\n");
 
-    /* Wait a while so leader detects offline node */
-    CLUSTER_STEP_UNTIL_ELAPSED(2000);
-
-    /* Apply a few more entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Assert that the leader doesn't try sending snapshot to an offline
-     * node */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-
-    CLUSTER_RECONNECT(0, 2);
-    CLUSTER_RECONNECT(2, 0);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 7, 5000);
-
-    /* Assert that the leader has tried sending an InstallSnapshot RPC */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    return MUNIT_OK;
-}
-
-/* No snapshots sent to killed nodes */
-TEST(snapshot, noSnapshotInstallToKilled, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Kill a server */
-    CLUSTER_KILL(2);
-
-    /* Apply a few of entries */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Wait a while */
-    CLUSTER_STEP_UNTIL_ELAPSED(4000);
-
-    /* Assert that the leader hasn't sent an InstallSnapshot RPC  */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-    return MUNIT_OK;
-}
-
-/* Install snapshot times out and leader retries, afterwards AppendEntries
- * resume */
-TEST(snapshot, installOneTimeOutAppendAfter, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers and set a high disk latency on server 2 so
-     * that the InstallSnapshot RPC will time out */
-    CLUSTER_SET_DISK_LATENCY(2, 300);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Wait for the snapshot to be installed */
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 5000);
-
-    /* Append a few entries and check if they are replicated */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(2, 5, 5000);
-
-    /* Assert that the leader has retried the InstallSnapshot RPC */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 2);
-
-    return MUNIT_OK;
-}
-
-/* Install 2 snapshots that both time out and assure the follower catches up */
-TEST(snapshot, installMultipleTimeOut, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers and set a high disk latency on server 2 so
-     * that the InstallSnapshot RPC will time out */
-    CLUSTER_SET_DISK_LATENCY(2, 300);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Step until the snapshot times out */
-    CLUSTER_STEP_UNTIL_ELAPSED(400);
-
-    /* Apply another few of entries, to force a new snapshot to be taken.
-     * Drop all traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect the follower */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 7, 5000);
-
-    /* Assert that the leader has sent multiple InstallSnapshot RPCs */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), >=, 2);
-
-    return MUNIT_OK;
-}
-
-/* Install 2 snapshots that both time out, launch a few regular AppendEntries
- * and assure the follower catches up */
-TEST(snapshot, installMultipleTimeOutAppendAfter, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    SET_SNAPSHOT_TIMEOUT(200);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers and set a high disk latency on server 2 so
-     * that the InstallSnapshot RPC will time out */
-    CLUSTER_SET_DISK_LATENCY(2, 300);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Step until the snapshot times out */
-    CLUSTER_STEP_UNTIL_ELAPSED(400);
-
-    /* Apply another few of entries, to force a new snapshot to be taken.
-     * Drop all traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect the follower */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    /* Append a few entries and make sure the follower catches up */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(2, 9, 5000);
-
-    /* Assert that the leader has sent multiple InstallSnapshot RPCs */
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), >=, 2);
-
-    return MUNIT_OK;
-}
-
-static bool server_installing_snapshot(struct raft_fixture *f, void *data)
-{
-    (void)f;
-    const struct raft *r = data;
-    return r->snapshot.persisting && r->last_stored == 0;
-}
-
-static bool server_taking_snapshot(struct raft_fixture *f, void *data)
-{
-    (void)f;
-    const struct raft *r = data;
-    return r->snapshot.persisting && r->last_stored != 0;
-}
-
-static bool server_snapshot_done(struct raft_fixture *f, void *data)
-{
-    (void)f;
-    const struct raft *r = data;
-    return !r->snapshot.persisting;
-}
-
-/* Follower receives HeartBeats during the installation of a snapshot */
-TEST(snapshot, installSnapshotHeartBeats, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-    CLUSTER_SATURATE_BOTHWAYS(0, 1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Set a large disk latency on the follower, this will allow some
-     * heartbeats to be sent during the snapshot installation */
-    CLUSTER_SET_DISK_LATENCY(1, 2000);
-
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 0);
-
-    /* Step the cluster until server 1 installs a snapshot */
-    const struct raft *r = CLUSTER_RAFT(1);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 1);
-    CLUSTER_STEP_UNTIL(server_installing_snapshot, (void *)r, 2000);
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    /* Count the number of AppendEntries RPCs received during the snapshot
-     * install*/
-    unsigned before = CLUSTER_N_RECV(1, RAFT_IO_APPEND_ENTRIES);
-    CLUSTER_STEP_UNTIL(server_snapshot_done, (void *)r, 5000);
-    unsigned after = CLUSTER_N_RECV(1, RAFT_IO_APPEND_ENTRIES);
-    munit_assert_uint(before, <, after);
-
-    /* Check that the InstallSnapshot RPC was not resent */
-    munit_assert_uint(CLUSTER_N_RECV(1, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    /* Check that the snapshot was applied and we can still make progress */
-    CLUSTER_STEP_UNTIL_APPLIED(1, 4, 5000);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(1, 6, 5000);
+    /* Server 1 eventually sends server 2 a heartbeat, which server 2 rejects.
+     * At that point server 1 sends again the snapshot. */
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 2 -> needs snapshot\n"
+        "           snapshot server 2 sending a heartbeat (no entries)\n"
+        "[ 180] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 0 -> needs snapshot\n"
+        "           sending snapshot (2^2) to server 2\n");
 
     return MUNIT_OK;
 }
 
 /* A follower receives an AppendEntries message while installing a snapshot . */
-TEST(snapshot, receiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
+TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_transfer transfer;
-    int rv;
-    return 0;
+    struct raft_entry entry;
+    unsigned id;
 
-    /* Set a very low threshold and trailing entries number on server 0. */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(0), 1);
+    /* Set a very low threshold and trailing entries number on server 1. */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 1);
 
-    /* Prevent server 2 from receving messages from server 1. */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
+    raft_set_install_snapshot_timeout(CLUSTER_RAFT(1), 100);
 
-    /* Set a high disk latency on the follower, so it will take a while to
+    /* Prevent server 3 from receving messages from server 1. */
+    CLUSTER_DISCONNECT(1, 3);
+
+    /* Set a high disk latency on server 3, so it will take a while to
      * complete installing the snapshot. */
-    CLUSTER_SET_DISK_LATENCY(2, 1000);
+    CLUSTER_SET_DISK_LATENCY(3, 250);
+
+    /* Increase the election timeout on server 3, so it won't convert to
+     * candidate. */
+    raft_set_election_timeout(CLUSTER_RAFT(3), 250);
+
+    /* Bootstrap and start a cluster with 3 voters. */
+    for (id = 1; id <= 3; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[   0] 3 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
 
     /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    entry.term = 2;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
 
-    /* Reconnect the follower and wait for it to receive a snapshot. */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-    CLUSTER_STEP_UNTIL(server_installing_snapshot, CLUSTER_RAFT(2), 2000);
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
 
-    raft_set_snapshot_threshold(CLUSTER_RAFT(0), 64);
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^2)\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 1 > persisted 1 entry (3^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending 2 entries (2^2..3^2)\n"
+        "[ 150] 2 > recv append entries from server 1\n"
+        "           start persisting 2 new entries (2^2..3^2)\n"
+        "[ 160] 2 > persisted 2 entry (2^2..3^2)\n"
+        "           send success result to 1\n"
+        "[ 170] 1 > recv append entries result from server 2\n"
+        "           commit 2 new entries (2^2..3^2)\n"
+        "[ 170] 1 > new snapshot (3^2), 1 trailing entry\n");
+
+    /* Reconnect server 3 and wait for it to receive the snapshot. */
+    CLUSTER_RECONNECT(1, 3);
+
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 180] 3 > recv append entries from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           missing previous entry (3^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 3\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (3^2) to server 3\n"
+        "[ 190] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "[ 200] 3 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (3^2)\n");
 
     /* Apply a new entry, server 0 won't send it to server 2 since it is
      * waiting for it to complete installing the snapshot. */
-    CLUSTER_MAKE_PROGRESS;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
+
+    CLUSTER_TRACE(
+        "[ 200] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (4^2)\n"
+        "           pipeline server 2 sending 1 entry (4^2)\n"
+        "[ 200] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 210] 1 > persisted 1 entry (4^2)\n"
+        "           next uncommitted entry (4^2) has 1 vote out of 3\n"
+        "[ 210] 2 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (4^2)\n"
+        "[ 210] 1 > recv append entries result from server 2\n"
+        "[ 220] 2 > persisted 1 entry (4^2)\n"
+        "           send success result to 1\n"
+        "[ 230] 1 > recv append entries result from server 2\n"
+        "           commit 1 new entry (4^2)\n");
 
     /* Transfer leadership from server 0 to server 1. */
-    rv = raft_transfer(CLUSTER_RAFT(0), &transfer, 2, NULL);
-    munit_assert_int(rv, ==, 0);
-    CLUSTER_STEP_UNTIL_STATE_IS(1, RAFT_LEADER, 1000);
-
-    /* Since server 1 hasn't taken a snapshot, it still has the entries that
-     * server 2 is missing, and will try to send them to it. */
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 2000);
+    test_cluster_transfer(&f->cluster_, 1, 2);
+    CLUSTER_TRACE(
+        "[ 230] 1 > transfer leadership to 2\n"
+        "           send timeout to 2\n"
+        "[ 240] 2 > recv timeout now from server 1\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 240] 1 > timeout as leader\n"
+        "           missing previous entry at index 3 -> needs snapshot\n"
+        "           snapshot server 3 sending a heartbeat (no entries)\n"
+        "[ 250] 1 > recv request vote from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term, step down\n"
+        "           remote log is equal (4^2) -> grant vote\n"
+        "[ 250] 3 > recv request vote from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term\n"
+        "[ 250] 3 > recv append entries from server 1\n"
+        "           local term is higher (3 vs 2) -> reject\n"
+        "[ 260] 2 > recv request vote result from server 1\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           replicate 1 new barrier entry (5^3)\n"
+        "           probe server 1 sending 1 entry (5^3)\n"
+        "           probe server 3 sending 1 entry (5^3)\n"
+        "[ 260] 2 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n"
+        "[ 260] 1 > recv append entries result from server 3\n"
+        "           local server is not leader -> ignore\n"
+        "[ 270] 2 > persisted 1 entry (5^3)\n"
+        "           next uncommitted entry (4^2) has 1 vote out of 3\n"
+        "[ 270] 1 > recv append entries from server 2\n"
+        "           start persisting 1 new entry (5^3)\n"
+        "[ 270] 3 > recv append entries from server 2\n"
+        "           snapshot install in progress -> ignore\n");
 
     return MUNIT_OK;
 }
 
-/* InstallSnapshot RPC arrives while persisting Entries */
-TEST(snapshot, installSnapshotDuringEntriesWrite, setUp, tearDown, 0, NULL)
+/* An InstallSnapshot RPC arrives while persisting Entries */
+TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    (void)params;
-
-    /* Set a large disk latency on the follower, this will allow a
-     * InstallSnapshot RPC to arrive while the entries are being persisted.
-     */
-    CLUSTER_SET_DISK_LATENCY(1, 2000);
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Replicate some entries, these will take a while to persist */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Make sure leader can't succesfully send any more entries */
-    CLUSTER_DISCONNECT(0, 1);
-    CLUSTER_MAKE_PROGRESS; /* Snapshot taken here */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS; /* Snapshot taken here */
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Snapshot with index 6 is sent while follower is still writing the
-     * entries to disk that arrived before the disconnect. */
-    CLUSTER_RECONNECT(0, 1);
-
-    /* Make sure follower is up to date */
-    CLUSTER_STEP_UNTIL_APPLIED(1, 7, 5000);
-    return MUNIT_OK;
-}
-
-static char *fsm_version[] = {"1", "2", NULL};
-static MunitParameterEnum fsm_snapshot_async_params[] = {
-    {CLUSTER_FSM_VERSION_PARAM, fsm_version},
-    {NULL, NULL},
-};
-
-/* Follower receives AppendEntries RPCs while taking a snapshot */
-TEST(snapshot,
-     takeSnapshotAppendEntries,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
+    struct raft_configuration configuration;
+    struct raft_entry entry;
+    unsigned id;
+    int rv;
 
     /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 3);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
 
-    /* Set a large disk latency on the follower, this will allow
-     * AppendEntries to be sent while a snapshot is taken */
-    CLUSTER_SET_DISK_LATENCY(1, 2000);
+    /* Don't let server 2 time out (just for terser traces). */
+    raft_set_election_timeout(CLUSTER_RAFT(2), 200);
 
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    /* Bootstrap and start a cluster with 1 voter and 1 stand-by. Server 1 has
+     * an additional entry that server 2 does not have. */
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
 
-    /* Step the cluster until server 1 takes a snapshot */
-    const struct raft *r = CLUSTER_RAFT(1);
-    CLUSTER_STEP_UNTIL(server_taking_snapshot, (void *)r, 3000);
+        CLUSTER_FILL_CONFIGURATION(&configuration, 2, 1, 1 /* stand-by */);
+        entry.type = RAFT_CHANGE;
+        entry.term = 1;
+        rv = raft_configuration_encode(&configuration, &entry.buf);
+        munit_assert_int(rv, ==, 0);
+        raft_configuration_close(&configuration);
+        test_cluster_add_entry(&f->cluster_, id, &entry);
+        raft_free(entry.buf.base);
 
-    /* Send AppendEntries RPCs while server 1 is taking a snapshot */
-    static struct raft_apply reqs[5];
-    for (int i = 0; i < 5; i++) {
-        CLUSTER_APPLY_ADD_X(CLUSTER_LEADER, &reqs[i], 1, NULL);
+        if (id == 1) {
+            CLUSTER_ADD_ENTRY(id, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+        }
+
+        CLUSTER_START(id);
     }
-    CLUSTER_STEP_UNTIL(server_snapshot_done, (void *)r, 5000);
 
-    /* Make sure the AppendEntries are applied and we can make progress */
-    CLUSTER_STEP_UNTIL_APPLIED(1, 9, 5000);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_STEP_UNTIL_APPLIED(1, 11, 5000);
-    return MUNIT_OK;
-}
+    /* Server 1 starts and eventually replicates the entry that server 2 is
+     * missing. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 2 entries (1^1..2^1)\n"
+        "           self elect and convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[  10] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^1) -> reject\n"
+        "[  20] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           probe server 2 sending 1 entry (2^1)\n");
 
-TEST(snapshot,
-     takeSnapshotSnapshotPutFail,
-     setUp,
-     tearDown,
-     0,
-     fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
+    /* Set a large disk latency on server 2, so later the InstallSnapshot
+     * message will arrive while the entry is still being persisted. */
+    CLUSTER_SET_DISK_LATENCY(2, 60);
+    CLUSTER_TRACE(
+        "[  30] 2 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^1)\n");
 
-    SET_FAULTY_SNAPSHOT_PUT();
+    /* Apply an entry, to force a snapshot to be taken. */
+    entry.term = 1;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
 
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
+    CLUSTER_TRACE(
+        "[  30] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^1)\n"
+        "[  40] 1 > persisted 1 entry (3^1)\n"
+        "           commit 1 new entry (3^1)\n"
+        "[  40] 1 > new snapshot (3^1), 0 trailing entries\n");
 
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    /* Eventually server 1 replicates the snapshot to server 2 and finishes the
+     * initial entry write, which is stale. */
+    CLUSTER_TRACE(
+        "[  70] 1 > timeout as leader\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (3^1) to server 2\n"
+        "[  80] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (3^1)\n"
+        "[  90] 2 > persisted 1 entry (2^1)\n");
 
-    /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
-
-TEST(snapshot, takeSnapshotFail, setUp, tearDown, 0, fsm_snapshot_async_params)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    SET_FAULTY_SNAPSHOT();
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. */
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* No crash or leaks have occurred */
-    return MUNIT_OK;
-}
-
-/* A follower doesn't convert to candidate state while it's installing a
- * snapshot. */
-TEST(snapshot, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers and set a high disk latency on server 2 */
-    CLUSTER_SET_DISK_LATENCY(2, 5000);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Wait a while and check that the leader has sent a snapshot */
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-
-    /* Disconnect the servers again so that heartbeats, etc. won't arrive */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
-    munit_assert_true(CLUSTER_RAFT(2)->snapshot.persisting);
-    CLUSTER_STEP_UNTIL_ELAPSED(4000);
-    munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
-    return MUNIT_OK;
-}
-
-/* An UNAVAILABLE node doesn't install snapshots. */
-TEST(snapshot, unavailableDiscardsSnapshot, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    (void)params;
-
-    /* FIXME: this test uses raft_fixture_make_unavailable(), which is
-     * incompatible with the v1 API, since it calls convertToUnavailable()
-     * directly, bypassing raft_step(). */
-    return MUNIT_SKIP;
-
-    /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
-
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-
-    /* Reconnect both servers */
-    CLUSTER_SET_DISK_LATENCY(2, 600);
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
-
-    /* Wait a while and check that the leader has sent a snapshot */
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    raft_fixture_make_unavailable(&f->cluster, 2);
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_uint64(raft_last_applied(CLUSTER_RAFT(2)), ==, 1);
     return MUNIT_OK;
 }
 
 /* A new term starts while a node is installing a snapshot. */
-TEST(snapshot, newTermWhileInstalling, setUp, tearDown, 0, NULL)
+TEST_V1(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    raft_term term;
-    (void)params;
+    struct raft_entry entry;
+    unsigned id;
 
     /* Set very low threshold and trailing entries number */
-    SET_SNAPSHOT_THRESHOLD(3);
-    SET_SNAPSHOT_TRAILING(1);
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
 
-    /* Apply a few of entries, to force a snapshot to be taken. Drop all
-     * network traffic between servers 0 and 2 in order for AppendEntries
-     * RPCs to not be replicated */
-    CLUSTER_SATURATE_BOTHWAYS(0, 2);
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
-    CLUSTER_MAKE_PROGRESS;
+    /* Bootstrap and start a cluster with 3 voters. */
+    for (id = 1; id <= 3; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+        CLUSTER_START(id);
+    }
 
-    /* Set a very high disk latency so server 2 will take a lot of time to
-     * install the snapshot and the leader will have stepped down in the
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[   0] 3 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 110] 3 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 120] 1 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n");
+
+    /* Disconnect server 3, so it won't get any new entry. */
+    CLUSTER_DISCONNECT(1, 3);
+
+    /* Submit a new entry, to trigger a snapshot on server 1. */
+    entry.term = 2;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
+
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending 1 entry (2^2)\n"
+        "[ 150] 2 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^2)\n"
+        "[ 160] 2 > persisted 1 entry (2^2)\n"
+        "           send success result to 1\n"
+        "[ 170] 1 > recv append entries result from server 2\n"
+        "           commit 1 new entry (2^2)\n"
+        "[ 170] 1 > new snapshot (2^2), 0 trailing entries\n");
+
+    /* Reconnect server 3, so it receive the snapshot. */
+    CLUSTER_RECONNECT(1, 3);
+
+    /* Set a very high disk latency so server 3 will take a lot of time to
+     * install the snapshot and server 1 will have stepped down in the
      * meantime. */
-    CLUSTER_SET_DISK_LATENCY(2, 3000);
+    CLUSTER_SET_DISK_LATENCY(3, 250);
 
-    /* Reconnect both servers, so server 2 will receive a snapshot. */
-    CLUSTER_DESATURATE_BOTHWAYS(0, 2);
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 180] 3 > recv append entries from server 1\n"
+        "           missing previous entry (2^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 3\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (2^2) to server 3\n"
+        "[ 190] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "[ 200] 3 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (2^2)\n");
 
-    /* Wait a while and check that the leader has sent a snapshot */
-    CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
+    /* Disconnect server 1 from server 2 and 3, so it will step down. */
+    CLUSTER_SET_ELECTION_TIMEOUT(1 /* ID */, 20 /* timeout */, 0 /* delta */);
+    CLUSTER_SET_ELECTION_TIMEOUT(2 /* ID */, 80 /* timeout */, 0 /* delta */);
+    CLUSTER_DISCONNECT(2, 1);
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_DISCONNECT(3, 1);
+    CLUSTER_DISCONNECT(1, 3);
 
-    /* Save the current term of server 2, we'll check later that it has
-     * changed. */
-    term = CLUSTER_TERM(2);
+    CLUSTER_TRACE(
+        "[ 210] 1 > timeout as leader\n"
+        "[ 230] 1 > timeout as leader\n"
+        "           unable to contact majority of cluster -> step down\n");
 
-    /* Force a new term to start */
-    CLUSTER_DEPOSE;
-    CLUSTER_ELECT(1);
+    /* Let server 2 win the elections */
+    CLUSTER_RECONNECT(2, 1);
+    CLUSTER_RECONNECT(1, 2);
+    CLUSTER_RECONNECT(3, 1);
+    CLUSTER_RECONNECT(1, 3);
 
-    /* Server 2's last applied is still behind, meaning it's still
-     * persisting the snapshot, however its term has been updated in the
-     * meantime. */
-    munit_assert_int(CLUSTER_LAST_APPLIED(2), ==, 1);
-    munit_assert_int(CLUSTER_TERM(2), ==, term + 1);
-
-    CLUSTER_STEP_UNTIL_ELAPSED(1000);
-
-    /* Server 2 has finished installing the snapshot. */
-    munit_assert_int(CLUSTER_LAST_APPLIED(2), ==, 3);
+    CLUSTER_TRACE(
+        "[ 230] 2 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 240] 1 > recv request vote from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term\n"
+        "           remote log is equal (2^2) -> grant vote\n"
+        "[ 240] 3 > recv request vote from server 2\n"
+        "           local server has a leader (server 1) -> reject\n"
+        "[ 250] 2 > recv request vote result from server 1\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           replicate 1 new barrier entry (3^3)\n"
+        "           probe server 1 sending 1 entry (3^3)\n"
+        "           probe server 3 sending 1 entry (3^3)\n"
+        "[ 250] 2 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n"
+        "[ 260] 2 > persisted 1 entry (3^3)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 260] 1 > recv append entries from server 2\n"
+        "           start persisting 1 new entry (3^3)\n"
+        "[ 260] 3 > recv append entries from server 2\n"
+        "           remote term is higher (3 vs 2) -> bump term\n"
+        "           snapshot install in progress -> ignore\n");
 
     return MUNIT_OK;
 }

@@ -100,8 +100,6 @@ int recvRequestVote(struct raft *r,
      * same as the request term (otherwise we would have rejected the request or
      * bumped our term). */
     if (!args->pre_vote) {
-        tracef("no pre_vote: current_term:%llu term:%llu", r->current_term,
-               args->term);
         assert(r->current_term == args->term);
     }
 

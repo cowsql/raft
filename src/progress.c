@@ -204,7 +204,14 @@ inline raft_flags progressGetFeatures(struct raft *r, const unsigned i)
 
 raft_time progressGetLastSend(const struct raft *r, const unsigned i)
 {
-    return r->leader_state.progress[i].last_send;
+    struct raft_progress *p = &r->leader_state.progress[i];
+    raft_time last_send = p->last_send;
+
+    if (p->snapshot.last_send != ULLONG_MAX &&
+        p->snapshot.last_send > last_send) {
+        last_send = p->snapshot.last_send;
+    }
+    return last_send;
 }
 
 raft_time progressGetLastRecv(const struct raft *r, const unsigned i)
@@ -271,10 +278,15 @@ bool progressMaybeDecrement(struct raft *r,
     assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
            p->state == PROGRESS__SNAPSHOT);
 
+    assert(rejected > 0);
+
     if (p->state == PROGRESS__SNAPSHOT) {
         /* The rejection must be stale or spurious if the rejected index does
          * not match the last snapshot index. */
         if (rejected != p->snapshot.index) {
+            infof(
+                "stale rejected index (%llu vs snapshot index %llu) -> ignore",
+                rejected, p->snapshot.index);
             return false;
         }
         progressAbortSnapshot(r, i);
@@ -285,7 +297,8 @@ bool progressMaybeDecrement(struct raft *r,
         /* The rejection must be stale if the rejected index is smaller than
          * the matched one. */
         if (rejected <= p->match_index) {
-            tracef("match index is up to date -> ignore ");
+            infof("stale rejected index (%llu vs match index %llu) -> ignore",
+                  rejected, p->match_index);
             return false;
         }
         /* Directly decrease next to match + 1 */

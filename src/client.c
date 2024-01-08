@@ -99,6 +99,13 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
 
+        if (entry->type == RAFT_CHANGE) {
+            rv = membershipCanChangeConfiguration(r);
+            if (rv != 0) {
+                return rv;
+            }
+        }
+
         rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
         if (rv != 0) {
             /* This logAppend call can't fail with RAFT_BUSY, because these are
@@ -549,6 +556,8 @@ int ClientTransfer(struct raft *r, raft_id server_id)
             r->leader_state.transferee = 0;
             goto err;
         }
+    } else {
+        infof("wait for transferee to catch up");
     }
 
     return 0;

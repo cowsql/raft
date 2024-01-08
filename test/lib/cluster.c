@@ -1171,6 +1171,20 @@ void test_cluster_submit(struct test_cluster *c,
     serverStep(server, &event);
 }
 
+void test_cluster_transfer(struct test_cluster *c,
+                           raft_id id,
+                           raft_id transferee)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    struct raft_event event;
+
+    event.time = c->time;
+    event.type = RAFT_TRANSFER;
+    event.transfer.server_id = transferee;
+
+    serverStep(server, &event);
+}
+
 /* Update the PNRG seed of each server, to match the expected randomized
  * election timeout. */
 static void clusterSeed(struct test_cluster *c)

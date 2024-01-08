@@ -2062,3 +2062,158 @@ TEST_V1(replication, NoLeaderAfterPersistingEntries, setUp, tearDown, 0, NULL)
 
     return MUNIT_OK;
 }
+
+/* While pipelining entries, the leader receives an AppendEntries response with
+ * a stale reject index. */
+TEST_V1(replication, StaleRejectedIndexPipeline, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    unsigned id;
+
+    /* Bootstrap and start a cluster with 2 voters. Server 1 has an additional
+     * entry at index 2.*/
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+        if (id == 1) {
+            CLUSTER_ADD_ENTRY(id, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+        }
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes the leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 2 entries (1^1..2^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is longer (2^1 vs 1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           replicate 1 new barrier entry (3^2)\n"
+        "           probe server 2 sending 1 entry (3^2)\n"
+        "[ 130] 1 > persisted 1 entry (3^2)\n"
+        "           next uncommitted entry (2^1) has 1 vote out of 2\n");
+
+    /* Server 2 receives a heartbeat with an entry that it does not have, but
+     * the network is slow, so server 1 will receive the response much later. */
+    CLUSTER_SET_NETWORK_LATENCY(2 /* ID */, 100 /* latency */);
+    CLUSTER_TRACE(
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^1) -> reject\n"
+        "[ 170] 1 > timeout as leader\n"
+        "           probe server 2 sending 1 entry (3^2)\n");
+
+    /* This time the network is faster, and server 2's response to the second
+     * heartbeat will arrive before then first response. */
+    CLUSTER_SET_NETWORK_LATENCY(2 /* ID */, 10 /* latency */);
+    CLUSTER_TRACE(
+        "[ 180] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^1) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           probe server 2 sending 2 entries (2^1..3^2)\n"
+        "[ 200] 2 > recv append entries from server 1\n"
+        "           start persisting 2 new entries (2^1..3^2)\n"
+        "[ 210] 2 > persisted 2 entry (2^1..3^2)\n"
+        "           send success result to 1\n"
+        "[ 220] 1 > recv append entries result from server 2\n"
+        "           commit 2 new entries (2^1..3^2)\n"
+        "[ 220] 1 > timeout as leader\n"
+        "[ 230] 1 > recv append entries result from server 2\n"
+        "           stale rejected index (2 vs match index 3) -> ignore\n");
+
+    return MUNIT_OK;
+}
+
+/* After having sent a snapshot and waiting for a response, the leader receives
+ * an AppendEntries response with a stale reject index. */
+TEST_V1(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_configuration configuration;
+    struct raft_entry entry;
+    unsigned id;
+    int rv;
+
+    /* Set very low threshold and trailing entries number. */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 3);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+
+    /* Bootstrap and start a cluster with 1 voter and 1 stand-by. Server 1 has
+     * an additional entry. */
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+
+        CLUSTER_FILL_CONFIGURATION(&configuration, 2, 1, 1 /* stand-by */);
+        entry.type = RAFT_CHANGE;
+        entry.term = 1;
+        rv = raft_configuration_encode(&configuration, &entry.buf);
+        munit_assert_int(rv, ==, 0);
+        raft_configuration_close(&configuration);
+        test_cluster_add_entry(&f->cluster_, id, &entry);
+        raft_free(entry.buf.base);
+
+        if (id == 1) {
+            CLUSTER_ADD_ENTRY(id, RAFT_COMMAND, 1 /* term */, 0 /* payload */);
+        }
+
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 2 entries (1^1..2^1)\n"
+        "           self elect and convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n");
+
+    /* Server 2 receives a heartbeat with an entry that it does not have, but
+     * the network is slow, so server 1 will receive the response much later. */
+    CLUSTER_SET_NETWORK_LATENCY(2 /* ID */, 80 /* latency */);
+    CLUSTER_TRACE(
+        "[  10] 2 > recv append entries from server 1\n"
+        "           missing previous entry (2^1) -> reject\n");
+
+    /* Server 1 commits a new entry and takes a snapshot. */
+    entry.term = 1;
+    entry.type = RAFT_COMMAND;
+    entry.buf.len = 8;
+    entry.buf.base = raft_malloc(entry.buf.len);
+    munit_assert_not_null(entry.buf.base);
+    test_cluster_submit(&f->cluster_, 1, &entry);
+
+    CLUSTER_TRACE(
+        "[  10] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^1)\n"
+        "[  20] 1 > persisted 1 entry (3^1)\n"
+        "           commit 1 new entry (3^1)\n"
+        "[  20] 1 > new snapshot (3^1), 0 trailing entries\n");
+
+    /* Eventually server 2 receives the snapshot, but takes a long time to
+     * persist it. */
+    CLUSTER_SET_NETWORK_LATENCY(2 /* ID */, 10 /* latency */);
+    CLUSTER_SET_DISK_LATENCY(2 /* ID */, 100 /* latency */);
+    CLUSTER_TRACE(
+        "[  50] 1 > timeout as leader\n"
+        "           missing previous entry at index 2 -> needs snapshot\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[  60] 2 > recv append entries from server 1\n"
+        "           missing previous entry (3^1) -> reject\n"
+        "[  70] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (3^1) to server 2\n"
+        "[  80] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (3^1)\n");
+
+    /* Server 1 finally receives the original AppendEntries response and ignores
+     * it. */
+    CLUSTER_TRACE(
+        "[  90] 1 > recv append entries result from server 2\n"
+        "           stale rejected index (2 vs snapshot index 3) -> ignore\n");
+
+    return MUNIT_OK;
+}

@@ -1056,8 +1056,8 @@ int replicationPersistSnapshotDone(struct raft *r,
     }
 
     if (status != 0) {
-        tracef("save snapshot %llu: %s", metadata->index,
-               raft_strerror(status));
+        infof("failed to persist snapshot %llu^%llu: %s", metadata->index,
+              metadata->term, raft_strerror(status));
         goto discard;
     }
 
@@ -1185,8 +1185,13 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
          */
         server = configurationGet(&r->configuration, r->id);
         if (server == NULL || server->role != RAFT_VOTER) {
-            infof("leader removed from config or no longer voter server: %p",
-                  (void *)server);
+            const char *reason;
+            if (server == NULL) {
+                reason = "leader removed from config";
+            } else {
+                reason = "leader no longer voter";
+            }
+            infof("%s -> step down", reason);
             convertToFollower(r);
         }
     }

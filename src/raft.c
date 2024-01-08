@@ -519,6 +519,7 @@ int raft_step(struct raft *r,
             rv = 0;
             break;
         case RAFT_TRANSFER:
+            infof("transfer leadership to %llu", event->transfer.server_id);
             rv = ClientTransfer(r, event->transfer.server_id);
             break;
         default:

@@ -89,7 +89,8 @@ void progressUpdateLastRecv(struct raft *r, unsigned i);
 /* Reset to false all the recent_recv flags. */
 void progressResetRecentRecv(struct raft *r);
 
-/* Return the value of the last_send timestamp. */
+/* Return the value of the last_send timestamp, or of the snapshot.last_send
+ * timestamp if more recent. */
 raft_time progressGetLastSend(const struct raft *r, unsigned i);
 
 /* Return the value of the last_recv flag. */

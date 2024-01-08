@@ -184,8 +184,6 @@ int convertToLeader(struct raft *r)
     if (n_voters == 1) {
         assert(configurationIndexOfVoter(&r->configuration, r->id) == 0);
         if (r->last_stored > r->commit_index) {
-            infof("apply log entries after self election %llu %llu",
-                  r->last_stored, r->commit_index);
             r->commit_index = r->last_stored;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         }

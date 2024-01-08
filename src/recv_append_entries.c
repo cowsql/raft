@@ -107,7 +107,7 @@ int recvAppendEntries(struct raft *r,
      * something smarter, e.g. buffering the entries in the I/O backend, which
      * should be in charge of serializing everything. */
     if (replicationInstallSnapshotBusy(r) && args->n_entries > 0) {
-        infof("ignoring AppendEntries RPC during snapshot install");
+        infof("snapshot install in progress -> ignore");
         entryBatchesDestroy(args->entries, args->n_entries);
         return 0;
     }
