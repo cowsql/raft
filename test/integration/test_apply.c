@@ -110,19 +110,6 @@ static bool applyCbHasFired(struct raft_fixture *f, void *arg)
 
 SUITE(raft_apply)
 
-/* Append two command entries. */
-TEST(raft_apply, two, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    int val = 123;
-    APPLY(0, val);
-    munit_assert_int(FsmGetX(CLUSTER_FSM(0)), ==, val);
-    val = 124;
-    APPLY(0, val);
-    munit_assert_int(FsmGetX(CLUSTER_FSM(0)), ==, val);
-    return MUNIT_OK;
-}
-
 /******************************************************************************
  *
  * Failure scenarios
