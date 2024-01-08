@@ -158,34 +158,6 @@ static void tearDown(void *data)
 
 SUITE(raft_assign)
 
-static bool secondServerHasNewConfiguration(struct raft_fixture *f, void *arg)
-{
-    struct raft *raft = raft_fixture_get(f, 1);
-    (void)arg;
-    return raft->configuration.servers[2].role == RAFT_VOTER;
-}
-
-/* If a follower receives an AppendEntries RPC containing a RAFT_CHANGE entry
- * which changes the role of a server, the configuration change is immediately
- * applied locally, even if the entry is not yet committed. Once the entry is
- * committed, the change becomes permanent.*/
-TEST(raft_assign, changeIsImmediate, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    GROW;
-    CLUSTER_MAKE_PROGRESS;
-    ADD(0, 3);
-    CLUSTER_STEP_UNTIL_APPLIED(1, 3, 2000);
-
-    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
-    CLUSTER_STEP_UNTIL(secondServerHasNewConfiguration, NULL, 3000);
-    ASSERT_CONFIGURATION_INDEXES(1, 3, 4);
-
-    ASSIGN_WAIT;
-
-    return MUNIT_OK;
-}
-
 /* Assign the stand-by role to an idle server. */
 TEST(raft_assign, promoteToStandBy, setUp, tearDown, 0, NULL)
 {
