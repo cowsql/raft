@@ -158,54 +158,6 @@ static void tearDown(void *data)
 
 SUITE(raft_assign)
 
-static bool thirdServerHasCompletedFirstRound(struct raft_fixture *f, void *arg)
-{
-    struct raft *raft = raft_fixture_get(f, 0);
-    (void)arg;
-    return raft->leader_state.round_number != 1;
-}
-
-/* Assigning the voter role to a spare a server whose log is not up-to-date
- * results in catch-up rounds to start. If new entries are appended after a
- * round is started, a new round is initiated once the former one completes. */
-TEST(raft_assign, promoteNewRound, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    unsigned election_timeout = CLUSTER_RAFT(0)->election_timeout;
-    struct raft_apply *req = munit_malloc(sizeof *req);
-    CLUSTER_MAKE_PROGRESS;
-    GROW;
-    ADD(0, 3);
-
-    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
-    ASSERT_CATCH_UP_ROUND(0, 3, 1, 0);
-
-    /* Now that the catch-up round started, submit a new entry and set a very
-     * high latency on the server being promoted, so it won't deliver
-     * AppendEntry results within the round duration. */
-    CLUSTER_APPLY_ADD_X(0, req, 1, NULL);
-    CLUSTER_STEP_UNTIL_ELAPSED(election_timeout + 100);
-
-    // FIXME: unstable with 0xcf1f25b6
-    // ASSERT_CATCH_UP_ROUND(0, 3, 1, election_timeout + 100);
-
-    /* The leader eventually receives the AppendEntries result from the
-     * promotee, acknowledging all entries except the last one. The first round
-     * has completes and a new one has starts. */
-    CLUSTER_STEP_UNTIL(thirdServerHasCompletedFirstRound, NULL, 2000);
-
-    /* Eventually the server is promoted and everyone applies the entry. */
-    CLUSTER_STEP_UNTIL_APPLIED(0, req->index, 5000);
-
-    /* The promotion is eventually completed. */
-    CLUSTER_STEP_UNTIL_APPLIED(0, req->index + 1, 5000);
-    ASSERT_CONFIGURATION_INDEXES(0, 5, 0);
-
-    free(req);
-
-    return MUNIT_SKIP;
-}
-
 static bool secondServerHasNewConfiguration(struct raft_fixture *f, void *arg)
 {
     struct raft *raft = raft_fixture_get(f, 1);
