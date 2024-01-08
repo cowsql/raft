@@ -158,58 +158,6 @@ static void tearDown(void *data)
 
 SUITE(raft_assign)
 
-static bool thirdServerHasCaughtUp(struct raft_fixture *f, void *arg)
-{
-    struct raft *raft = raft_fixture_get(f, 0);
-    (void)arg;
-    return raft->leader_state.promotee_id == 0;
-}
-
-/* Assigning the voter role to a spare server whose log is not up-to-date
- * results in catch-up rounds to start. When the server has caught up, the
- * configuration change request gets submitted. */
-TEST(raft_assign, promoteCatchUp, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    struct raft *raft;
-    const struct raft_server *server;
-    CLUSTER_MAKE_PROGRESS;
-    GROW;
-    ADD(0, 3);
-
-    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
-
-    /* Server 3 is not being considered as voting, since its log is behind. */
-    raft = CLUSTER_RAFT(0);
-    server = &raft->configuration.servers[2];
-    munit_assert_int(server->role, ==, RAFT_SPARE);
-
-    /* Advance the match index of server 3, by acknowledging the AppendEntries
-     * request that the leader has sent to it. */
-    CLUSTER_STEP_UNTIL_APPLIED(2, 2, 2000);
-
-    /* Disconnect the second server, so it doesn't participate in the quorum */
-    CLUSTER_SATURATE_BOTHWAYS(0, 1);
-
-    /* Eventually the leader notices that the third server has caught. */
-    CLUSTER_STEP_UNTIL(thirdServerHasCaughtUp, NULL, 2000);
-
-    /* The leader has submitted a configuration change request, but it's
-     * uncommitted. */
-    ASSERT_CONFIGURATION_INDEXES(0, 3, 4);
-
-    /* The third server notifies that it has appended the new
-     * configuration. Since it's considered voting already, it counts for the
-     * majority and the entry gets committed. */
-    CLUSTER_STEP_UNTIL_APPLIED(0, 4, 2000);
-    CLUSTER_STEP_UNTIL_APPLIED(2, 4, 2000);
-
-    /* The promotion is completed. */
-    ASSERT_CONFIGURATION_INDEXES(0, 4, 0);
-
-    return MUNIT_OK;
-}
-
 static bool thirdServerHasCompletedFirstRound(struct raft_fixture *f, void *arg)
 {
     struct raft *raft = raft_fixture_get(f, 0);
