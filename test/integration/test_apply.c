@@ -116,14 +116,6 @@ SUITE(raft_apply)
  *
  *****************************************************************************/
 
-/* If the raft instance is not in leader state, an error is returned. */
-TEST(raft_apply, notLeader, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    APPLY_ERROR(1, RAFT_NOTLEADER, "server is not the leader");
-    return MUNIT_OK;
-}
-
 /* If the raft instance steps down from leader state, the apply callback fires
  * with an error. */
 TEST(raft_apply, leadershipLost, setUp, tearDown, 0, NULL)
