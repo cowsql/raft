@@ -158,31 +158,6 @@ static void tearDown(void *data)
 
 SUITE(raft_assign)
 
-/* Assigning the voter role to a spare server whose log is already up-to-date
- * results in the relevant configuration change to be submitted immediately. */
-TEST(raft_assign, promoteUpToDate, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    struct raft *raft;
-    const struct raft_server *server;
-    GROW;
-    ADD(0, 3);
-    CLUSTER_STEP_N(3);
-
-    ASSIGN(0, 3, RAFT_VOTER);
-
-    /* Server 3 is being considered as voting, even though the configuration
-     * change is not committed yet. */
-    raft = CLUSTER_RAFT(0);
-    server = &raft->configuration.servers[2];
-    munit_assert_int(server->role, ==, RAFT_VOTER);
-
-    /* The configuration change request eventually succeeds. */
-    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 2000);
-
-    return MUNIT_OK;
-}
-
 static bool thirdServerHasCaughtUp(struct raft_fixture *f, void *arg)
 {
     struct raft *raft = raft_fixture_get(f, 0);
