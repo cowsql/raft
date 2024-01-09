@@ -515,6 +515,7 @@ int raft_step(struct raft *r,
             rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
         case RAFT_CATCH_UP:
+            infof("catch-up server %llu", event->catch_up.server_id);
             ClientCatchUp(r, event->catch_up.server_id);
             rv = 0;
             break;
