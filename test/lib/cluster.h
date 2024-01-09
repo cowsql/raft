@@ -751,6 +751,11 @@ void test_cluster_submit(struct test_cluster *c,
                          raft_id id,
                          struct raft_entry *entry);
 
+/* Start to catch-up a server. */
+void test_cluster_catch_up(struct test_cluster *c,
+                           raft_id id,
+                           raft_id catch_up_id);
+
 /* Fire a leadership transfer. */
 void test_cluster_transfer(struct test_cluster *c,
                            raft_id id,

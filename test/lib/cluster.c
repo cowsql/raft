@@ -1077,6 +1077,20 @@ void test_cluster_submit(struct test_cluster *c,
     serverStep(server, &event);
 }
 
+void test_cluster_catch_up(struct test_cluster *c,
+                           raft_id id,
+                           raft_id catch_up_id)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    struct raft_event event;
+
+    event.time = c->time;
+    event.type = RAFT_CATCH_UP;
+    event.catch_up.server_id = catch_up_id;
+
+    serverStep(server, &event);
+}
+
 void test_cluster_transfer(struct test_cluster *c,
                            raft_id id,
                            raft_id transferee)
