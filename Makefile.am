@@ -104,8 +104,8 @@ libtest_la_SOURCES += \
 
 test_integration_core_SOURCES = \
   test/integration/main_core.c \
-  test/integration/test_assign.c \
   test/integration/test_barrier.c \
+  test/integration/test_catch_up.c \
   test/integration/test_bootstrap.c \
   test/integration/test_digest.c \
   test/integration/test_election.c \

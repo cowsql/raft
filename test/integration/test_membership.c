@@ -502,3 +502,41 @@ TEST_V1(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
 
     return MUNIT_OK;
 }
+
+SUITE(raft_assign)
+
+/* Trying to promote a server on a raft instance which is not the leader results
+ * in an error. */
+TEST_V1(raft_assign, NotLeader, setup, tear_down, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_configuration configuration;
+    struct raft_entry entry;
+    struct raft_event event;
+    struct raft_update update;
+    int rv;
+
+    /* Start the non-voter server of 2-server cluster with a signle voter. */
+    CLUSTER_SET_TERM(2 /* ID */, 1 /* term */);
+    CLUSTER_ADD_ENTRY(2 /* ID */, RAFT_CHANGE, 2 /* servers */, 1 /* voters */);
+    CLUSTER_START(2 /* ID */);
+
+    CLUSTER_FILL_CONFIGURATION(&configuration, 2, 2 /* V */, 0 /* S */);
+    entry.type = RAFT_CHANGE;
+    entry.term = 2;
+    rv = raft_configuration_encode(&configuration, &entry.buf);
+    munit_assert_int(rv, ==, 0);
+    raft_configuration_close(&configuration);
+
+    event.time = f->cluster_.time;
+    event.type = RAFT_SUBMIT;
+    event.submit.n = 1;
+    event.submit.entries = &entry;
+
+    rv = raft_step(CLUSTER_RAFT(2), &event, &update);
+    munit_assert_int(rv, ==, RAFT_NOTLEADER);
+
+    raft_free(entry.buf.base);
+
+    return MUNIT_OK;
+}
