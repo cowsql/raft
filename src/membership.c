@@ -17,11 +17,6 @@ int membershipCanChangeConfiguration(struct raft *r)
 {
     int rv;
 
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
     if (r->configuration_uncommitted_index != 0) {
         rv = RAFT_CANTCHANGE;
         goto err;

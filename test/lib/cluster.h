@@ -693,7 +693,7 @@ struct test_cluster
     raft_time time;                                     /* Global time */
     bool in_tear_down;                                  /* Tearing down */
     char trace[8192];                                   /* Captured messages */
-    void *operations[2];                                /* In-flight I/O */
+    void *steps[2];                                     /* Pending events */
     void *disconnect[2];                                /* Network faults */
 };
 
@@ -750,6 +750,11 @@ void test_cluster_stop(struct test_cluster *c, raft_id id);
 void test_cluster_submit(struct test_cluster *c,
                          raft_id id,
                          struct raft_entry *entry);
+
+/* Start to catch-up a server. */
+void test_cluster_catch_up(struct test_cluster *c,
+                           raft_id id,
+                           raft_id catch_up_id);
 
 /* Fire a leadership transfer. */
 void test_cluster_transfer(struct test_cluster *c,

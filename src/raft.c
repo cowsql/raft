@@ -515,6 +515,7 @@ int raft_step(struct raft *r,
             rv = ClientSubmit(r, event->submit.entries, event->submit.n);
             break;
         case RAFT_CATCH_UP:
+            infof("catch-up server %llu", event->catch_up.server_id);
             ClientCatchUp(r, event->catch_up.server_id);
             rv = 0;
             break;
@@ -691,38 +692,6 @@ void raft_set_pre_vote(struct raft *r, bool enabled)
 const char *raft_errmsg(struct raft *r)
 {
     return r->errmsg;
-}
-
-int raft_bootstrap(struct raft *r, const struct raft_configuration *conf)
-{
-    int rv;
-
-    if (r->state != RAFT_UNAVAILABLE) {
-        return RAFT_BUSY;
-    }
-
-    rv = r->io->bootstrap(r->io, conf);
-    if (rv != 0) {
-        return rv;
-    }
-
-    return 0;
-}
-
-int raft_recover(struct raft *r, const struct raft_configuration *conf)
-{
-    int rv;
-
-    if (r->state != RAFT_UNAVAILABLE) {
-        return RAFT_BUSY;
-    }
-
-    rv = r->io->recover(r->io, conf);
-    if (rv != 0) {
-        return rv;
-    }
-
-    return 0;
 }
 
 const char *raft_strerror(int errnum)

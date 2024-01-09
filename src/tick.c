@@ -13,6 +13,7 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Apply time-dependent rules for followers (Figure 3.1). */
 static int tickFollower(struct raft *r)
@@ -196,8 +197,8 @@ static int tickLeader(struct raft *r)
         /* Abort the promotion if we are at the 10'th round and it's still
          * taking too long, or if the server is unresponsive. */
         if (is_too_slow || is_unresponsive) {
-            infof("server_index:%d is_too_slow:%d is_unresponsive:%d",
-                  server_index, is_too_slow, is_unresponsive);
+            infof("server %llu is %s", id,
+                  is_too_slow ? "too show" : "unresponsive");
 
             r->leader_state.promotee_id = 0;
 
@@ -248,26 +249,5 @@ int Tick(struct raft *r)
     return rv;
 }
 
-void tickCb(struct raft_io *io)
-{
-    struct raft *r;
-    struct raft_event event;
-    int rv;
-
-    r = io->data;
-
-    event.type = RAFT_TIMEOUT;
-    event.time = r->io->time(io);
-
-    rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
-    }
-
-    return;
-
-err:
-    convertToUnavailable(r);
-}
-
 #undef infof
+#undef tracef

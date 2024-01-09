@@ -132,3 +132,144 @@ TEST(legacy, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
     munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
     return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * raft_assign
+ *
+ *****************************************************************************/
+
+static void *setUpAssign(const MunitParameter params[],
+                         MUNIT_UNUSED void *user_data)
+{
+    struct fixture *f = munit_malloc(sizeof *f);
+    SETUP_CLUSTER(2);
+    if (!v1) {
+        CLUSTER_BOOTSTRAP;
+        CLUSTER_START();
+        CLUSTER_ELECT(0);
+    }
+    return f;
+}
+
+static void tearDownAssign(void *data)
+{
+    struct fixture *f = data;
+    TEAR_DOWN_CLUSTER;
+    free(f);
+}
+
+struct result
+{
+    int status;
+    bool done;
+};
+
+static void changeCbAssertResult(struct raft_change *req, int status)
+{
+    struct result *result = req->data;
+    munit_assert_int(status, ==, result->status);
+    result->done = true;
+}
+
+static bool changeCbHasFired(struct raft_fixture *f, void *arg)
+{
+    struct result *result = arg;
+    (void)f;
+    return result->done;
+}
+
+/* Invoke raft_assign() against the I'th server and assert it the given error
+ * code. */
+#define ASSIGN_ERROR(I, ID, ROLE, RV, ERRMSG)                        \
+    {                                                                \
+        struct raft_change __req;                                    \
+        int __rv;                                                    \
+        __rv = raft_assign(CLUSTER_RAFT(I), &__req, ID, ROLE, NULL); \
+        munit_assert_int(__rv, ==, RV);                              \
+        munit_assert_string_equal(ERRMSG, CLUSTER_ERRMSG(I));        \
+    }
+
+/* Add a an empty server to the cluster and start it. */
+#define GROW                                \
+    {                                       \
+        int rv__;                           \
+        CLUSTER_GROW;                       \
+        rv__ = raft_start(CLUSTER_RAFT(2)); \
+        munit_assert_int(rv__, ==, 0);      \
+    }
+
+/* Submit an add request. */
+#define ADD_SUBMIT(I, ID)                                                     \
+    struct raft_change _req;                                                  \
+    char _address[16];                                                        \
+    struct result _result = {0, false};                                       \
+    int _rv;                                                                  \
+    _req.data = &_result;                                                     \
+    sprintf(_address, "%d", ID);                                              \
+    _rv =                                                                     \
+        raft_add(CLUSTER_RAFT(I), &_req, ID, _address, changeCbAssertResult); \
+    munit_assert_int(_rv, ==, 0);
+
+#define ADD(I, ID)                                            \
+    do {                                                      \
+        ADD_SUBMIT(I, ID);                                    \
+        CLUSTER_STEP_UNTIL(changeCbHasFired, &_result, 2000); \
+    } while (0)
+
+/* Submit an assign role request. */
+#define ASSIGN_SUBMIT(I, ID, ROLE)                                             \
+    struct raft_change _req;                                                   \
+    struct result _result = {0, false};                                        \
+    int _rv;                                                                   \
+    _req.data = &_result;                                                      \
+    _rv = raft_assign(CLUSTER_RAFT(I), &_req, ID, ROLE, changeCbAssertResult); \
+    munit_assert_int(_rv, ==, 0);
+
+/* Expect the request callback to fire with the given status. */
+#define ASSIGN_EXPECT(STATUS) _result.status = STATUS;
+
+/* Wait until a promote request completes. */
+#define ASSIGN_WAIT CLUSTER_STEP_UNTIL(changeCbHasFired, &_result, 10000)
+
+SUITE(raft_assign)
+
+/* Trying to change the role of a server whose ID is unknown results in an
+ * error. */
+TEST(raft_assign, unknownId, setUpAssign, tearDownAssign, 0, NULL)
+{
+    struct fixture *f = data;
+    ASSIGN_ERROR(0, 3, RAFT_VOTER, RAFT_NOTFOUND, "no server has ID 3");
+    return MUNIT_OK;
+}
+
+/* Trying to promote a server to an unknown role in an. */
+TEST(raft_assign, badRole, setUpAssign, tearDownAssign, 0, NULL)
+{
+    struct fixture *f = data;
+    ASSIGN_ERROR(0, 3, 999, RAFT_BADROLE, "server role is not valid");
+    return MUNIT_OK;
+}
+
+/* Trying to assign the voter role to a server which has already it results in
+ * an error. */
+TEST(raft_assign, alreadyHasRole, setUpAssign, tearDownAssign, 0, NULL)
+{
+    struct fixture *f = data;
+    ASSIGN_ERROR(0, 1, RAFT_VOTER, RAFT_BADROLE, "server is already voter");
+    return MUNIT_OK;
+}
+
+/* Trying to assign a new role to a server while a configuration change is in
+ * progress results in an error. */
+TEST(raft_assign, alreadyInProgressAssign, setUpAssign, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    GROW;
+    ADD(0, 3);
+    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
+    ASSIGN_ERROR(0, 3, RAFT_VOTER, RAFT_CANTCHANGE,
+                 "a configuration change is already in progress");
+    ASSIGN_WAIT;
+    return MUNIT_OK;
+}
