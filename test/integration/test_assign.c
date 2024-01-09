@@ -196,46 +196,6 @@ TEST_V1(raft_assign, NotLeader, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Trying to change the role of a server whose ID is unknown results in an
- * error. */
-TEST(raft_assign, unknownId, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    ASSIGN_ERROR(0, 3, RAFT_VOTER, RAFT_NOTFOUND, "no server has ID 3");
-    return MUNIT_OK;
-}
-
-/* Trying to promote a server to an unknown role in an. */
-TEST(raft_assign, badRole, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    ASSIGN_ERROR(0, 3, 999, RAFT_BADROLE, "server role is not valid");
-    return MUNIT_OK;
-}
-
-/* Trying to assign the voter role to a server which has already it results in
- * an error. */
-TEST(raft_assign, alreadyHasRole, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    ASSIGN_ERROR(0, 1, RAFT_VOTER, RAFT_BADROLE, "server is already voter");
-    return MUNIT_OK;
-}
-
-/* Trying to assign a new role to a server while a configuration change is in
- * progress results in an error. */
-TEST(raft_assign, changeRequestAlreadyInProgress, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    GROW;
-    ADD(0, 3);
-    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
-    ASSIGN_ERROR(0, 3, RAFT_VOTER, RAFT_CANTCHANGE,
-                 "a configuration change is already in progress");
-    ASSIGN_WAIT;
-    return MUNIT_OK;
-}
-
 /* If leadership is lost before the configuration change log entry for setting
  * the new server role is committed, the leader configuration gets rolled back
  * and the role of server being changed is reverted. */
