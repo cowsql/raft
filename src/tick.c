@@ -198,7 +198,7 @@ static int tickLeader(struct raft *r)
          * taking too long, or if the server is unresponsive. */
         if (is_too_slow || is_unresponsive) {
             infof("server %llu is %s", id,
-                  is_too_slow ? "too show" : "unresponsive");
+                  is_too_slow ? "too slow" : "unresponsive -> abort catch-up");
 
             r->leader_state.promotee_id = 0;
 
@@ -214,6 +214,8 @@ static int tickLeader(struct raft *r)
      * expired. */
     if (r->leader_state.transferee != 0) {
         if (r->now - r->leader_state.transfer_start >= r->election_timeout) {
+            infof("server %llu not replicating fast enough -> abort transfer",
+                  r->leader_state.transferee);
             r->leader_state.transferee = 0;
             r->leader_state.transferring = false;
         }

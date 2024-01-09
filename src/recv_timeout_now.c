@@ -61,8 +61,8 @@ int recvTimeoutNow(struct raft *r,
     }
 
     /* Convert to candidate and start a new election. */
-    infof("convert to candidate, start %selection for term %llu",
-          r->pre_vote ? "pre-" : "", r->current_term + 1);
+    infof("convert to candidate, start election for term %llu",
+          r->current_term + 1);
     rv = convertToCandidate(r, true /* disrupt leader */);
     if (rv != 0) {
         return rv;
