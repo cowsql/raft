@@ -273,3 +273,48 @@ TEST(raft_assign, alreadyInProgressAssign, setUpAssign, tearDown, 0, NULL)
     ASSIGN_WAIT;
     return MUNIT_OK;
 }
+
+/******************************************************************************
+ *
+ * Bootstrap tests.
+ *
+ *****************************************************************************/
+
+static void *setUpBootstrap(const MunitParameter params[],
+                            MUNIT_UNUSED void *user_data)
+{
+    struct fixture *f = munit_malloc(sizeof *f);
+    SETUP_CLUSTER(1);
+    return f;
+}
+
+static void tearDownBootstrap(void *data)
+{
+    struct fixture *f = data;
+    TEAR_DOWN_CLUSTER;
+    free(f);
+}
+
+SUITE(raft_bootstrap)
+
+/* Attempting to bootstrap an instance that's already started results in
+ * RAFT_BUSY. */
+TEST(raft_bootstrap, busy, setUpBootstrap, tearDownBootstrap, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft *raft;
+    struct raft_configuration configuration;
+    int rv;
+
+    /* Bootstrap and the first server. */
+    CLUSTER_BOOTSTRAP_N_VOTING(1);
+    CLUSTER_START();
+
+    raft = CLUSTER_RAFT(0);
+    CLUSTER_CONFIGURATION(&configuration);
+    rv = raft_bootstrap(raft, &configuration);
+    munit_assert_int(rv, ==, RAFT_BUSY);
+    raft_configuration_close(&configuration);
+
+    return MUNIT_OK;
+}
