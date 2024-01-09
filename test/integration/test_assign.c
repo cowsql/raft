@@ -253,14 +253,6 @@ TEST_V1(raft_assign, Unresponsive, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Demote a voter node to stand-by. */
-TEST(raft_assign, demoteToStandBy, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    ASSIGN(0, 2, RAFT_STANDBY);
-    return MUNIT_OK;
-}
-
 /* The leader can be demoted to stand-by and will no longer act as leader */
 TEST(raft_assign, demoteLeader, setUp, tearDown, 0, NULL)
 {
