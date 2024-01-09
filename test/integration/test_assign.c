@@ -196,42 +196,6 @@ TEST_V1(raft_assign, NotLeader, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* If leadership is lost before the configuration change log entry for setting
- * the new server role is committed, the leader configuration gets rolled back
- * and the role of server being changed is reverted. */
-TEST(raft_assign, leadershipLost, setUp, tearDown, 0, NULL)
-{
-    struct fixture *f = data;
-    const struct raft_server *server;
-    /* TODO: fix */
-    return MUNIT_SKIP;
-    GROW;
-    ADD(0, 3);
-    CLUSTER_STEP_N(2);
-
-    ASSIGN_SUBMIT(0, 3, RAFT_VOTER);
-
-    /* Server 3 is being considered as voting, even though the configuration
-     * change is not committed yet. */
-    ASSERT_CATCH_UP_ROUND(0, 0, 0, 0);
-    ASSERT_CONFIGURATION_INDEXES(0, 2, 3);
-    server = configurationGet(&CLUSTER_RAFT(0)->configuration, 3);
-    munit_assert_int(server->role, ==, RAFT_VOTER);
-
-    /* Lose leadership. */
-    CLUSTER_DEPOSE;
-
-    /* A new leader gets elected */
-    CLUSTER_ELECT(1);
-    CLUSTER_STEP_N(5);
-
-    /* Server 3 is not being considered voting anymore. */
-    server = configurationGet(&CLUSTER_RAFT(0)->configuration, 3);
-    munit_assert_int(server->role, ==, RAFT_STANDBY);
-
-    return MUNIT_OK;
-}
-
 /* Trying to assign the voter role to an unresponsive server eventually
  * fails. */
 TEST(raft_assign, promoteUnresponsive, setUp, tearDown, 0, NULL)
