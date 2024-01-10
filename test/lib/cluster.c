@@ -244,7 +244,7 @@ static void diskPersistEntry(struct test_disk *d, struct raft_entry *entry)
 }
 
 /* Custom emit tracer function which includes the server ID. */
-static void serverTrace(struct raft_tracer *t, int type, const void *data)
+static void serverEmit(struct raft_tracer *t, int type, const void *data)
 {
     struct test_server *server;
     struct test_cluster *cluster;
@@ -312,7 +312,7 @@ static void serverInit(struct test_server *s,
 
     s->tracer.impl = s;
     s->tracer.version = 2;
-    s->tracer.trace = serverTrace;
+    s->tracer.emit = serverEmit;
     s->randomized_election_timeout_prev = 0;
 
     sprintf(address, "%llu", id);

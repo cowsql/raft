@@ -1009,7 +1009,7 @@ static int serverInit(struct raft_fixture *f, unsigned i, struct raft_fsm *fsm)
     raft_set_install_snapshot_timeout(&s->raft, INSTALL_SNAPSHOT_TIMEOUT);
     s->tracer.impl = s;
     s->tracer.version = 2;
-    s->tracer.trace = fixtureTrace;
+    s->tracer.emit = fixtureTrace;
     s->raft.tracer = &s->tracer;
     return 0;
 }

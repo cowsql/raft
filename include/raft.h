@@ -100,53 +100,6 @@ struct raft_buffer
     size_t len; /* Length of the buffer. */
 };
 
-struct raft_tracer;
-
-/* Fields used by the old raft_tracer interface (v1).*/
-#define RAFT_TRACER__V1_FIELDS                                           \
-    struct                                                               \
-    {                                                                    \
-        /**                                                              \
-         * Whether this tracer should emit messages.                     \
-         */                                                              \
-        bool enabled;                                                    \
-                                                                         \
-        /**                                                              \
-         * Emit the given trace message, possibly decorating it with the \
-         * provided metadata                                             \
-         */                                                              \
-        void (*emit)(struct raft_tracer * t,                             \
-                     const char *file,                                   \
-                     int line,                                           \
-                     const char *message);                               \
-    }
-
-/* Fields used by version 2 of the tracer. */
-#define RAFT_TRACER__V2_FIELDS                                                \
-    struct                                                                    \
-    {                                                                         \
-        /**                                                                   \
-         * Version of the raft_tracer structure. Must be at least 2.          \
-         */                                                                   \
-        int version;                                                          \
-                                                                              \
-        /**                                                                   \
-         * Trace an event of the given @type code. The @info object contains  \
-         * details about the event and its format depends on the event @type. \
-         *                                                                    \
-         * Type codes from #1 to #255 are reserved for traces defined by the  \
-         * core library.                                                      \
-         *                                                                    \
-         * Type codes from #256 to #65535 are reserved for events defined by  \
-         * specific #raft_io backends.                                        \
-         *                                                                    \
-         * Type codes from #65535 onwards can be used by user applications.   \
-         */                                                                   \
-        void (*trace)(struct raft_tracer * t, int type, const void *info);    \
-    }
-
-RAFT__ASSERT_COMPATIBILITY(RAFT_TRACER__V1_FIELDS, RAFT_TRACER__V2_FIELDS);
-
 /**
  * Customizable tracer for debugging, logging and metrics purposes.
  */
@@ -157,14 +110,25 @@ struct raft_tracer
      */
     void *impl;
 
-    union {
-        RAFT_TRACER__V1_FIELDS;
-        RAFT_TRACER__V2_FIELDS;
-    };
-};
+    /**
+     * Version of the raft_tracer structure. Must be at least 2.
+     */
+    int version;
 
-#undef RAFT_TRACER__V1_FIELDS
-#undef RAFT_TRACER__V2_FIELDS
+    /**
+     * Emit an event of the given @type code. The @info object contains
+     * details about the event and its format depends on the event @type.
+     *
+     * Type codes from #1 to #255 are reserved for traces defined by the
+     * core library.
+     *
+     * Type codes from #256 to #65535 are reserved for events defined by
+     * specific #raft_io backends.
+     *
+     * Type codes from #65535 onwards can be used by user applications.
+     */
+    void (*emit)(struct raft_tracer *t, int type, const void *info);
+};
 
 #define RAFT_TRACER_DIAGNOSTIC 1
 
