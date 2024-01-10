@@ -69,7 +69,7 @@ TEST_V1(catch_up, Unresponsive, setUp, tearDown, 0, NULL)
         "           probe server 2 sending a heartbeat (no entries)\n"
         "[ 100] 1 > timeout as leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n"
-        "           server 2 is unresponsive\n");
+        "           server 2 is unresponsive -> abort catch-up\n");
 
     rv = raft_catch_up(CLUSTER_RAFT(1), 2 /* ID */, &status);
     munit_assert_int(rv, ==, 0);
