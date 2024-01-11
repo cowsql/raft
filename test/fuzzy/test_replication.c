@@ -1,4 +1,4 @@
-#include "../lib/cluster.h"
+#include "../lib/legacy.h"
 #include "../lib/runner.h"
 
 /******************************************************************************

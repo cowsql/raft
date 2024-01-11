@@ -9,14 +9,14 @@ struct fixture
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
-    SETUP_CLUSTER(1);
+    SETUP_CLUSTER();
     return f;
 }
 
 static void tearDown(void *data)
 {
     struct fixture *f = data;
-    TEAR_DOWN_CLUSTER;
+    TEAR_DOWN_CLUSTER();
     free(f);
 }
 
@@ -28,7 +28,7 @@ TEST_V1(start, NoState, setUp, tearDown, 0, NULL)
     struct fixture *f = data;
     CLUSTER_START(1);
     CLUSTER_TRACE("[   0] 1 > no state\n");
-    munit_assert_int(raft_timeout(CLUSTER_RAFT(1)), ==, 100);
+    munit_assert_ullong(raft_timeout(CLUSTER_RAFT(1)), ==, 100);
     return MUNIT_OK;
 }
 

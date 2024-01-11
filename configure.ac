@@ -67,6 +67,10 @@ AC_ARG_ENABLE(hardening, AS_HELP_STRING([--disable-hardening], [disable compile-
 AC_ARG_ENABLE(sanitize, AS_HELP_STRING([--enable-sanitize[=ARG]], [enable code sanitizers [default=no]]))
 AM_CONDITIONAL(SANITIZE_ENABLED, test x"$enable_sanitize" = x"yes")
 
+# Whether to enable compatibility with the legacy v0 API.
+AC_ARG_ENABLE(v0, AS_HELP_STRING([--enable-v0[=ARG]], [enable compatibility with v0 API [default=yes]]))
+AM_CONDITIONAL(V0_ENABLED, test "x$enable_v0" != "xno")
+
 # Whether to enable code coverage.
 AX_CODE_COVERAGE
 

@@ -4,7 +4,6 @@
 #include "convert.h"
 #include "entry.h"
 #include "err.h"
-#include "legacy.h"
 #include "log.h"
 #include "snapshot.h"
 #include "tracing.h"

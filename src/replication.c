@@ -5,12 +5,10 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
-#include "legacy.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
 #include "err.h"
-#include "flags.h"
 #include "heap.h"
 #include "log.h"
 #include "membership.h"
@@ -732,7 +730,7 @@ static int followerPersistEntriesDone(struct raft *r,
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
-    result.features = RAFT_DEFAULT_FEATURE_FLAGS;
+    result.features = 0;
     if (status != 0) {
         result.rejected = first_index;
         goto respond;
@@ -1047,7 +1045,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
-    result.features = RAFT_DEFAULT_FEATURE_FLAGS;
+    result.features = 0;
     result.rejected = 0;
 
     /* If we are shutting down, let's discard the result. */

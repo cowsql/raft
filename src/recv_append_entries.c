@@ -3,7 +3,6 @@
 #include "assert.h"
 #include "convert.h"
 #include "entry.h"
-#include "flags.h"
 #include "heap.h"
 #include "log.h"
 #include "message.h"
@@ -32,7 +31,7 @@ int recvAppendEntries(struct raft *r,
     result->rejected = args->prev_log_index;
     result->last_log_index = logLastIndex(r->log);
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
-    result->features = RAFT_DEFAULT_FEATURE_FLAGS;
+    result->features = 0;
 
     rv = recvEnsureMatchingTerms(r, args->term, &match);
     if (rv != 0) {

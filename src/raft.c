@@ -11,7 +11,6 @@
 #include "election.h"
 #include "entry.h"
 #include "err.h"
-#include "flags.h"
 #include "heap.h"
 #include "legacy.h"
 #include "log.h"
@@ -166,12 +165,14 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     assert(r->update == NULL);
 
     if (r->io != NULL) {
+#ifdef V0_ENABLED
         struct raft_event event;
         assert(r->close_cb == NULL);
         event.time = r->io->time(r->io);
         event.type = RAFT_STOP;
 
         LegacyForwardToRaftIo(r, &event);
+#endif
 
         r->close_cb = cb;
 

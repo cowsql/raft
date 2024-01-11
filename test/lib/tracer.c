@@ -8,7 +8,7 @@ static void traceDiagnostic(const struct raft_tracer_info *info)
             info->diagnostic.line, info->diagnostic.message);
 }
 
-void TracerTrace(struct raft_tracer *t, int type, const void *info)
+void TracerEmit(struct raft_tracer *t, int type, const void *info)
 {
     (void)t;
     switch (type) {

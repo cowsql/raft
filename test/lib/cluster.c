@@ -244,7 +244,7 @@ static void diskPersistEntry(struct test_disk *d, struct raft_entry *entry)
 }
 
 /* Custom emit tracer function which includes the server ID. */
-static void serverTrace(struct raft_tracer *t, int type, const void *data)
+static void serverEmit(struct raft_tracer *t, int type, const void *data)
 {
     struct test_server *server;
     struct test_cluster *cluster;
@@ -312,7 +312,7 @@ static void serverInit(struct test_server *s,
 
     s->tracer.impl = s;
     s->tracer.version = 2;
-    s->tracer.trace = serverTrace;
+    s->tracer.emit = serverEmit;
     s->randomized_election_timeout_prev = 0;
 
     sprintf(address, "%llu", id);
@@ -1275,49 +1275,4 @@ mismatch:
     fprintf(stderr, "%s\n", c->trace);
 
     return false;
-}
-
-static void randomize(struct raft_fixture *f, unsigned i, int what)
-{
-    struct raft *raft = raft_fixture_get(f, i);
-    switch (what) {
-        case RAFT_FIXTURE_TICK:
-            /* TODO: provide an API to inspect how much time has elapsed since
-             * the last election timer reset */
-            if (raft->election_timer_start == raft->io->time(raft->io)) {
-                raft_fixture_set_randomized_election_timeout(
-                    f, i,
-                    munit_rand_int_range(raft->election_timeout,
-                                         raft->election_timeout * 2));
-            }
-            break;
-        case RAFT_FIXTURE_DISK:
-            raft_fixture_set_disk_latency(f, i, munit_rand_int_range(10, 25));
-            break;
-        case RAFT_FIXTURE_NETWORK:
-            raft_fixture_set_network_latency(f, i,
-                                             munit_rand_int_range(25, 50));
-            break;
-        default:
-            munit_assert(0);
-            break;
-    }
-}
-
-void cluster_randomize_init(struct raft_fixture *f)
-{
-    unsigned i;
-    for (i = 0; i < raft_fixture_n(f); i++) {
-        randomize(f, i, RAFT_FIXTURE_TICK);
-        randomize(f, i, RAFT_FIXTURE_DISK);
-        randomize(f, i, RAFT_FIXTURE_NETWORK);
-    }
-}
-
-void cluster_randomize(struct raft_fixture *f, struct raft_fixture_event *event)
-{
-    munit_assert(!v1);
-    unsigned index = raft_fixture_event_server_index(event);
-    int type = raft_fixture_event_type(event);
-    randomize(f, index, type);
 }

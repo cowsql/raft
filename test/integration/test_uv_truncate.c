@@ -142,7 +142,7 @@ static void tearDownDeps(void *data)
         munit_assert_int(_rv, ==, 0);                                        \
         _rv = raft_uv_init(&_io, &_loop, f->dir, &_transport);               \
         munit_assert_int(_rv, ==, 0);                                        \
-        _tracer.trace = TracerTrace;                                         \
+        _tracer.emit = TracerEmit;                                           \
         _tracer.version = 2;                                                 \
         raft_uv_set_tracer(&_io, &_tracer);                                  \
         _rv = _io.init(&_io, 1, "1");                                        \

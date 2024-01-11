@@ -19,14 +19,14 @@ struct fixture
 static void *setup(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
-    SETUP_CLUSTER_V1();
+    SETUP_CLUSTER();
     return f;
 }
 
 static void tear_down(void *data)
 {
     struct fixture *f = data;
-    TEAR_DOWN_CLUSTER;
+    TEAR_DOWN_CLUSTER();
     free(f);
 }
 

@@ -21,8 +21,6 @@ static int fsmApply(struct raft_fsm *fsm,
     return 0;
 }
 
-static void trace(struct raft_tracer *t, int type, const void *info);
-
 struct server
 {
     struct uv_loop_s *loop;
@@ -55,7 +53,7 @@ static void traceWriteComplete(struct server *s)
     HistogramCount(&s->writes, TimerStop(&s->write_timer));
 }
 
-static void trace(struct raft_tracer *t, int type, const void *info)
+static void emit(struct raft_tracer *t, int type, const void *info)
 {
     struct server *s = t->impl;
     (void)info;
@@ -102,7 +100,7 @@ int serverInit(struct server *s,
     }
 
     s->tracer.version = 2;
-    s->tracer.trace = trace;
+    s->tracer.emit = emit;
     s->tracer.impl = s;
 
     rv = raft_uv_tcp_init(&s->transport, loop);

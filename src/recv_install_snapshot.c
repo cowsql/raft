@@ -2,7 +2,6 @@
 
 #include "assert.h"
 #include "convert.h"
-#include "flags.h"
 #include "log.h"
 #include "message.h"
 #include "recv.h"
@@ -27,7 +26,7 @@ int recvInstallSnapshot(struct raft *r,
     result->rejected = args->last_index;
     result->last_log_index = logLastIndex(r->log);
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
-    result->features = RAFT_DEFAULT_FEATURE_FLAGS;
+    result->features = 0;
 
     rv = recvEnsureMatchingTerms(r, args->term, &match);
     if (rv != 0) {
