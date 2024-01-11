@@ -5,7 +5,6 @@
 #include "configuration.h"
 #include "convert.h"
 #include "entry.h"
-#include "legacy.h"
 #ifdef __GLIBC__
 #include "error.h"
 #endif
