@@ -1,4 +1,4 @@
-#include "../lib/cluster.h"
+#include "../lib/legacy.h"
 #include "../lib/runner.h"
 
 struct fixture
@@ -133,6 +133,193 @@ TEST(legacy, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+static void *setUpReplication(const MunitParameter params[],
+                              MUNIT_UNUSED void *user_data)
+{
+    struct fixture *f = munit_malloc(sizeof *f);
+    SETUP_CLUSTER(2);
+    return f;
+}
+
+static void tearDownReplication(void *data)
+{
+    struct fixture *f = data;
+    TEAR_DOWN_CLUSTER;
+    free(f);
+}
+
+SUITE(replication)
+
+/* If any of the new entry has the same index of an existing entry in our log,
+ * but different term, and that entry index is already committed, we bail out
+ * with an error. */
+TEST(replication,
+     recvPrevIndexConflict,
+     setUpReplication,
+     tearDownReplication,
+     0,
+     NULL)
+{
+    struct fixture *f = data;
+    struct raft_entry entry1;
+    struct raft_entry entry2;
+    CLUSTER_BOOTSTRAP;
+
+    /* The servers have an entry with a conflicting term. */
+    entry1.type = RAFT_COMMAND;
+    entry1.term = 2;
+    FsmEncodeSetX(1, &entry1.buf);
+    CLUSTER_ADD_ENTRY(0, &entry1);
+
+    entry2.type = RAFT_COMMAND;
+    entry2.term = 1;
+    FsmEncodeSetX(2, &entry2.buf);
+    CLUSTER_ADD_ENTRY(1, &entry2);
+
+    CLUSTER_START();
+    CLUSTER_ELECT(0);
+
+    /* Artificially bump the commit index on the second server */
+    CLUSTER_RAFT(1)->commit_index = 2;
+    CLUSTER_STEP;
+    CLUSTER_STEP;
+
+    return MUNIT_OK;
+}
+
+/* Assert that the fixture time matches the given value */
+#define ASSERT_TIME(TIME) munit_assert_int(CLUSTER_TIME, ==, TIME)
+
+/* Standard startup sequence, bootstrapping the cluster and electing server 0 */
+#define BOOTSTRAP_START_AND_ELECT \
+    CLUSTER_BOOTSTRAP;            \
+    CLUSTER_START();              \
+    CLUSTER_ELECT(0);             \
+    ASSERT_TIME(1045)
+
+static void applyAssertStatusCb(struct raft_apply *req,
+                                int status,
+                                void *result)
+{
+    (void)result;
+    int status_expected = (int)(intptr_t)(req->data);
+    munit_assert_int(status_expected, ==, status);
+}
+
+/* When the leader fails to write some new entries to disk, it steps down. */
+TEST(replication,
+     diskWriteFailure,
+     setUpReplication,
+     tearDownReplication,
+     0,
+     NULL)
+{
+    struct fixture *f = data;
+    struct raft_apply *req = munit_malloc(sizeof(*req));
+    req->data = (void *)(intptr_t)RAFT_IOERR;
+    BOOTSTRAP_START_AND_ELECT;
+
+    CLUSTER_IO_FAULT(0, 1, 1);
+    CLUSTER_APPLY_ADD_X(0, req, 1, applyAssertStatusCb);
+    /* The leader steps down when its disk write fails. */
+    CLUSTER_STEP_UNTIL_STATE_IS(0, RAFT_FOLLOWER, 2000);
+    free(req);
+
+    return MUNIT_OK;
+}
+
+/* A leader with slow disk commits an entry that it hasn't persisted yet,
+ * because enough followers to have a majority have aknowledged that they have
+ * appended the entry. The leader's last_stored field hence lags behind its
+ * commit_index. A new leader gets elected, with a higher commit index and sends
+ * first a new entry than a heartbeat to the old leader, that needs to update
+ * its commit_index taking into account its lagging last_stored.
+ *
+ * XXX: this test duplicates the one above, but it's kept because the change it
+ * is associated with was fixing an assertion in the legacy compat layer. */
+TEST(replication,
+     lastStoredLaggingBehindCommitIndex,
+     setUpReplication,
+     tearDownReplication,
+     0,
+     NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_GROW;
+
+    /* Server 0 takes a long time to persist entry 2 (the barrier) */
+    CLUSTER_SET_DISK_LATENCY(0, 10000);
+
+    /* Server 0 gets elected. */
+    BOOTSTRAP_START_AND_ELECT;
+
+    /* Create an entry at index 2. Server 0 commits and applies it even if
+     * it not persist it yet. */
+    CLUSTER_MAKE_PROGRESS;
+
+    munit_assert_int(CLUSTER_RAFT(0)->last_stored, ==, 1);
+    munit_assert_int(CLUSTER_RAFT(0)->commit_index, ==, 2);
+    munit_assert_int(CLUSTER_RAFT(0)->last_applied, ==, 2);
+
+    /* Server 1 stored barrier entry 2, but did not yet receive a
+     * notification from server 0 about the new commit index. */
+    munit_assert_int(CLUSTER_RAFT(1)->last_stored, ==, 2);
+    munit_assert_int(CLUSTER_RAFT(1)->commit_index, ==, 1);
+    munit_assert_int(CLUSTER_RAFT(1)->last_applied, ==, 1);
+
+    /* Disconnect server 0 from server 1 and 2. */
+    CLUSTER_DISCONNECT(0, 1);
+    CLUSTER_DISCONNECT(0, 2);
+
+    /* Set a very high election timeout on server 0, so it won't step down
+     * for a while, even if disconnected. */
+    raft_fixture_set_randomized_election_timeout(&f->cluster, 0, 10000);
+    raft_set_election_timeout(CLUSTER_RAFT(0), 10000);
+
+    /* Server 1 and 2 eventually timeout and start an election, server 1
+     * wins. */
+    CLUSTER_STEP_UNTIL_HAS_NO_LEADER(4000);
+    CLUSTER_STEP_UNTIL_HAS_LEADER(2000);
+    munit_assert_int(CLUSTER_LEADER, ==, 1);
+
+    /* Server 1 commits the barrier entry at index 3 that it created at the
+     * start of its term. */
+    CLUSTER_STEP_UNTIL_APPLIED(1, 3, 2000);
+
+    /* Reconnect server 0 to server 1, which will start replicating entry 3
+     * to it. */
+    CLUSTER_RECONNECT(0, 1);
+    CLUSTER_STEP_UNTIL_APPLIED(0, 3, 20000);
+
+    return MUNIT_OK;
+}
+
+/* A leader with faulty disk fails to persist the barrier entry upon election.
+ */
+TEST(replication,
+     failPersistBarrier,
+     setUpReplication,
+     tearDownReplication,
+     0,
+     NULL)
+{
+    struct fixture *f = data;
+    CLUSTER_GROW;
+
+    /* Server 0 will fail to persist entry 2, a barrier */
+    CLUSTER_IO_FAULT(0, 10, 1);
+
+    /* Server 0 gets elected and creates a barrier entry at index 2 */
+    CLUSTER_BOOTSTRAP;
+    CLUSTER_START();
+    CLUSTER_START_ELECT(0);
+
+    /* Cluster recovers. */
+    CLUSTER_STEP_UNTIL_HAS_LEADER(20000);
+
+    return MUNIT_OK;
+}
+
 /******************************************************************************
  *
  * raft_assign
@@ -144,11 +331,9 @@ static void *setUpAssign(const MunitParameter params[],
 {
     struct fixture *f = munit_malloc(sizeof *f);
     SETUP_CLUSTER(2);
-    if (!v1) {
-        CLUSTER_BOOTSTRAP;
-        CLUSTER_START();
-        CLUSTER_ELECT(0);
-    }
+    CLUSTER_BOOTSTRAP;
+    CLUSTER_START();
+    CLUSTER_ELECT(0);
     return f;
 }
 

@@ -4,7 +4,6 @@
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
-#include "legacy.h"
 #include "log.h"
 #include "membership.h"
 #include "message.h"

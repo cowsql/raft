@@ -21,7 +21,6 @@ libraft_la_SOURCES = \
   src/entry.c \
   src/err.c \
   src/heap.c \
-  src/legacy.c \
   src/log.c \
   src/membership.c \
   src/message.c \
@@ -46,7 +45,8 @@ libraft_la_SOURCES = \
 bin_PROGRAMS =
 
 check_PROGRAMS = \
-  test/unit/core
+  test/unit/core \
+  test/integration/core
 TESTS = $(check_PROGRAMS)
 
 check_LTLIBRARIES = libtest.la
@@ -54,6 +54,7 @@ check_LTLIBRARIES = libtest.la
 libtest_la_CFLAGS = $(AM_CFLAGS) -DMUNIT_TEST_NAME_LEN=60 -Wno-unused-result -Wno-conversion
 libtest_la_SOURCES = \
   test/lib/addrinfo.c \
+  test/lib/cluster.c \
   test/lib/fault.c \
   test/lib/fsm.c \
   test/lib/heap.c \
@@ -80,34 +81,13 @@ test_unit_core_SOURCES = \
 test_unit_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
 
-if LZ4_AVAILABLE
-test_unit_core_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
-test_unit_core_LDFLAGS = $(LZ4_LIBS)
-libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
-libraft_la_LDFLAGS += $(LZ4_LIBS)
-endif # LZ4_AVAILABLE
-
-if FIXTURE_ENABLED
-
-libraft_la_SOURCES += src/fixture.c
-raftinclude_HEADERS += include/raft/fixture.h
-
-check_PROGRAMS += \
-  test/integration/core \
-  test/fuzzy/core
-
-libtest_la_SOURCES += \
-  test/lib/cluster.c
-
 test_integration_core_SOURCES = \
   test/integration/main_core.c \
   test/integration/test_catch_up.c \
   test/integration/test_digest.c \
   test/integration/test_election.c \
-  test/integration/test_fixture.c \
   test/integration/test_heap.c \
   test/integration/test_init.c \
-  test/integration/test_legacy.c \
   test/integration/test_membership.c \
   test/integration/test_replication.c \
   test/integration/test_snapshot.c \
@@ -118,6 +98,36 @@ test_integration_core_SOURCES = \
 test_integration_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
 test_integration_core_LDFLAGS = -no-install
 test_integration_core_LDADD = libtest.la libraft.la
+
+if LZ4_AVAILABLE
+test_unit_core_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+test_unit_core_LDFLAGS = $(LZ4_LIBS)
+libraft_la_CFLAGS += -DLZ4_AVAILABLE $(LZ4_CFLAGS)
+libraft_la_LDFLAGS += $(LZ4_LIBS)
+endif # LZ4_AVAILABLE
+
+if V0_ENABLED
+libraft_la_SOURCES += src/legacy.c
+libraft_la_CFLAGS += -DV0_ENABLED
+
+libtest_la_SOURCES += \
+  test/lib/legacy.c
+
+test_integration_core_SOURCES += \
+  test/integration/test_legacy.c
+
+endif # V0_ENABLED
+
+if FIXTURE_ENABLED
+
+libraft_la_SOURCES += src/fixture.c
+raftinclude_HEADERS += include/raft/fixture.h
+
+check_PROGRAMS += \
+  test/fuzzy/core
+
+test_integration_core_SOURCES += \
+  test/integration/test_fixture.c
 
 test_fuzzy_core_SOURCES = \
   test/fuzzy/main_core.c \

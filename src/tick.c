@@ -5,7 +5,6 @@
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
-#include "legacy.h"
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"

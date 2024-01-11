@@ -16,22 +16,14 @@ struct fixture
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
     struct fixture *f = munit_malloc(sizeof *f);
-    unsigned i;
-    SETUP_CLUSTER(2);
-    if (!v1) {
-        CLUSTER_BOOTSTRAP;
-        for (i = 0; i < CLUSTER_N; i++) {
-            struct raft *raft = CLUSTER_RAFT(i);
-            raft->data = f;
-        }
-    }
+    SETUP_CLUSTER();
     return f;
 }
 
 static void tearDown(void *data)
 {
     struct fixture *f = data;
-    TEAR_DOWN_CLUSTER;
+    TEAR_DOWN_CLUSTER();
     free(f);
 }
 
