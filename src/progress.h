@@ -23,7 +23,7 @@ struct raft_progress
     raft_index match_index;  /* Highest index reported as replicated. */
     raft_time last_send;     /* Timestamp of last AppendEntries RPC. */
     raft_time last_recv;     /* Timestamp of last AppendEntries result. */
-    raft_flags features;     /* What the server is capable of. */
+    unsigned features;       /* What the server is capable of. */
     struct
     {
         raft_index index;    /* Last index of most recent snapshot sent. */
@@ -140,10 +140,10 @@ bool progressMaybeDecrement(struct raft *r,
 bool progressSnapshotDone(struct raft *r, unsigned i);
 
 /* Sets the feature flags of a node. */
-void progressSetFeatures(struct raft *r, const unsigned i, raft_flags features);
+void progressSetFeatures(struct raft *r, unsigned i, unsigned features);
 
 /* Gets the feature flags of a node. */
-raft_flags progressGetFeatures(struct raft *r, const unsigned i);
+unsigned progressGetFeatures(struct raft *r, unsigned i);
 
 /* Start catching up a server. */
 void progressCatchUpStart(struct raft *r, unsigned i);

@@ -87,11 +87,6 @@ typedef unsigned long long raft_index;
 typedef unsigned long long raft_time;
 
 /**
- * Hold the features a raft node is capable of.
- */
-typedef uint64_t raft_flags;
-
-/**
  * A data buffer.
  */
 struct raft_buffer
@@ -330,7 +325,7 @@ struct raft_append_entries_result
     raft_term term;            /* Receiver's current_term. */
     raft_index rejected;       /* If non-zero, the index that was rejected. */
     raft_index last_log_index; /* Receiver's last log entry index, as hint. */
-    raft_flags features;       /* Feature flags (since version 1). */
+    unsigned features;         /* Feature flags (since version 1). */
 };
 #define RAFT_APPEND_ENTRIES_RESULT_VERSION 1
 

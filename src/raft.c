@@ -11,7 +11,6 @@
 #include "election.h"
 #include "entry.h"
 #include "err.h"
-#include "flags.h"
 #include "heap.h"
 #include "legacy.h"
 #include "log.h"

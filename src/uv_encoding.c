@@ -54,13 +54,14 @@ static size_t sizeofAppendEntriesResultV0(void)
 {
     return sizeof(uint64_t) + /* Term. */
            sizeof(uint64_t) + /* Success. */
-           sizeof(uint64_t) /* Last log index. */;
+           sizeof(uint64_t);  /* Last log index. */
 }
 
 static size_t sizeofAppendEntriesResult(void)
 {
     return sizeofAppendEntriesResultV0() + /* Size of older version 0 message */
-           sizeof(uint64_t) /* Server features. */;
+           sizeof(uint32_t) +              /* Server features. */
+           sizeof(uint32_t);               /* Unused */
 }
 
 static size_t sizeofInstallSnapshot(const struct raft_install_snapshot *p)
@@ -149,7 +150,8 @@ static void encodeAppendEntriesResult(
     bytePut64(&cursor, p->term);
     bytePut64(&cursor, p->rejected);
     bytePut64(&cursor, p->last_log_index);
-    bytePut64(&cursor, p->features);
+    bytePut32(&cursor, p->features);
+    bytePut32(&cursor, 0 /* Unused */);
 }
 
 static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
@@ -451,7 +453,7 @@ static void decodeAppendEntriesResult(const uv_buf_t *buf,
     p->features = 0;
     if (buf->len > sizeofAppendEntriesResultV0()) {
         p->version = 1;
-        p->features = byteGet64(&cursor);
+        p->features = byteGet32(&cursor);
     }
 }
 

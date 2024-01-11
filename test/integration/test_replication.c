@@ -1,5 +1,4 @@
 #include "../../src/configuration.h"
-#include "../../src/flags.h"
 #include "../../src/progress.h"
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
@@ -181,8 +180,7 @@ TEST_V1(replication, FeatureFlags, setUp, tearDown, 0, NULL)
         "           no new entries to persist\n"
         "[ 140] 1 > recv append entries result from server 2\n");
 
-    munit_assert_ullong(raft->leader_state.progress[1].features, ==,
-                        RAFT_DEFAULT_FEATURE_FLAGS);
+    munit_assert_ullong(raft->leader_state.progress[1].features, ==, 0);
 
     return MUNIT_OK;
 }

@@ -190,14 +190,12 @@ void progressUpdateLastRecv(struct raft *r, unsigned i)
     r->leader_state.progress[i].last_recv = r->now;
 }
 
-inline void progressSetFeatures(struct raft *r,
-                                const unsigned i,
-                                raft_flags features)
+void progressSetFeatures(struct raft *r, const unsigned i, unsigned features)
 {
     r->leader_state.progress[i].features = features;
 }
 
-inline raft_flags progressGetFeatures(struct raft *r, const unsigned i)
+unsigned progressGetFeatures(struct raft *r, const unsigned i)
 {
     return r->leader_state.progress[i].features;
 }
