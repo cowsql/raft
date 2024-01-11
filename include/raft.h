@@ -429,92 +429,6 @@ struct raft_snapshot_metadata
 };
 
 /**
- * Hold the details of a snapshot.
- * The user-provided raft_buffer structs should provide the user with enough
- * flexibility to adapt/evolve snapshot formats.
- * If this struct would NEED to be adapted in the future, raft can always move
- * to a new struct with a new name and a new raft_io version.
- */
-struct raft_snapshot
-{
-    /* Index and term of last entry included in the snapshot. */
-    raft_index index;
-    raft_term term;
-
-    /* Last committed configuration included in the snapshot, along with the
-     * index it was committed at. */
-    struct raft_configuration configuration;
-    raft_index configuration_index;
-
-    /* Content of the snapshot. When a snapshot is taken, the user FSM can fill
-     * the bufs array with more than one buffer. When a snapshot is restored,
-     * there will always be a single buffer. */
-    struct raft_buffer *bufs;
-    unsigned n_bufs;
-};
-
-/**
- * Asynchronous request to send an RPC message.
- */
-struct raft_io_send;
-typedef void (*raft_io_send_cb)(struct raft_io_send *req, int status);
-struct raft_io_send
-{
-    void *data;         /* User data */
-    raft_io_send_cb cb; /* Request callback */
-};
-
-/**
- * Asynchronous request to store new log entries.
- */
-struct raft_io_append;
-typedef void (*raft_io_append_cb)(struct raft_io_append *req, int status);
-struct raft_io_append
-{
-    void *data;           /* User data */
-    raft_io_append_cb cb; /* Request callback */
-};
-
-/**
- * Asynchronous request to store a new snapshot.
- */
-struct raft_io_snapshot_put;
-typedef void (*raft_io_snapshot_put_cb)(struct raft_io_snapshot_put *req,
-                                        int status);
-struct raft_io_snapshot_put
-{
-    void *data;                 /* User data */
-    raft_io_snapshot_put_cb cb; /* Request callback */
-};
-
-/**
- * Asynchronous request to load the most recent snapshot available.
- */
-struct raft_io_snapshot_get;
-typedef void (*raft_io_snapshot_get_cb)(struct raft_io_snapshot_get *req,
-                                        struct raft_snapshot *snapshot,
-                                        int status);
-struct raft_io_snapshot_get
-{
-    void *data;                 /* User data */
-    raft_io_snapshot_get_cb cb; /* Request callback */
-};
-
-struct raft_io; /* Forward declaration. */
-
-/**
- * Callback invoked by the I/O implementation at regular intervals.
- */
-typedef void (*raft_io_tick_cb)(struct raft_io *io);
-
-/**
- * Callback invoked by the I/O implementation when an RPC message is received.
- */
-typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
-
-typedef void (*raft_io_close_cb)(struct raft_io *io);
-
-/**
  * Type codes of events to be passed to raft_step().
  */
 enum {
@@ -640,93 +554,6 @@ struct raft_update
 #define RAFT_UPDATE_TIMEOUT 1 << 7
 
 /**
- * version field MUST be filled out by user.
- * When moving to a new version, the user MUST implement the newly added
- * methods.
- */
-struct raft_io
-{
-    int version; /* 1 or 2 */
-    void *data;
-    void *impl;
-    char errmsg[RAFT_ERRMSG_BUF_SIZE];
-    int (*init)(struct raft_io *io, raft_id id, const char *address);
-    void (*close)(struct raft_io *io, raft_io_close_cb cb);
-    int (*load)(struct raft_io *io,
-                raft_term *term,
-                raft_id *voted_for,
-                struct raft_snapshot **snapshot,
-                raft_index *start_index,
-                struct raft_entry *entries[],
-                size_t *n_entries);
-    int (*start)(struct raft_io *io,
-                 unsigned msecs,
-                 raft_io_tick_cb tick,
-                 raft_io_recv_cb recv);
-    int (*bootstrap)(struct raft_io *io, const struct raft_configuration *conf);
-    int (*recover)(struct raft_io *io, const struct raft_configuration *conf);
-    int (*set_term)(struct raft_io *io, raft_term term);
-    int (*set_vote)(struct raft_io *io, raft_id server_id);
-    int (*send)(struct raft_io *io,
-                struct raft_io_send *req,
-                const struct raft_message *message,
-                raft_io_send_cb cb);
-    int (*append)(struct raft_io *io,
-                  struct raft_io_append *req,
-                  const struct raft_entry entries[],
-                  unsigned n,
-                  raft_io_append_cb cb);
-    int (*truncate)(struct raft_io *io, raft_index index);
-    int (*snapshot_put)(struct raft_io *io,
-                        unsigned trailing,
-                        struct raft_io_snapshot_put *req,
-                        const struct raft_snapshot *snapshot,
-                        raft_io_snapshot_put_cb cb);
-    int (*snapshot_get)(struct raft_io *io,
-                        struct raft_io_snapshot_get *req,
-                        raft_io_snapshot_get_cb cb);
-    raft_time (*time)(struct raft_io *io);
-    int (*random)(struct raft_io *io, int min, int max);
-};
-
-/**
- * version field MUST be filled out by user.
- * When moving to a new version, the user MUST initialize the new methods,
- * either with an implementation or with NULL.
- *
- * version 2:
- * introduces `snapshot_finalize`, when this method is not NULL, it will
- * always run after a successful call to `snapshot`, whether the snapshot has
- * been successfully written to disk or not. If it is set, raft will
- * assume no ownership of any of the `raft_buffer`s and the responsibility to
- * clean up lies with the user of raft.
- * `snapshot_finalize` can be used to e.g. release a lock that was taken during
- * a call to `snapshot`. Until `snapshot_finalize` is called, raft can access
- * the data contained in the `raft_buffer`s.
- */
-
-struct raft_fsm
-{
-    int version; /* 1, 2 or 3 */
-    void *data;
-    int (*apply)(struct raft_fsm *fsm,
-                 const struct raft_buffer *buf,
-                 void **result);
-    int (*snapshot)(struct raft_fsm *fsm,
-                    struct raft_buffer *bufs[],
-                    unsigned *n_bufs);
-    int (*restore)(struct raft_fsm *fsm, struct raft_buffer *buf);
-    /* Fields below added since version 2. */
-    int (*snapshot_finalize)(struct raft_fsm *fsm,
-                             struct raft_buffer *bufs[],
-                             unsigned *n_bufs);
-    /* Fields below added since version 3. */
-    int (*snapshot_async)(struct raft_fsm *fsm,
-                          struct raft_buffer *bufs[],
-                          unsigned *n_bufs);
-};
-
-/**
  * State codes.
  */
 enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
@@ -734,17 +561,6 @@ enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
 struct raft_progress;
 
 struct raft; /* Forward declaration. */
-
-/**
- * Close callback.
- *
- * It's safe to release the memory of a raft instance only after this callback
- * has fired.
- */
-typedef void (*raft_close_cb)(struct raft *raft);
-
-struct raft_change;   /* Forward declaration */
-struct raft_transfer; /* Forward declaration */
 
 struct raft_log;
 
@@ -782,6 +598,43 @@ struct raft_log;
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
 
+/**
+ * Hold the details of a snapshot.
+ * The user-provided raft_buffer structs should provide the user with enough
+ * flexibility to adapt/evolve snapshot formats.
+ * If this struct would NEED to be adapted in the future, raft can always move
+ * to a new struct with a new name and a new raft_io version.
+ */
+struct raft_snapshot
+{
+    /* Index and term of last entry included in the snapshot. */
+    raft_index index;
+    raft_term term;
+
+    /* Last committed configuration included in the snapshot, along with the
+     * index it was committed at. */
+    struct raft_configuration configuration;
+    raft_index configuration_index;
+
+    /* Content of the snapshot. When a snapshot is taken, the user FSM can fill
+     * the bufs array with more than one buffer. When a snapshot is restored,
+     * there will always be a single buffer. */
+    struct raft_buffer *bufs;
+    unsigned n_bufs;
+};
+
+/**
+ * Asynchronous request to store a new snapshot.
+ */
+struct raft_io_snapshot_put;
+typedef void (*raft_io_snapshot_put_cb)(struct raft_io_snapshot_put *req,
+                                        int status);
+struct raft_io_snapshot_put
+{
+    void *data;                 /* User data */
+    raft_io_snapshot_put_cb cb; /* Request callback */
+};
+
 #define RAFT__SNAPSHOT_FIELDS_V0          \
     struct                                \
     {                                     \
@@ -797,6 +650,8 @@ RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
+
+typedef void (*raft_close_cb)(struct raft *raft);
 
 /**
  * Hold and drive the state of a single raft server in a cluster.
@@ -1109,41 +964,6 @@ RAFT_API int raft_catch_up(const struct raft *r, raft_id id, int *status);
 RAFT_API raft_id raft_transferee(const struct raft *r);
 
 /**
- * Bootstrap this raft instance using the given configuration. The instance
- * must not have been started yet and must be completely pristine, otherwise
- * #RAFT_CANTBOOTSTRAP will be returned.
- */
-RAFT_API int raft_bootstrap(struct raft *r,
-                            const struct raft_configuration *conf);
-
-/**
- * Force a new configuration in order to recover from a loss of quorum where the
- * current configuration cannot be restored, such as when a majority of servers
- * die at the same time.
- *
- * This works by appending the new configuration directly to the log stored on
- * disk.
- *
- * In order for this operation to be safe you must follow these steps:
- *
- * 1. Make sure that no servers in the cluster are running, either because they
- *    died or because you manually stopped them.
- *
- * 2. Run @raft_recover exactly one time, on the non-dead server which has
- *    the highest term and the longest log.
- *
- * 3. Copy the data directory of the server you ran @raft_recover on to all
- *    other non-dead servers in the cluster, replacing their current data
- *    directory.
- *
- * 4. Restart all servers.
- */
-RAFT_API int raft_recover(struct raft *r,
-                          const struct raft_configuration *conf);
-
-RAFT_API int raft_start(struct raft *r);
-
-/**
  * Set the election timeout.
  *
  * Every raft instance is initialized with a default election timeout of 1000
@@ -1233,6 +1053,250 @@ RAFT_API raft_index raft_last_index(struct raft *r);
  * Return the index of the last entry that was applied to the local FSM.
  */
 RAFT_API raft_index raft_last_applied(struct raft *r);
+
+/**
+ * Generate a pseudo-random number between @min and @max, using @state as
+ * generator state.
+ */
+RAFT_API unsigned raft_random(unsigned *state, unsigned min, unsigned max);
+
+/**
+ * Return the name of state with the given code.
+ */
+RAFT_API const char *raft_state_name(int state);
+
+/**
+ * Return the name of role with the given code.
+ */
+RAFT_API const char *raft_role_name(int state);
+
+/**
+ * User-definable dynamic memory allocation functions.
+ *
+ * The @data field will be passed as first argument to all functions.
+ */
+struct raft_heap
+{
+    void *data; /* User data */
+    void *(*malloc)(void *data, size_t size);
+    void (*free)(void *data, void *ptr);
+    void *(*calloc)(void *data, size_t nmemb, size_t size);
+    void *(*realloc)(void *data, void *ptr, size_t size);
+    void *(*aligned_alloc)(void *data, size_t alignment, size_t size);
+    void (*aligned_free)(void *data, size_t alignment, void *ptr);
+};
+
+RAFT_API void *raft_malloc(size_t size);
+RAFT_API void raft_free(void *ptr);
+RAFT_API void *raft_calloc(size_t nmemb, size_t size);
+RAFT_API void *raft_realloc(void *ptr, size_t size);
+RAFT_API void *raft_aligned_alloc(size_t alignment, size_t size);
+RAFT_API void raft_aligned_free(size_t alignment, void *ptr);
+
+/**
+ * Use a custom dynamic memory allocator.
+ */
+RAFT_API void raft_heap_set(struct raft_heap *heap);
+
+/**
+ * Use the default dynamic memory allocator (from the stdlib). This clears any
+ * custom allocator specified with @raft_heap_set.
+ */
+RAFT_API void raft_heap_set_default(void);
+
+/**
+ * Return a reference to the current dynamic memory allocator.
+ *
+ * This is intended for use by applications that want to temporarily replace
+ * and then restore the original allocator, or that want to defer to the
+ * original allocator in some circumstances.
+ *
+ * The behavior of attempting to mutate the default allocator through the
+ * pointer returned by this function, including attempting to deallocate
+ * the backing memory, is undefined.
+ */
+RAFT_API const struct raft_heap *raft_heap_get(void);
+
+/**
+ * Asynchronous request to send an RPC message.
+ */
+struct raft_io_send;
+typedef void (*raft_io_send_cb)(struct raft_io_send *req, int status);
+struct raft_io_send
+{
+    void *data;         /* User data */
+    raft_io_send_cb cb; /* Request callback */
+};
+
+/**
+ * Asynchronous request to store new log entries.
+ */
+struct raft_io_append;
+typedef void (*raft_io_append_cb)(struct raft_io_append *req, int status);
+struct raft_io_append
+{
+    void *data;           /* User data */
+    raft_io_append_cb cb; /* Request callback */
+};
+
+/**
+ * Asynchronous request to load the most recent snapshot available.
+ */
+struct raft_io_snapshot_get;
+typedef void (*raft_io_snapshot_get_cb)(struct raft_io_snapshot_get *req,
+                                        struct raft_snapshot *snapshot,
+                                        int status);
+struct raft_io_snapshot_get
+{
+    void *data;                 /* User data */
+    raft_io_snapshot_get_cb cb; /* Request callback */
+};
+
+struct raft_io; /* Forward declaration. */
+
+/**
+ * Callback invoked by the I/O implementation at regular intervals.
+ */
+typedef void (*raft_io_tick_cb)(struct raft_io *io);
+
+/**
+ * Callback invoked by the I/O implementation when an RPC message is received.
+ */
+typedef void (*raft_io_recv_cb)(struct raft_io *io, struct raft_message *msg);
+
+typedef void (*raft_io_close_cb)(struct raft_io *io);
+
+/**
+ * version field MUST be filled out by user.
+ * When moving to a new version, the user MUST implement the newly added
+ * methods.
+ */
+struct raft_io
+{
+    int version; /* 1 or 2 */
+    void *data;
+    void *impl;
+    char errmsg[RAFT_ERRMSG_BUF_SIZE];
+    int (*init)(struct raft_io *io, raft_id id, const char *address);
+    void (*close)(struct raft_io *io, raft_io_close_cb cb);
+    int (*load)(struct raft_io *io,
+                raft_term *term,
+                raft_id *voted_for,
+                struct raft_snapshot **snapshot,
+                raft_index *start_index,
+                struct raft_entry *entries[],
+                size_t *n_entries);
+    int (*start)(struct raft_io *io,
+                 unsigned msecs,
+                 raft_io_tick_cb tick,
+                 raft_io_recv_cb recv);
+    int (*bootstrap)(struct raft_io *io, const struct raft_configuration *conf);
+    int (*recover)(struct raft_io *io, const struct raft_configuration *conf);
+    int (*set_term)(struct raft_io *io, raft_term term);
+    int (*set_vote)(struct raft_io *io, raft_id server_id);
+    int (*send)(struct raft_io *io,
+                struct raft_io_send *req,
+                const struct raft_message *message,
+                raft_io_send_cb cb);
+    int (*append)(struct raft_io *io,
+                  struct raft_io_append *req,
+                  const struct raft_entry entries[],
+                  unsigned n,
+                  raft_io_append_cb cb);
+    int (*truncate)(struct raft_io *io, raft_index index);
+    int (*snapshot_put)(struct raft_io *io,
+                        unsigned trailing,
+                        struct raft_io_snapshot_put *req,
+                        const struct raft_snapshot *snapshot,
+                        raft_io_snapshot_put_cb cb);
+    int (*snapshot_get)(struct raft_io *io,
+                        struct raft_io_snapshot_get *req,
+                        raft_io_snapshot_get_cb cb);
+    raft_time (*time)(struct raft_io *io);
+    int (*random)(struct raft_io *io, int min, int max);
+};
+
+/**
+ * version field MUST be filled out by user.
+ * When moving to a new version, the user MUST initialize the new methods,
+ * either with an implementation or with NULL.
+ *
+ * version 2:
+ * introduces `snapshot_finalize`, when this method is not NULL, it will
+ * always run after a successful call to `snapshot`, whether the snapshot has
+ * been successfully written to disk or not. If it is set, raft will
+ * assume no ownership of any of the `raft_buffer`s and the responsibility to
+ * clean up lies with the user of raft.
+ * `snapshot_finalize` can be used to e.g. release a lock that was taken during
+ * a call to `snapshot`. Until `snapshot_finalize` is called, raft can access
+ * the data contained in the `raft_buffer`s.
+ */
+
+struct raft_fsm
+{
+    int version; /* 1, 2 or 3 */
+    void *data;
+    int (*apply)(struct raft_fsm *fsm,
+                 const struct raft_buffer *buf,
+                 void **result);
+    int (*snapshot)(struct raft_fsm *fsm,
+                    struct raft_buffer *bufs[],
+                    unsigned *n_bufs);
+    int (*restore)(struct raft_fsm *fsm, struct raft_buffer *buf);
+    /* Fields below added since version 2. */
+    int (*snapshot_finalize)(struct raft_fsm *fsm,
+                             struct raft_buffer *bufs[],
+                             unsigned *n_bufs);
+    /* Fields below added since version 3. */
+    int (*snapshot_async)(struct raft_fsm *fsm,
+                          struct raft_buffer *bufs[],
+                          unsigned *n_bufs);
+};
+
+/**
+ * Close callback.
+ *
+ * It's safe to release the memory of a raft instance only after this callback
+ * has fired.
+ */
+
+struct raft_change;   /* Forward declaration */
+struct raft_transfer; /* Forward declaration */
+
+/**
+ * Bootstrap this raft instance using the given configuration. The instance
+ * must not have been started yet and must be completely pristine, otherwise
+ * #RAFT_CANTBOOTSTRAP will be returned.
+ */
+RAFT_API int raft_bootstrap(struct raft *r,
+                            const struct raft_configuration *conf);
+
+/**
+ * Force a new configuration in order to recover from a loss of quorum where the
+ * current configuration cannot be restored, such as when a majority of servers
+ * die at the same time.
+ *
+ * This works by appending the new configuration directly to the log stored on
+ * disk.
+ *
+ * In order for this operation to be safe you must follow these steps:
+ *
+ * 1. Make sure that no servers in the cluster are running, either because they
+ *    died or because you manually stopped them.
+ *
+ * 2. Run @raft_recover exactly one time, on the non-dead server which has
+ *    the highest term and the longest log.
+ *
+ * 3. Copy the data directory of the server you ran @raft_recover on to all
+ *    other non-dead servers in the cluster, replacing their current data
+ *    directory.
+ *
+ * 4. Restart all servers.
+ */
+RAFT_API int raft_recover(struct raft *r,
+                          const struct raft_configuration *conf);
+
+RAFT_API int raft_start(struct raft *r);
 
 /* Unused uint64_t slots that are reserved for v0.x extensions.*/
 #define RAFT__REQUEST_RESERVED \
@@ -1410,69 +1474,6 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
-
-/**
- * Generate a pseudo-random number between @min and @max, using @state as
- * generator state.
- */
-RAFT_API unsigned raft_random(unsigned *state, unsigned min, unsigned max);
-
-/**
- * Return the name of state with the given code.
- */
-RAFT_API const char *raft_state_name(int state);
-
-/**
- * Return the name of role with the given code.
- */
-RAFT_API const char *raft_role_name(int state);
-
-/**
- * User-definable dynamic memory allocation functions.
- *
- * The @data field will be passed as first argument to all functions.
- */
-struct raft_heap
-{
-    void *data; /* User data */
-    void *(*malloc)(void *data, size_t size);
-    void (*free)(void *data, void *ptr);
-    void *(*calloc)(void *data, size_t nmemb, size_t size);
-    void *(*realloc)(void *data, void *ptr, size_t size);
-    void *(*aligned_alloc)(void *data, size_t alignment, size_t size);
-    void (*aligned_free)(void *data, size_t alignment, void *ptr);
-};
-
-RAFT_API void *raft_malloc(size_t size);
-RAFT_API void raft_free(void *ptr);
-RAFT_API void *raft_calloc(size_t nmemb, size_t size);
-RAFT_API void *raft_realloc(void *ptr, size_t size);
-RAFT_API void *raft_aligned_alloc(size_t alignment, size_t size);
-RAFT_API void raft_aligned_free(size_t alignment, void *ptr);
-
-/**
- * Use a custom dynamic memory allocator.
- */
-RAFT_API void raft_heap_set(struct raft_heap *heap);
-
-/**
- * Use the default dynamic memory allocator (from the stdlib). This clears any
- * custom allocator specified with @raft_heap_set.
- */
-RAFT_API void raft_heap_set_default(void);
-
-/**
- * Return a reference to the current dynamic memory allocator.
- *
- * This is intended for use by applications that want to temporarily replace
- * and then restore the original allocator, or that want to defer to the
- * original allocator in some circumstances.
- *
- * The behavior of attempting to mutate the default allocator through the
- * pointer returned by this function, including attempting to deallocate
- * the backing memory, is undefined.
- */
-RAFT_API const struct raft_heap *raft_heap_get(void);
 
 #undef RAFT__REQUEST
 #undef RAFT__ASSERT_COMPATIBILITY
