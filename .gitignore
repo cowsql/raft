@@ -38,3 +38,4 @@ tools/raft-benchmark
 tmp
 conftest*
 docs/build
+include/raft.h

@@ -170,5 +170,5 @@ AS_IF([test "x$enable_hardening" != "xno"],
 
 AC_SUBST(AM_LDLAGS)
 
-AC_CONFIG_FILES([raft.pc Makefile])
+AC_CONFIG_FILES([include/raft.h raft.pc Makefile])
 AC_OUTPUT
