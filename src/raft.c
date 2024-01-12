@@ -12,7 +12,6 @@
 #include "entry.h"
 #include "err.h"
 #include "heap.h"
-#include "legacy.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
@@ -23,6 +22,10 @@
 #include "restore.h"
 #include "tick.h"
 #include "tracing.h"
+
+#ifndef RAFT__LEGACY_no
+#include "legacy.h"
+#endif
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
 #define DEFAULT_HEARTBEAT_TIMEOUT 100          /* One tenth of a second */
@@ -42,9 +45,24 @@ int raft_version_number(void)
     return RAFT_VERSION_NUMBER;
 }
 
+#ifndef RAFT__LEGACY_no
 static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
-                             struct raft_fsm *fsm);
+                             struct raft_fsm *fsm)
+{
+    if (io->version == 0) {
+        ErrMsgPrintf(r->errmsg, "io->version must be set");
+        return -1;
+    }
+
+    if (fsm->version == 0) {
+        ErrMsgPrintf(r->errmsg, "fsm->version must be set");
+        return -1;
+    }
+
+    return 0;
+}
+#endif
 
 int raft_init(struct raft *r,
               struct raft_io *io,
@@ -99,6 +117,10 @@ int raft_init(struct raft *r,
     r->messages = NULL;
     r->n_messages_cap = 0;
     r->update = NULL;
+#if defined(RAFT__LEGACY_no)
+    (void)io;
+    (void)fsm;
+#else
     r->io = NULL;
     r->fsm = NULL;
     if (io != NULL) {
@@ -129,10 +151,13 @@ int raft_init(struct raft *r,
         r->legacy.snapshot_index = 0;
         r->transfer = NULL;
     }
+#endif
     return 0;
 
+#ifndef RAFT__LEGACY_no
 err_after_log_init:
     logClose(r->log);
+#endif
 err_after_address_alloc:
     RaftHeapFree(r->address);
 err:
@@ -151,6 +176,7 @@ static void finalClose(struct raft *r)
     }
 }
 
+#ifndef RAFT__LEGACY_no
 static void ioCloseCb(struct raft_io *io)
 {
     struct raft *r = io->data;
@@ -159,27 +185,30 @@ static void ioCloseCb(struct raft_io *io)
         r->close_cb(r);
     }
 }
+#endif
 
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->update == NULL);
 
+#if defined(RAFT__LEGACY_no)
+    (void)cb;
+    finalClose(r);
+#else
     if (r->io != NULL) {
-#ifdef V0_ENABLED
         struct raft_event event;
         assert(r->close_cb == NULL);
         event.time = r->io->time(r->io);
         event.type = RAFT_STOP;
 
         LegacyForwardToRaftIo(r, &event);
-#endif
-
         r->close_cb = cb;
 
         r->io->close(r->io, ioCloseCb);
     } else {
         finalClose(r);
     }
+#endif
 }
 
 void raft_seed(struct raft *r, unsigned random)
@@ -639,13 +668,15 @@ void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
 
-    /* FIXME: workaround for failures in the dqlite test suite, which sets
-     * timeouts too low and end up in failures when run on slow harder. */
+/* FIXME: workaround for failures in the dqlite test suite, which sets
+ * timeouts too low and end up in failures when run on slow harder. */
+#ifndef RAFT__LEGACY_no
     if (r->io != NULL && r->election_timeout == 150 &&
         r->heartbeat_timeout == 15) {
         r->election_timeout *= 3;
         r->heartbeat_timeout *= 3;
     }
+#endif
 
     switch (r->state) {
         case RAFT_FOLLOWER:
@@ -787,21 +818,4 @@ const char *raft_role_name(int role)
             break;
     }
     return name;
-}
-
-static int ioFsmVersionCheck(struct raft *r,
-                             struct raft_io *io,
-                             struct raft_fsm *fsm)
-{
-    if (io->version == 0) {
-        ErrMsgPrintf(r->errmsg, "io->version must be set");
-        return -1;
-    }
-
-    if (fsm->version == 0) {
-        ErrMsgPrintf(r->errmsg, "fsm->version must be set");
-        return -1;
-    }
-
-    return 0;
 }

@@ -36,7 +36,6 @@ libraft_la_SOURCES = \
   src/recv_timeout_now.c \
   src/restore.c \
   src/replication.c \
-  src/snapshot.c \
   src/state.c \
   src/syscall.c \
   src/tick.c \
@@ -56,7 +55,6 @@ libtest_la_SOURCES = \
   test/lib/addrinfo.c \
   test/lib/cluster.c \
   test/lib/fault.c \
-  test/lib/fsm.c \
   test/lib/heap.c \
   test/lib/munit.c \
   test/lib/tracer.c \
@@ -107,10 +105,13 @@ libraft_la_LDFLAGS += $(LZ4_LIBS)
 endif # LZ4_AVAILABLE
 
 if V0_ENABLED
-libraft_la_SOURCES += src/legacy.c
+libraft_la_SOURCES += \
+  src/legacy.c \
+  src/snapshot.c
 libraft_la_CFLAGS += -DV0_ENABLED
 
 libtest_la_SOURCES += \
+  test/lib/fsm.c \
   test/lib/legacy.c
 
 test_integration_core_SOURCES += \

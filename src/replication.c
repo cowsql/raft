@@ -37,18 +37,6 @@
  * TODO: Make this number configurable. */
 #define MAX_APPEND_ENTRIES 32
 
-/* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
- * raft_io_>send(). */
-struct sendAppendEntries
-{
-    struct raft *raft;          /* Instance sending the entries. */
-    struct raft_io_send send;   /* Underlying I/O send request. */
-    raft_index index;           /* Index of the first entry in the request. */
-    struct raft_entry *entries; /* Entries referenced in the request. */
-    unsigned n;                 /* Length of the entries array. */
-    raft_id server_id;          /* Destination server. */
-};
-
 /* Callback invoked after request to send an AppendEntries RPC has completed. */
 int replicationSendAppendEntriesDone(struct raft *r,
                                      struct raft_message *message,
@@ -148,16 +136,6 @@ err:
     assert(rv != 0);
     return rv;
 }
-
-/* Context of a RAFT_IO_INSTALL_SNAPSHOT request that was submitted with
- * raft_io_>send(). */
-struct sendInstallSnapshot
-{
-    struct raft *raft;               /* Instance sending the snapshot. */
-    struct raft_io_snapshot_get get; /* Snapshot get request. */
-    struct raft_io_send send;        /* Underlying I/O send request. */
-    raft_id server_id;               /* Destination server. */
-};
 
 int replicationSendInstallSnapshotDone(struct raft *r,
                                        struct raft_message *message,
@@ -411,9 +389,6 @@ static int leaderPersistEntriesDone(struct raft *r,
      * giving the cluster a chance to elect another leader that doesn't have a
      * full disk (or whatever caused our write error). */
     if (status != 0) {
-        if (r->io != NULL) {
-            ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        }
         convertToFollower(r);
         goto out;
     }

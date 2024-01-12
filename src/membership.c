@@ -214,8 +214,7 @@ int membershipLeadershipTransferStart(struct raft *r)
     infof("send timeout to %llu", server->id);
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
-        ErrMsgTransferf(r->io->errmsg, r->errmsg, "send timeout now to %llu",
-                        server->id);
+        ErrMsgPrintf(r->errmsg, "send timeout now to %llu", server->id);
         return rv;
     }
 
