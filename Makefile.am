@@ -78,7 +78,7 @@ test_unit_core_SOURCES = \
   test/unit/test_log.c \
   test/unit/test_queue.c \
   test/unit/test_random.c
-test_unit_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
+test_unit_core_CFLAGS = $(AM_CFLAGS) $(CODE_COVERAGE_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
 
 test_integration_core_SOURCES = \
