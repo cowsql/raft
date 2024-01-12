@@ -516,8 +516,6 @@ TEST_V1(election, RejectIfNotVoter, setUp, tearDown, 0, NULL)
 
     event.time = f->cluster_.time;
     event.type = RAFT_RECEIVE;
-    event.receive.id = 1;
-    event.receive.address = "1";
     event.receive.message = &message;
 
     rv = raft_step(CLUSTER_RAFT(2), &event, &update);

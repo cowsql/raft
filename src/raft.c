@@ -429,10 +429,7 @@ static int stepSent(struct raft *r, struct raft_message *message, int status)
 }
 
 /* Handle new messages. */
-static int stepReceive(struct raft *r,
-                       raft_id id,
-                       const char *address,
-                       struct raft_message *message)
+static int stepReceive(struct raft *r, struct raft_message *message)
 {
     const char *desc;
 
@@ -460,9 +457,9 @@ static int stepReceive(struct raft *r,
             break;
     }
 
-    infof("recv %s from server %llu", desc, id);
+    infof("recv %s from server %llu", desc, message->server_id);
 
-    return recvMessage(r, id, address, message);
+    return recvMessage(r, message);
 }
 
 int stepSnapshot(struct raft *r,
@@ -523,8 +520,7 @@ int raft_step(struct raft *r,
             rv = stepSent(r, &event->sent.message, event->sent.status);
             break;
         case RAFT_RECEIVE:
-            rv = stepReceive(r, event->receive.id, event->receive.address,
-                             event->receive.message);
+            rv = stepReceive(r, event->receive.message);
             break;
         case RAFT_CONFIGURATION:
             rv = replicationApplyConfigurationChange(

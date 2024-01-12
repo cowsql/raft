@@ -746,17 +746,15 @@ static void serverEnqueueReceive(struct test_server *s,
 {
     struct step *step = munit_malloc(sizeof *step);
     struct raft_event *event = &step->event;
-    struct test_server *sender;
 
     step->id = message->server_id;
 
     event->time = s->cluster->time + s->network_latency;
     event->type = RAFT_RECEIVE;
-    event->receive.id = s->raft.id;
-    sender = clusterGetServer(s->cluster, event->receive.id);
-    event->receive.address = sender->raft.address;
     event->receive.message = munit_malloc(sizeof *event->receive.message);
     *event->receive.message = *message;
+    event->receive.message->server_id = s->raft.id;
+    event->receive.message->server_address = s->raft.address;
 
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
@@ -857,7 +855,8 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     /* Check if there's a disconnection. */
     QUEUE_FOREACH (head, &s->cluster->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
-        if (d->id1 == event->receive.id && d->id2 == s->raft.id) {
+        if (d->id1 == event->receive.message->server_id &&
+            d->id2 == s->raft.id) {
             dropReceiveEvent(step);
             return;
         }

@@ -6,10 +6,7 @@
 #include "../include/raft.h"
 
 /* Function to be invoked upon receiving an RPC message. */
-int recvMessage(struct raft *r,
-                raft_id id,
-                const char *address,
-                struct raft_message *message);
+int recvMessage(struct raft *r, struct raft_message *message);
 
 /* Compare a request's term with the server's current term.
  *

@@ -500,8 +500,6 @@ struct raft_event
         } sent;
         struct
         {
-            raft_id id;
-            const char *address;
             struct raft_message *message;
         } receive;
         struct
@@ -578,10 +576,10 @@ struct raft; /* Forward declaration. */
 struct raft_log;
 
 #if defined(RAFT__LEGACY_no)
-#define RAFT__RESERVED  \
-    struct              \
-    {                   \
-        void *reserved; \
+#define RAFT__RESERVED \
+    struct             \
+    {                  \
+        void *dummy;   \
     }
 #define RAFT__EXTENSIONS_LEGACY
 #else

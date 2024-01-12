@@ -1582,8 +1582,6 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
 
     event.type = RAFT_RECEIVE;
     event.time = r->now;
-    event.receive.id = message->server_id;
-    event.receive.address = message->server_address;
     event.receive.message = message;
 
     rv = LegacyForwardToRaftIo(r, &event);
