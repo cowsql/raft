@@ -39,7 +39,8 @@ libraft_la_SOURCES = \
   src/state.c \
   src/syscall.c \
   src/tick.c \
-  src/tracing.c
+  src/tracing.c \
+  src/trail.c
 
 bin_PROGRAMS =
 
@@ -68,6 +69,7 @@ test_unit_core_SOURCES = \
   src/heap.c \
   src/log.c \
   src/random.c \
+  src/trail.c \
   test/unit/main_core.c \
   test/unit/test_byte.c \
   test/unit/test_compress.c \
@@ -75,7 +77,8 @@ test_unit_core_SOURCES = \
   test/unit/test_err.c \
   test/unit/test_log.c \
   test/unit/test_queue.c \
-  test/unit/test_random.c
+  test/unit/test_random.c \
+  test/unit/test_trail.c
 test_unit_core_CFLAGS = $(AM_CFLAGS) $(CODE_COVERAGE_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
 
