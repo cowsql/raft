@@ -569,11 +569,28 @@ struct raft_update
  */
 enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
 
-struct raft_progress;
+/**
+ * Data structure for efficiently keeping track of the indexes of all entries in
+ * the log and of their terms.
+ */
+struct raft_trail
+{
+    struct
+    {
+        raft_index index; /* Index of the last entry at a certain term. */
+        raft_term term;   /* Term this record is tracking. */
+    } *records;           /* Circular buffer of index/term records. */
+    unsigned size;        /* Number of available slots in the buffer. */
+    unsigned front, back; /* Indexes of used slots [front, back). */
+    raft_index offset;    /* Index of first entry in the log is offset+1. */
+    struct                /* Information about last snapshot, or zero. */
+    {
+        raft_index index; /* Snapshot contains all entries up to here. */
+        raft_term term;   /* Term of last index. */
+    } snapshot;
+};
 
 struct raft; /* Forward declaration. */
-
-struct raft_log;
 
 #if defined(RAFT__LEGACY_no)
 #define RAFT__RESERVED \
@@ -617,6 +634,7 @@ struct raft_log;
         raft_index configuration_last_snapshot_index;                      \
         RAFT__EXTENSIONS_LEGACY                                            \
         struct raft_update *update; /* Pointer passed to raft_step() */    \
+        struct raft_trail trail;                                           \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
@@ -683,6 +701,10 @@ struct raft_io_snapshot_put
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
 
 typedef void (*raft_close_cb)(struct raft *raft);
+
+struct raft_progress;
+
+struct raft_log;
 
 /**
  * Hold and drive the state of a single raft server in a cluster.
