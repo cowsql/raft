@@ -755,6 +755,12 @@ int raft_configuration_encode(const struct raft_configuration *c,
     return configurationEncode(c, buf);
 }
 
+int raft_configuration_decode(const struct raft_buffer *buf,
+                              struct raft_configuration *c)
+{
+    return configurationDecode(buf, c);
+}
+
 unsigned long long raft_digest(const char *text, unsigned long long n)
 {
     struct byteSha1 sha1;
