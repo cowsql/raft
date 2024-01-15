@@ -800,11 +800,14 @@ static int legacyApply(struct raft *r,
                 *n_events += 1;
                 *events = raft_realloc(*events, *n_events * sizeof **events);
                 assert(*events != NULL);
+
                 event = &(*events)[*n_events - 1];
                 event->type = RAFT_CONFIGURATION;
                 event->configuration.index = index;
 
-                rv = 0;
+                rv = configurationDecode(&entry->buf,
+                                         &event->configuration.conf);
+
                 break;
             default:
                 rv = 0; /* For coverity. This case can't be taken. */

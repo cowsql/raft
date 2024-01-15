@@ -105,6 +105,24 @@ static void diskAddEntry(struct test_disk *d, const struct raft_entry *entry)
     entryCopy(entry, &d->entries[d->n_entries - 1]);
 }
 
+/* Get the entry at the given index. */
+static const struct raft_entry *diskGetEntry(struct test_disk *d,
+                                             raft_index index)
+{
+    unsigned i;
+
+    if (index < d->start_index) {
+        return NULL;
+    }
+
+    i = (unsigned)(index - d->start_index);
+    if (i > d->n_entries - 1) {
+        return NULL;
+    }
+
+    return &d->entries[i];
+}
+
 /* Deep copy configuration object @src to @dst. */
 static void confCopy(const struct raft_configuration *src,
                      struct raft_configuration *dst)
@@ -349,6 +367,7 @@ static void serverInit(struct test_server *s,
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
+    s->last_applied = 0;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;
     s->disk_latency = DEFAULT_DISK_LATENCY;
@@ -433,6 +452,9 @@ static void serverCancelPending(struct test_server *s)
                 break;
             case RAFT_RECEIVE:
                 dropReceiveEvent(step);
+                break;
+            case RAFT_CONFIGURATION:
+                raft_configuration_close(&step->event.configuration.conf);
                 break;
             default:
                 break;
@@ -587,6 +609,8 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
 
     /* XXX: assume there is no uncommitted configuration. */
     munit_assert_ullong(r->configuration_uncommitted_index, ==, 0);
+    munit_assert_ullong(r->configuration_committed_index, >, 0);
+
     confCopy(&r->configuration, &event->snapshot.metadata.configuration);
     event->snapshot.metadata.configuration_index =
         r->configuration_committed_index;
@@ -598,18 +622,33 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
 
 static void serverProcessCommitIndex(struct test_server *s)
 {
-    struct step *step = munit_malloc(sizeof *step);
+    struct step *step;
+    const struct raft_entry *entry;
+    raft_index commit_index = raft_commit_index(&s->raft);
+    raft_index index;
+    int rv;
 
-    step->id = s->raft.id;
+    for (index = s->last_applied + 1; index <= commit_index; index++) {
+        entry = diskGetEntry(&s->disk, index);
 
-    step->event.time = s->cluster->time;
-    step->event.type = RAFT_CONFIGURATION;
+        if (entry == NULL || entry->type != RAFT_CHANGE) {
+            continue;
+        }
 
-    /* XXX: we should check if the given index is actually associated with a
-     * configuration */
-    step->event.configuration.index = raft_commit_index(&s->raft);
+        step = munit_malloc(sizeof *step);
+        step->id = s->raft.id;
+        step->event.time = s->cluster->time;
+        step->event.type = RAFT_CONFIGURATION;
+        step->event.configuration.index = index;
 
-    QUEUE_PUSH(&s->cluster->steps, &step->queue);
+        rv = raft_configuration_decode(&entry->buf,
+                                       &step->event.configuration.conf);
+        munit_assert_int(rv, ==, 0);
+
+        QUEUE_PUSH(&s->cluster->steps, &step->queue);
+    }
+
+    s->last_applied = commit_index;
 
     serverMaybeTakeSnapshot(s);
 }
@@ -873,11 +912,12 @@ static void serverCompleteConfiguration(struct test_server *s,
 {
     struct raft *r = &s->raft;
     struct raft_event *event = &step->event;
+    raft_index commit_index = raft_commit_index(r);
 
     serverStep(s, event);
 
     /* The last call to raft_step() did not change the commit index. */
-    munit_assert_ullong(raft_commit_index(r), ==, event->configuration.index);
+    munit_assert_ullong(raft_commit_index(r), ==, commit_index);
 }
 
 static void serverCompleteTakeSnapshot(struct test_server *s, struct step *step)

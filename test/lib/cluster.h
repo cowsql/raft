@@ -186,6 +186,7 @@ struct test_server
     struct raft_tracer tracer;    /* Custom tracer */
     struct raft raft;             /* Raft instance */
     struct test_cluster *cluster; /* Parent cluster */
+    raft_index last_applied;      /* Last processed committed index. */
     raft_time timeout;            /* Next scheduled timeout */
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */

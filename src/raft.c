@@ -97,7 +97,7 @@ int raft_init(struct raft *r,
     }
 
     raft_configuration_init(&r->configuration);
-    raft_configuration_init(&r->configuration_last_snapshot);
+    raft_configuration_init(&r->configuration_committed);
     r->configuration_committed_index = 0;
     r->configuration_uncommitted_index = 0;
     r->configuration_last_snapshot_index = 0;
@@ -173,7 +173,7 @@ static void finalClose(struct raft *r)
     TrailClose(&r->trail);
     logClose(r->log);
     raft_configuration_close(&r->configuration);
-    raft_configuration_close(&r->configuration_last_snapshot);
+    raft_configuration_close(&r->configuration_committed);
     if (r->messages != NULL) {
         raft_free(r->messages);
     }
@@ -528,7 +528,7 @@ int raft_step(struct raft *r,
             break;
         case RAFT_CONFIGURATION:
             rv = replicationApplyConfigurationChange(
-                r, event->configuration.index);
+                r, &event->configuration.conf, event->configuration.index);
             break;
         case RAFT_SNAPSHOT:
             rv = stepSnapshot(r, &event->snapshot.metadata,

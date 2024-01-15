@@ -51,21 +51,10 @@ err:
 int membershipFetchLastCommittedConfiguration(struct raft *r,
                                               struct raft_configuration *conf)
 {
-    const struct raft_entry *entry;
     int rv;
 
-    /* Try to get the entry at r->configuration_committed_index from the log. If
-     * the entry is not present in the log anymore because the log was truncated
-     * after a snapshot, we can just use configuration_last_snapshot, which we
-     * cached when we took or restored the snapshot and is guaranteed to match
-     * the content that the entry at r->configuration_committed_index had. */
-    entry = logGet(r->log, r->configuration_committed_index);
-    if (entry != NULL) {
-        rv = configurationDecode(&entry->buf, conf);
-    } else {
-        assert(r->configuration_last_snapshot.n > 0);
-        rv = configurationCopy(&r->configuration_last_snapshot, conf);
-    }
+    assert(r->configuration_committed_index > 0);
+    rv = configurationCopy(&r->configuration_committed, conf);
     if (rv != 0) {
         return rv;
     }

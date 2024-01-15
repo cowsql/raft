@@ -1132,11 +1132,14 @@ int replicationInstallSnapshot(struct raft *r,
     return 0;
 }
 
-int replicationApplyConfigurationChange(struct raft *r, raft_index index)
+int replicationApplyConfigurationChange(struct raft *r,
+                                        struct raft_configuration *conf,
+                                        raft_index index)
 {
     assert(index > 0);
 
     if (r->configuration_uncommitted_index != index) {
+        configurationClose(conf);
         return 0;
     }
 
@@ -1146,6 +1149,8 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
      * index, since that uncommitted configuration is now committed. */
     r->configuration_uncommitted_index = 0;
     r->configuration_committed_index = index;
+    configurationClose(&r->configuration_committed);
+    r->configuration_committed = *conf;
 
     if (r->state == RAFT_LEADER) {
         const struct raft_server *server;
@@ -1178,32 +1183,21 @@ int replicationSnapshot(struct raft *r,
                         struct raft_snapshot_metadata *metadata,
                         unsigned trailing)
 {
-    int rv;
-
     (void)trailing;
-
-    /* Cache the configuration contained in the snapshot. While the snapshot was
-     * written, new configuration changes could have been committed, these
-     * changes will not be purged from the log by this snapshot. However
-     * we still cache the configuration for consistency. */
-    configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&metadata->configuration,
-                           &r->configuration_last_snapshot);
-    if (rv != 0) {
-        /* TODO: make this a hard fault, because if we have no backup and the
-         * log was truncated it will be impossible to rollback an aborted
-         * configuration change. */
-        tracef("failed to backup last committed configuration.");
-    }
 
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
     r->configuration_last_snapshot_index = metadata->configuration_index;
 
+    if (metadata->configuration_index > r->configuration_committed_index) {
+        configurationClose(&r->configuration_committed);
+        r->configuration_committed = metadata->configuration;
+    } else {
+        configurationClose(&metadata->configuration);
+    }
+
     logSnapshot(r->log, metadata->index, r->snapshot.trailing);
     TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
-
-    configurationClose(&metadata->configuration);
 
     return 0;
 }

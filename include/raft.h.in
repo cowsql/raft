@@ -510,6 +510,7 @@ struct raft_event
         struct
         {
             raft_index index;
+            struct raft_configuration conf;
         } configuration;
         struct
         {
@@ -756,8 +757,8 @@ struct raft
      * most one uncommitted entry of type #RAFT_CHANGE because we allow only one
      * configuration change at a time.
      *
-     * At all times #configuration_last_snapshot is a copy of the configuration
-     * contained the most recent snapshot, if any.
+     * At all times #configuration_committed is a copy of the last committed
+     * configuration, if any.
      *
      * The possible scenarios are:
      *
@@ -765,7 +766,7 @@ struct raft
      *    are both zero. This should only happen when a brand new server starts
      *    joining a cluster and is waiting to receive log entries from the
      *    current leader. In this case #configuration and
-     *    #configuration_last_snapshot must be empty and have no servers.
+     *    #configuration_committed must be empty and have no servers.
      *
      * 2. #configuration_committed_index is non-zero and
      *    #configuration_uncommitted_index is zero. This means that
@@ -779,17 +780,15 @@ struct raft
      *    configuration change. The content of #configuration must match the one
      *    of the log entry at #configuration_uncommitted_index.
      *
-     * When a snapshot is taken, a copy of the most recent configuration known
-     * to be committed (i.e. the configuration contained in the log entry at
-     * #configuration_committed_index) is saved in #configuration_last_snapshot,
-     * so it can be easily retrieved in case the log gets truncated because of
-     * compaction and does not contain the entry at
-     * #configuration_committed_index anymore. Likewise, if a snapshot is
+     * When a new configuration is committed, a copy of it is saved in
+     * #configuration_committed, so it can be easily retrieved in case the
+     * log gets truncated because of compaction and does not contain the entry
+     * at #configuration_committed_index anymore. Likewise, if a snapshot is
      * restored its associated configuration is saved in
-     * #configuration_last_snapshot.
+     * #configuration_committed.
      */
     struct raft_configuration configuration;
-    struct raft_configuration configuration_last_snapshot;
+    struct raft_configuration configuration_committed;
     raft_index configuration_committed_index;
     raft_index configuration_uncommitted_index;
 

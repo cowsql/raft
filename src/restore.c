@@ -33,6 +33,11 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
     if (index == 1) {
         assert(r->configuration_uncommitted_index == 0);
         r->configuration_committed_index = 1;
+        configurationClose(&r->configuration_committed);
+        rv = configurationCopy(&r->configuration, &r->configuration_committed);
+        if (rv != 0) {
+            return rv;
+        }
     } else {
         assert(r->configuration_committed_index < index);
         r->configuration_uncommitted_index = index;
@@ -48,7 +53,7 @@ static int restoreMostRecentConfigurationEntry(struct raft *r,
  * entries. That entry is used in case of configuration rollback scenarios. If
  * we don't find the second-to-last configuration entry in the log, it means
  * that the log was truncated after a snapshot and second-to-last configuration
- * is available in r->configuration_last_snapshot, which we popolated earlier
+ * is still available in r->configuration_committed, which we popolated earlier
  * when the snapshot was restored. */
 int RestoreEntries(struct raft *r,
                    raft_index snapshot_index,
@@ -86,7 +91,14 @@ int RestoreEntries(struct raft *r,
              * of the loop r->configuration_committed_index will point to the
              * second to last configuration entry, if any. */
             if (conf_index != 0) {
+                assert(conf != NULL);
                 r->configuration_committed_index = conf_index;
+                configurationClose(&r->configuration_committed);
+                rv = configurationDecode(&conf->buf,
+                                         &r->configuration_committed);
+                if (rv != 0) {
+                    goto err;
+                }
                 /* We also indirectly know that the commit index must be at
                  * least as high as the index of this second to last
                  * configuration entry. */
@@ -130,8 +142,8 @@ int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
      * r->configuration gets overriden with an uncommitted configuration and we
      * then need to rollback, but the log does not contain anymore the entry at
      * r->configuration_committed_index because it was truncated. */
-    configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&r->configuration, &r->configuration_last_snapshot);
+    configurationClose(&r->configuration_committed);
+    rv = configurationCopy(&r->configuration, &r->configuration_committed);
     if (rv != 0) {
         return rv;
     }
