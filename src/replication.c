@@ -155,8 +155,6 @@ int replicationSendInstallSnapshotDone(struct raft *r,
         }
     }
 
-    configurationClose(&message->install_snapshot.conf);
-
     return 0;
 }
 
@@ -181,11 +179,6 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     args->last_index = logSnapshotIndex(r->log);
     args->last_term = logTermOf(r->log, args->last_index);
     args->conf_index = r->configuration_last_snapshot_index;
-
-    rv = configurationCopy(&r->configuration_last_snapshot, &args->conf);
-    if (rv != 0) {
-        goto err;
-    }
 
     infof("sending snapshot (%llu^%llu) to server %llu", args->last_index,
           args->last_term, server->id);

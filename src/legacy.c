@@ -31,6 +31,7 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
     struct raft_event event;
 
     if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        configurationClose(&req->message.install_snapshot.conf);
         raft_free(req->message.install_snapshot.data.base);
     }
 
@@ -263,8 +264,6 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
 
     assert(snapshot->n_bufs == 1);
     params->data = snapshot->bufs[0];
-
-    configurationClose(&params->conf);
     params->conf = snapshot->configuration;
     params->conf_index = snapshot->configuration_index;
 
@@ -283,6 +282,9 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
     return;
 
 abort:
+    configurationClose(&params->conf);
+    raft_free(params->data.base);
+
     event.type = RAFT_SENT;
     event.sent.message = req->message;
     event.sent.status = status;
