@@ -213,7 +213,8 @@ void uvSegmentBufferReset(struct uvSegmentBuffer *b, unsigned retain);
 int uvSegmentCreateClosedWithConfiguration(
     struct uv *uv,
     raft_index index,
-    const struct raft_configuration *configuration);
+    const struct raft_configuration *conf,
+    raft_term conf_term);
 
 /* Write the first closed segment, containing just one entry for the given
  * configuration. */
