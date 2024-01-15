@@ -388,3 +388,18 @@ raft_term TrailSnapshotTerm(const struct raft_trail *t)
 {
     return t->snapshot.term;
 }
+
+void TrailRestore(struct raft_trail *t,
+                  raft_index last_index,
+                  raft_term last_term)
+{
+    size_t n = TrailNumEntries(t);
+    assert(last_index > 0);
+    assert(last_term > 0);
+    if (n > 0) {
+        TrailTruncate(t, TrailLastIndex(t) - n + 1);
+    }
+    t->snapshot.index = last_index;
+    t->snapshot.term = last_term;
+    t->offset = last_index;
+}

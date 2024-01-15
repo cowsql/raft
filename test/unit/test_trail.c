@@ -207,3 +207,28 @@ TEST(trail, Snapshot, setUp, tearDown, 0, NULL)
 
     return MUNIT_OK;
 }
+
+/* Restore a snapshot erasing the whole log. */
+TEST(trail, Restore, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+
+    TrailAppend(&f->trail, 1); /* index 1, term 1 */
+    TrailAppend(&f->trail, 1); /* index 2, term 1 */
+    TrailAppend(&f->trail, 2); /* index 3, term 2 */
+    TrailAppend(&f->trail, 3); /* index 4, term 3 */
+
+    TrailRestore(&f->trail, 3 /* snapshot index */, 2 /* snapshot term */);
+
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 0);
+
+    munit_assert_ullong(TrailLastIndex(&f->trail), ==, 3);
+    munit_assert_ullong(TrailLastTerm(&f->trail), ==, 2);
+
+    TrailAppend(&f->trail, 3); /* index 4, term 3 */
+
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 1);
+    munit_assert_ullong(TrailTermOf(&f->trail, 4), ==, 3);
+
+    return MUNIT_OK;
+}

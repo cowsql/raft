@@ -65,3 +65,12 @@ raft_index TrailSnapshotIndex(const struct raft_trail *t);
 /* Get the term of the last entry of the most recent snapshot. Return #0 if
  * there are no snapshots. */
 raft_term TrailSnapshotTerm(const struct raft_trail *t);
+
+/* To be called when installing a snapshot.
+ *
+ * The log can be in any state. All outstanding entries will be discarded, the
+ * last index and last term of the most recent snapshot will be set to the given
+ * values, and the offset adjusted accordingly. */
+void TrailRestore(struct raft_trail *t,
+                  raft_index last_index,
+                  raft_term last_term);
