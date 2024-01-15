@@ -19,6 +19,7 @@
 #include "request.h"
 #include "restore.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -454,6 +455,7 @@ int replicationPersistEntriesDone(struct raft *r,
     if (status != 0) {
         if (index <= logLastIndex(r->log)) {
             logTruncate(r->log, index);
+            TrailTruncate(&r->trail, index);
         }
     }
 
@@ -846,6 +848,7 @@ static int deleteConflictingEntries(struct raft *r,
             /* Delete all entries from this index on because they don't
              * match. */
             logTruncate(r->log, entry_index);
+            TrailTruncate(&r->trail, entry_index);
 
             /* Drop information about previously stored entries that have just
              * been discarded. */
@@ -928,6 +931,10 @@ int replicationAppend(struct raft *r,
             raft_free(copy.buf.base);
             goto err;
         }
+        rv = TrailAppend(&r->trail, copy.term);
+        if (rv != 0) {
+            goto err;
+        }
     }
 
     *rejected = 0;
@@ -992,6 +999,7 @@ err_after_log_append:
      */
     if (j != 0) {
         logTruncate(r->log, index);
+        TrailTruncate(&r->trail, index);
     }
 
 err:
@@ -1104,6 +1112,7 @@ int replicationInstallSnapshot(struct raft *r,
 
     /* Preemptively update our in-memory state. */
     logRestore(r->log, args->last_index, args->last_term);
+    TrailRestore(&r->trail, args->last_index, args->last_term);
 
     r->last_stored = 0;
 
@@ -1199,6 +1208,7 @@ int replicationSnapshot(struct raft *r,
     r->configuration_last_snapshot_index = metadata->configuration_index;
 
     logSnapshot(r->log, metadata->index, r->snapshot.trailing);
+    TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
 
     configurationClose(&metadata->configuration);
 

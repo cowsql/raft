@@ -9,6 +9,7 @@
 #include "replication.h"
 #include "request.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -109,6 +110,11 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
         if (rv != 0) {
             /* This logAppend call can't fail with RAFT_BUSY, because these are
              * brand new entries. */
+            assert(rv == RAFT_NOMEM);
+            goto err_after_log_append;
+        }
+        rv = TrailAppend(&r->trail, entry->term);
+        if (rv != 0) {
             assert(rv == RAFT_NOMEM);
             goto err_after_log_append;
         }
