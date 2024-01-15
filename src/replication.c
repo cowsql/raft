@@ -176,8 +176,8 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     message.server_address = server->address;
 
     args->term = r->current_term;
-    args->last_index = logSnapshotIndex(r->log);
-    args->last_term = logTermOf(r->log, args->last_index);
+    args->last_index = TrailSnapshotIndex(&r->trail);
+    args->last_term = TrailTermOf(&r->trail, args->last_index);
     args->conf_index = r->configuration_last_snapshot_index;
 
     infof("sending snapshot (%llu^%llu) to server %llu", args->last_index,
@@ -240,13 +240,13 @@ int replicationProgress(struct raft *r, unsigned i)
 
         /* If we don't have entry 1 anymore in our log, we need to send a
          * snapshot. */
-        if (logTermOf(r->log, 1) == 0) {
+        if (TrailTermOf(&r->trail, 1) == 0) {
             needs_snapshot = true;
         }
     } else {
         /* Set prevIndex and prevTerm to the index and term of the entry at
          * next_index - 1. */
-        prev_term = logTermOf(r->log, prev_index);
+        prev_term = TrailTermOf(&r->trail, prev_index);
 
         /* We need to send a snapshot if one of the following two cases is true:
          *
@@ -257,8 +257,8 @@ int replicationProgress(struct raft *r, unsigned i)
          * - prev_index is not the last entry in the log and we don't have
          *   anymore the entry at next_index.
          */
-        if (prev_term == 0 || (logLastIndex(r->log) > prev_index &&
-                               logTermOf(r->log, next_index) == 0)) {
+        if (prev_term == 0 || (TrailLastIndex(&r->trail) > prev_index &&
+                               TrailTermOf(&r->trail, next_index) == 0)) {
             needs_snapshot = true;
         }
     }
@@ -266,7 +266,7 @@ int replicationProgress(struct raft *r, unsigned i)
     /* If we have to send entries that are not anymore in our log, send the last
      * snapshot if we're not doing so already. */
     if (needs_snapshot || progress_state_is_snapshot) {
-        raft_index snapshot_index = logSnapshotIndex(r->log);
+        raft_index snapshot_index = TrailSnapshotIndex(&r->trail);
 
         infof("missing previous entry at index %lld -> needs snapshot",
               prev_index);
@@ -284,7 +284,7 @@ int replicationProgress(struct raft *r, unsigned i)
 
         /* Send heartbeats anchored to the snapshot index */
         prev_index = snapshot_index;
-        prev_term = logSnapshotTerm(r->log);
+        prev_term = TrailSnapshotTerm(&r->trail);
         assert(prev_term > 0);
         max = 0;
     }
@@ -348,7 +348,7 @@ static size_t updateLastStored(struct raft *r,
     for (i = 0; i < n_entries; i++) {
         struct raft_entry *entry = &entries[i];
         raft_index index = first_index + i;
-        raft_term local_term = logTermOf(r->log, index);
+        raft_term local_term = TrailTermOf(&r->trail, index);
 
         /* If we have no entry at this index, or if the entry we have now has a
          * different term, it means that this entry got truncated, so let's stop
@@ -446,7 +446,7 @@ int replicationPersistEntriesDone(struct raft *r,
     logRelease(r->log, index, entries, n);
 
     if (status != 0) {
-        if (index <= logLastIndex(r->log)) {
+        if (index <= TrailLastIndex(&r->trail)) {
             logTruncate(r->log, index);
             TrailTruncate(&r->trail, index);
         }
@@ -569,8 +569,8 @@ int replicationUpdate(struct raft *r,
      * value of prevLogIndex + len(entriesToAppend). If it has a longer log, it
      * might be a leftover from previous terms. */
     last_index = result->last_log_index;
-    if (last_index > logLastIndex(r->log)) {
-        last_index = logLastIndex(r->log);
+    if (last_index > TrailLastIndex(&r->trail)) {
+        last_index = TrailLastIndex(&r->trail);
     }
 
     /* If the RPC succeeded, update our counters for this server.
@@ -725,7 +725,7 @@ static int followerPersistEntriesDone(struct raft *r,
     for (j = 0; j < i; j++) {
         struct raft_entry *entry = &entries[j];
         raft_index index = first_index + j;
-        raft_term local_term = logTermOf(r->log, index);
+        raft_term local_term = TrailTermOf(&r->trail, index);
 
         assert(local_term != 0 && local_term == entry->term);
 
@@ -772,7 +772,7 @@ static int checkLogMatchingProperty(struct raft *r,
         return 0;
     }
 
-    local_prev_term = logTermOf(r->log, args->prev_log_index);
+    local_prev_term = TrailTermOf(&r->trail, args->prev_log_index);
     if (local_prev_term == 0) {
         infof("missing previous entry (%llu^%llu) -> reject",
               args->prev_log_index, args->prev_log_term);
@@ -819,7 +819,7 @@ static int deleteConflictingEntries(struct raft *r,
     for (j = 0; j < args->n_entries; j++) {
         struct raft_entry *entry = &args->entries[j];
         raft_index entry_index = args->prev_log_index + 1 + j;
-        raft_term local_term = logTermOf(r->log, entry_index);
+        raft_term local_term = TrailTermOf(&r->trail, entry_index);
 
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
@@ -1087,14 +1087,14 @@ int replicationInstallSnapshot(struct raft *r,
     }
 
     /* If our last snapshot is more up-to-date, this is a no-op */
-    if (r->log->snapshot.last_index >= args->last_index) {
+    if (TrailSnapshotIndex(&r->trail) >= args->last_index) {
         infof("have more recent snapshot");
         *rejected = 0;
         return 0;
     }
 
     /* If we already have all entries in the snapshot, this is a no-op */
-    local_term = logTermOf(r->log, args->last_index);
+    local_term = TrailTermOf(&r->trail, args->last_index);
     if (local_term != 0 && local_term >= args->last_term) {
         infof("have all entries");
         *rejected = 0;
@@ -1242,7 +1242,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
     n_voters = configurationVoterCount(&r->configuration);
 
     while (index > r->commit_index) {
-        term = logTermOf(r->log, index);
+        term = TrailTermOf(&r->trail, index);
 
         /* TODO: fuzzy-test --seed 0x8db5fccc replication/entries/partitioned
          * fails the assertion below. */
@@ -1268,7 +1268,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
             } else {
                 infof("commit %u new entries (%llu^%llu..%llu^%llu)", n,
                       r->commit_index + 1,
-                      logTermOf(r->log, r->commit_index + 1), index, term);
+                      TrailTermOf(&r->trail, r->commit_index + 1), index, term);
             }
             r->commit_index = index;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
@@ -1286,7 +1286,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
             suffix = "s";
         }
         infof("next uncommitted entry (%llu^%llu) has %u vote%s out of %u",
-              uncommitted, logTermOf(r->log, uncommitted), votes, suffix,
+              uncommitted, TrailTermOf(&r->trail, uncommitted), votes, suffix,
               n_voters);
     }
 }
