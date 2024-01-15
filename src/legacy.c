@@ -264,7 +264,10 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
     assert(snapshot->n_bufs == 1);
     params->data = snapshot->bufs[0];
 
-    configurationClose(&snapshot->configuration);
+    configurationClose(&params->conf);
+    params->conf = snapshot->configuration;
+    params->conf_index = snapshot->configuration_index;
+
     raft_free(snapshot->bufs);
     raft_free(snapshot);
 
