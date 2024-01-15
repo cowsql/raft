@@ -2,11 +2,11 @@
 
 #include "assert.h"
 #include "convert.h"
-#include "log.h"
 #include "message.h"
 #include "recv.h"
 #include "replication.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -24,7 +24,7 @@ int recvInstallSnapshot(struct raft *r,
     assert(address != NULL);
 
     result->rejected = args->last_index;
-    result->last_log_index = logLastIndex(r->log);
+    result->last_log_index = TrailLastIndex(&r->trail);
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
 

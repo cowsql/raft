@@ -377,7 +377,7 @@ static int stepPersistedEntries(struct raft *r,
                                 int status)
 {
     raft_index last_stored = r->last_stored + n;
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     int rv;
 
     assert(n > 0);

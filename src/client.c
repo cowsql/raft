@@ -43,7 +43,7 @@ static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
     /* Update the current configuration. */
     raft_configuration_close(&r->configuration);
     r->configuration = configuration;
-    r->configuration_uncommitted_index = logLastIndex(r->log);
+    r->configuration_uncommitted_index = TrailLastIndex(&r->trail);
 
     return 0;
 
@@ -71,7 +71,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     }
 
     /* Index of the first entry being appended. */
-    index = logLastIndex(r->log) + 1;
+    index = TrailLastIndex(&r->trail) + 1;
 
     if (n == 1) {
         const char *type;
@@ -154,7 +154,7 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
 
     server_index = configurationIndexOf(&r->configuration, server_id);
 
-    last_index = logLastIndex(r->log);
+    last_index = TrailLastIndex(&r->trail);
 
     r->leader_state.promotee_id = server->id;
 
