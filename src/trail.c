@@ -378,3 +378,13 @@ void TrailSnapshot(struct raft_trail *t,
 
     trailRemovePrefix(t, last_index - trailing);
 }
+
+raft_index TrailSnapshotIndex(const struct raft_trail *t)
+{
+    return t->snapshot.index;
+}
+
+raft_term TrailSnapshotTerm(const struct raft_trail *t)
+{
+    return t->snapshot.term;
+}

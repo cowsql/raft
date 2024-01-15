@@ -22,6 +22,7 @@
 #include "restore.h"
 #include "tick.h"
 #include "tracing.h"
+#include "trail.h"
 
 #ifndef RAFT__LEGACY_no
 #include "legacy.h"
@@ -87,6 +88,7 @@ int raft_init(struct raft *r,
     strcpy(r->address, address);
     r->current_term = 0;
     r->voted_for = 0;
+    TrailInit(&r->trail);
     r->log = logInit();
     if (r->log == NULL) {
         ErrMsgOom(r->errmsg);
@@ -168,6 +170,7 @@ err:
 static void finalClose(struct raft *r)
 {
     raft_free(r->address);
+    TrailClose(&r->trail);
     logClose(r->log);
     raft_configuration_close(&r->configuration);
     raft_configuration_close(&r->configuration_last_snapshot);
@@ -243,11 +246,11 @@ static int maybeSelfElect(struct raft *r)
 }
 
 /* Emit a start message containing information about the current state. */
-static void stepStartEmitMessage(struct raft *r)
+static void stepStartEmitMessage(const struct raft *r)
 {
     char msg[512] = {0};
-    raft_index snapshot_index = logSnapshotIndex(r->log);
-    unsigned n_entries = (unsigned)logNumEntries(r->log);
+    raft_index snapshot_index = TrailSnapshotIndex(&r->trail);
+    unsigned n_entries = TrailNumEntries(&r->trail);
 
     if (r->current_term == 0) {
         strcat(msg, "no state");
@@ -269,10 +272,10 @@ static void stepStartEmitMessage(struct raft *r)
         strcat(msg, msg_vote);
     }
 
-    if (logSnapshotIndex(r->log) > 0) {
+    if (snapshot_index) {
         char msg_snapshot[64];
-        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)",
-                logSnapshotIndex(r->log), logSnapshotTerm(r->log));
+        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)", snapshot_index,
+                TrailSnapshotTerm(&r->trail));
         strcat(msg, msg_snapshot);
         if (n_entries > 0) {
             strcat(msg, ", ");
@@ -281,15 +284,16 @@ static void stepStartEmitMessage(struct raft *r)
 
     if (n_entries > 0) {
         char msg_entries[64];
-        raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
+        raft_index first =
+            TrailLastIndex(&r->trail) - TrailNumEntries(&r->trail) + 1;
         if (n_entries == 1) {
             sprintf(msg_entries, "1 entry (%llu^%llu)", first,
-                    logTermOf(r->log, first));
+                    TrailTermOf(&r->trail, first));
         } else {
-            raft_index last = logLastIndex(r->log);
+            raft_index last = TrailLastIndex(&r->trail);
             sprintf(msg_entries, "%u entries (%llu^%llu..%llu^%llu)", n_entries,
-                    first, logTermOf(r->log, first), last,
-                    logTermOf(r->log, last));
+                    first, TrailTermOf(&r->trail, first), last,
+                    TrailTermOf(&r->trail, last));
         }
         strcat(msg, msg_entries);
     }

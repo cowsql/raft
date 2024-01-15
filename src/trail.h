@@ -57,3 +57,11 @@ void TrailTruncate(struct raft_trail *t, raft_index index);
 void TrailSnapshot(struct raft_trail *t,
                    raft_index last_index,
                    unsigned trailing);
+
+/* Get the index of the last entry in the most recent snapshot. Return #0 if
+ * there are no snapshots. */
+raft_index TrailSnapshotIndex(const struct raft_trail *t);
+
+/* Get the term of the last entry of the most recent snapshot. Return #0 if
+ * there are no snapshots. */
+raft_term TrailSnapshotTerm(const struct raft_trail *t);
