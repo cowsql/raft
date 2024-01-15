@@ -770,12 +770,14 @@ static void serverEnqueueReceive(struct test_server *s,
                 struct raft_install_snapshot *src = &message->install_snapshot;
                 struct raft_install_snapshot *dst =
                     &event->receive.message->install_snapshot;
+                struct raft_snapshot_metadata metadata;
                 dst->last_index = src->last_index;
                 dst->last_term = src->last_term;
-                confCopy(&src->conf, &dst->conf);
-                dst->conf_index = src->conf_index;
                 diskLoadSnapshotData(&s->disk, src->last_index, src->last_term,
                                      &dst->data);
+                diskLoadSnapshotMetadata(&s->disk, &metadata);
+                dst->conf = metadata.configuration;
+                dst->conf_index = metadata.configuration_index;
             }
             break;
     }
