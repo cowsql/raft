@@ -823,8 +823,7 @@ static void copyEntries(const struct raft_entry *src,
     }
 }
 
-static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id);
-
+/* Use the log cache to populate the given AppendEntries message. */
 static void serverFillAppendEntries(struct test_server *s,
                                     struct raft_append_entries *args)
 {
@@ -841,6 +840,18 @@ static void serverFillAppendEntries(struct test_server *s,
 
     i = (unsigned)(index - s->log.start);
     copyEntries(&s->log.entries[i], &args->entries, args->n_entries);
+}
+
+/* Load from disk the data of the snapshot being sent. */
+static void serverFillInstallSnapshot(struct test_server *s,
+                                      struct raft_install_snapshot *args)
+{
+    struct raft_snapshot_metadata metadata;
+    diskLoadSnapshotData(&s->disk, args->last_index, args->last_term,
+                         &args->data);
+    diskLoadSnapshotMetadata(&s->disk, &metadata);
+    args->conf = metadata.configuration;
+    args->conf_index = metadata.configuration_index;
 }
 
 static void serverEnqueueReceive(struct test_server *s,
@@ -863,20 +874,8 @@ static void serverEnqueueReceive(struct test_server *s,
             serverFillAppendEntries(s, &event->receive.message->append_entries);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            /* Load from disk the data of the snapshot being sent. */
-            {
-                struct raft_install_snapshot *src = &message->install_snapshot;
-                struct raft_install_snapshot *dst =
-                    &event->receive.message->install_snapshot;
-                struct raft_snapshot_metadata metadata;
-                dst->last_index = src->last_index;
-                dst->last_term = src->last_term;
-                diskLoadSnapshotData(&s->disk, src->last_index, src->last_term,
-                                     &dst->data);
-                diskLoadSnapshotMetadata(&s->disk, &metadata);
-                dst->conf = metadata.configuration;
-                dst->conf_index = metadata.configuration_index;
-            }
+            serverFillInstallSnapshot(
+                s, &event->receive.message->install_snapshot);
             break;
     }
 
