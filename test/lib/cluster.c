@@ -825,6 +825,24 @@ static void copyEntries(const struct raft_entry *src,
 
 static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id);
 
+static void serverFillAppendEntries(struct test_server *s,
+                                    struct raft_append_entries *args)
+{
+    raft_index index = args->prev_log_index + 1;
+    unsigned i;
+
+    munit_assert_ullong(index, >=, s->log.start);
+    munit_assert_ullong(index + args->n_entries, <=, s->log.start + s->log.n);
+
+    if (args->n_entries == 0) {
+        args->entries = NULL;
+        return;
+    }
+
+    i = (unsigned)(index - s->log.start);
+    copyEntries(&s->log.entries[i], &args->entries, args->n_entries);
+}
+
 static void serverEnqueueReceive(struct test_server *s,
                                  struct raft_message *message)
 {
@@ -842,11 +860,7 @@ static void serverEnqueueReceive(struct test_server *s,
 
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
-            /* Create a copy of the entries being sent, so the memory of the
-             * original message can be released when raft_done() is called. */
-            copyEntries(message->append_entries.entries,
-                        &event->receive.message->append_entries.entries,
-                        message->append_entries.n_entries);
+            serverFillAppendEntries(s, &event->receive.message->append_entries);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
             /* Load from disk the data of the snapshot being sent. */
