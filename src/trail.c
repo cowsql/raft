@@ -403,3 +403,28 @@ void TrailRestore(struct raft_trail *t,
     t->snapshot.term = last_term;
     t->offset = last_index;
 }
+
+bool TrailHasEntry(const struct raft_trail *t, raft_index index)
+{
+    unsigned n = trailNumRecords(t);
+    unsigned i;
+
+    /* If there are no records, there are no entries. */
+    if (n == 0) {
+        return false;
+    }
+
+    /* If the index is lower than the offset, then it's not in the log.*/
+    if (index <= t->offset) {
+        return false;
+    }
+
+    /* If the index is greater than the last record, then it's not in the log.*/
+    i = trailPositionAt(t, n - 1);
+    assert(t->records[i].index > 0);
+    if (index > t->records[i].index) {
+        return false;
+    }
+
+    return true;
+}
