@@ -43,7 +43,6 @@ int replicationSendAppendEntriesDone(struct raft *r,
                                      struct raft_message *message,
                                      int status)
 {
-    struct raft_append_entries *args = &message->append_entries;
     unsigned i = configurationIndexOf(&r->configuration, message->server_id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
@@ -56,10 +55,6 @@ int replicationSendAppendEntriesDone(struct raft *r,
             }
         }
     }
-
-    /* Tell the log that we're done referencing these entries. */
-    logRelease(r->log, args->prev_log_index + 1, args->entries,
-               args->n_entries);
 
     return 0;
 }
@@ -78,16 +73,28 @@ static int sendAppendEntries(struct raft *r,
     raft_index next_index = prev_index + 1;
     int rv;
 
+    assert(max == 0 || max == MAX_APPEND_ENTRIES);
+
     args->term = r->current_term;
     args->prev_log_index = prev_index;
     args->prev_log_term = prev_term;
 
-    /* TODO: implement a limit to the total *size* of the entries being sent,
-     * not only the number. Also, make the number and the size configurable. */
-    rv = logAcquireAtMost(r->log, next_index, max, &args->entries,
-                          &args->n_entries);
-    if (rv != 0) {
-        goto err;
+    if (max == 0 || !TrailHasEntry(&r->trail, next_index)) {
+        args->entries = NULL;
+        args->n_entries = 0;
+    } else {
+        assert(max > 0);
+        assert(TrailHasEntry(&r->trail, next_index));
+
+        args->n_entries =
+            (unsigned)(TrailLastIndex(&r->trail) - next_index) + 1;
+
+        /* TODO: implement a limit to the total *size* of the entries being
+         * sent, not only the number. Also, make the number and the size
+         * configurable. */
+        if (args->n_entries > (unsigned)max) {
+            args->n_entries = (unsigned)max;
+        }
     }
 
     /* From Section 3.5:
@@ -106,12 +113,13 @@ static int sendAppendEntries(struct raft *r,
     } else if (args->n_entries == 1) {
         infof("%s server %llu sending 1 entry (%llu^%llu)",
               progressStateName(r, i), server->id, next_index,
-              args->entries[0].term);
+              TrailTermOf(&r->trail, next_index));
     } else {
         infof("%s server %llu sending %u entries (%llu^%llu..%llu^%llu)",
               progressStateName(r, i), server->id, args->n_entries, next_index,
-              args->entries[0].term, next_index + args->n_entries - 1,
-              args->entries[args->n_entries - 1].term);
+              TrailTermOf(&r->trail, next_index),
+              next_index + args->n_entries - 1,
+              TrailTermOf(&r->trail, next_index + args->n_entries - 1));
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES;
@@ -120,7 +128,7 @@ static int sendAppendEntries(struct raft *r,
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
-        goto err_after_entries_acquired;
+        goto err;
     }
 
     if (progressState(r, i) == PROGRESS__PIPELINE) {
@@ -131,8 +139,6 @@ static int sendAppendEntries(struct raft *r,
     progressUpdateLastSend(r, i);
     return 0;
 
-err_after_entries_acquired:
-    logRelease(r->log, next_index, args->entries, args->n_entries);
 err:
     assert(rv != 0);
     return rv;
