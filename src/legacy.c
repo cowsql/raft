@@ -94,6 +94,12 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     struct raft *r = req->r;
     struct raft_event event;
 
+    if (status != 0) {
+        if (req->index <= logLastIndex(r->legacy.log)) {
+            logTruncate(r->legacy.log, req->index);
+        }
+    }
+
     event.type = RAFT_PERSISTED_ENTRIES;
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
@@ -111,6 +117,7 @@ static int legacyHandleUpdateEntries(struct raft *r,
                                      unsigned n)
 {
     struct legacyPersistEntries *req;
+    unsigned i;
     int rv;
 
     req = raft_malloc(sizeof *req);
@@ -122,6 +129,22 @@ static int legacyHandleUpdateEntries(struct raft *r,
     req->entries = entries;
     req->n = n;
     req->append.data = req;
+
+    if (index <= logLastIndex(r->legacy.log)) {
+        logTruncate(r->legacy.log, index);
+    }
+
+    for (i = 0; i < n; i++) {
+        struct raft_entry entry;
+        rv = entryCopy(&entries[i], &entry);
+        if (rv != 0) {
+            goto err;
+        }
+        rv = logAppend(r->legacy.log, entry.term, entry.type, &entry.buf, NULL);
+        if (rv != 0) {
+            goto err;
+        }
+    }
 
     rv = r->io->truncate(r->io, index);
     if (rv != 0) {
@@ -136,6 +159,7 @@ static int legacyHandleUpdateEntries(struct raft *r,
     return 0;
 
 err:
+    logDiscard(r->legacy.log, index);
     raft_free(req);
     ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", n);
     return rv;
@@ -210,6 +234,8 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     req->snapshot.configuration_index = req->metadata.configuration_index;
     req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
+
+    logRestore(r->legacy.log, req->metadata.index, req->metadata.term);
 
     rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
                              legacyPersistSnapshotCb);
@@ -372,6 +398,8 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
         configurationClose(&metadata.configuration);
         return;
     }
+
+    logSnapshot(r->legacy.log, metadata.index, r->snapshot.trailing);
 
     event.type = RAFT_SNAPSHOT;
     memset(&event.reserved, 0, sizeof event.reserved);
@@ -1613,6 +1641,9 @@ int raft_start(struct raft *r)
     struct raft_entry *entries;
     size_t n_entries;
     struct raft_event event;
+    raft_index snapshot_index = 0;
+    raft_term snapshot_term = 0;
+    unsigned i;
     int rv;
 
     assert(r != NULL);
@@ -1651,8 +1682,25 @@ int raft_start(struct raft *r)
             return rv;
         }
         r->last_applied = snapshot->index;
+
+        snapshot_index = snapshot->index;
+        snapshot_term = snapshot->term;
+
     } else if (n_entries > 1) {
         r->last_applied = 1;
+    }
+
+    logStart(r->legacy.log, snapshot_index, snapshot_term, start_index);
+    for (i = 0; i < n_entries; i++) {
+        struct raft_entry entry;
+        rv = entryCopy(&entries[i], &entry);
+        if (rv != 0) {
+            return rv;
+        }
+        rv = logAppend(r->legacy.log, entry.term, entry.type, &entry.buf, NULL);
+        if (rv != 0) {
+            return rv;
+        }
     }
 
     event.time = r->now;
