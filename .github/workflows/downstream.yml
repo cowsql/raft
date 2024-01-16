@@ -218,7 +218,7 @@ jobs:
         run: |
           cd raft
           autoreconf -i
-          ./configure --prefix=/usr --enable-debug
+          ./configure --prefix=/usr --enable-debug --enable-backtrace
           sudo make -j$(nproc) install
 
       - name: Check out cowsql
@@ -231,7 +231,7 @@ jobs:
         run: |
           cd cowsql
           autoreconf -i
-          ./configure --prefix=/usr --enable-debug
+          ./configure --prefix=/usr --enable-debug --enable-backtrace
           sudo make -j$(nproc) install
 
 

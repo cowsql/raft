@@ -36,11 +36,11 @@ libraft_la_SOURCES = \
   src/recv_timeout_now.c \
   src/restore.c \
   src/replication.c \
-  src/snapshot.c \
   src/state.c \
   src/syscall.c \
   src/tick.c \
-  src/tracing.c
+  src/tracing.c \
+  src/trail.c
 
 bin_PROGRAMS =
 
@@ -56,7 +56,6 @@ libtest_la_SOURCES = \
   test/lib/addrinfo.c \
   test/lib/cluster.c \
   test/lib/fault.c \
-  test/lib/fsm.c \
   test/lib/heap.c \
   test/lib/munit.c \
   test/lib/tracer.c \
@@ -70,6 +69,7 @@ test_unit_core_SOURCES = \
   src/heap.c \
   src/log.c \
   src/random.c \
+  src/trail.c \
   test/unit/main_core.c \
   test/unit/test_byte.c \
   test/unit/test_compress.c \
@@ -77,8 +77,9 @@ test_unit_core_SOURCES = \
   test/unit/test_err.c \
   test/unit/test_log.c \
   test/unit/test_queue.c \
-  test/unit/test_random.c
-test_unit_core_CFLAGS = $(AM_CFLAGS) -Wno-conversion
+  test/unit/test_random.c \
+  test/unit/test_trail.c
+test_unit_core_CFLAGS = $(AM_CFLAGS) $(CODE_COVERAGE_CFLAGS) -Wno-conversion
 test_unit_core_LDADD = libtest.la
 
 test_integration_core_SOURCES = \
@@ -107,10 +108,13 @@ libraft_la_LDFLAGS += $(LZ4_LIBS)
 endif # LZ4_AVAILABLE
 
 if V0_ENABLED
-libraft_la_SOURCES += src/legacy.c
+libraft_la_SOURCES += \
+  src/legacy.c \
+  src/snapshot.c
 libraft_la_CFLAGS += -DV0_ENABLED
 
 libtest_la_SOURCES += \
+  test/lib/fsm.c \
   test/lib/legacy.c
 
 test_integration_core_SOURCES += \

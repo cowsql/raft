@@ -169,11 +169,7 @@ AS_IF([test "x$enable_hardening" != "xno"],
       [])
 
 AC_SUBST(AM_LDLAGS)
+AC_SUBST(enable_v0)
 
-REQUIRES=''
-AS_IF(test "$have_uv" = yes, REQUIRES="$REQUIRES libuv")
-AS_IF(test "$have_lz4" = yes, REQUIRES="$REQUIRES liblz4")
-AC_SUBST(REQUIRES)
-
-AC_CONFIG_FILES([raft.pc Makefile])
+AC_CONFIG_FILES([include/raft.h raft.pc Makefile])
 AC_OUTPUT

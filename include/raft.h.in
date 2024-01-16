@@ -10,10 +10,19 @@
 #define RAFT_API __attribute__((visibility("default")))
 #endif
 
+/* clang-format off */
+#define RAFT__LEGACY_@enable_v0@
+/* clang-format on */
+
 /* Helper for statically checking ABI compatibility when changing or adding
  * struct fields. */
+#if defined(RAFT__LEGACY_no)
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
+    _Static_assert(1 == 1, "no-op")
+#else
 #define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
     _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
+#endif
 
 /**
  * Version.
@@ -59,7 +68,11 @@ enum {
 /**
  * Size of human-readable error message buffers.
  */
+#if defined(RAFT__LEGACY_no)
+#define RAFT_ERRMSG_BUF_SIZE 64
+#else
 #define RAFT_ERRMSG_BUF_SIZE 256
+#endif
 
 /**
  * Return the error message describing the given error code.
@@ -215,6 +228,11 @@ RAFT_API int raft_configuration_add(struct raft_configuration *c,
  */
 RAFT_API int raft_configuration_encode(const struct raft_configuration *c,
                                        struct raft_buffer *buf);
+
+/**
+ * Decode the given configuration object. */
+RAFT_API int raft_configuration_decode(const struct raft_buffer *buf,
+                                       struct raft_configuration *c);
 
 /**
  * Hash function which outputs a 64-bit value based on a text and a number.
@@ -487,13 +505,12 @@ struct raft_event
         } sent;
         struct
         {
-            raft_id id;
-            const char *address;
             struct raft_message *message;
         } receive;
         struct
         {
             raft_index index;
+            struct raft_configuration conf;
         } configuration;
         struct
         {
@@ -558,12 +575,37 @@ struct raft_update
  */
 enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
 
-struct raft_progress;
+/**
+ * Data structure for efficiently keeping track of the indexes of all entries in
+ * the log and of their terms.
+ */
+struct raft_trail
+{
+    struct
+    {
+        raft_index index; /* Index of the last entry at a certain term. */
+        raft_term term;   /* Term this record is tracking. */
+    } *records;           /* Circular buffer of index/term records. */
+    unsigned size;        /* Number of available slots in the buffer. */
+    unsigned front, back; /* Indexes of used slots [front, back). */
+    raft_index offset;    /* Index of first entry in the log is offset+1. */
+    struct                /* Information about last snapshot, or zero. */
+    {
+        raft_index index; /* Snapshot contains all entries up to here. */
+        raft_term term;   /* Term of last index. */
+    } snapshot;
+};
 
 struct raft; /* Forward declaration. */
 
-struct raft_log;
-
+#if defined(RAFT__LEGACY_no)
+#define RAFT__RESERVED \
+    struct             \
+    {                  \
+        void *dummy;   \
+    }
+#define RAFT__EXTENSIONS_LEGACY
+#else
 /* Unused uint64_t slots that are reserved for v0.x extensions.*/
 #define RAFT__RESERVED         \
     struct                     \
@@ -571,33 +613,45 @@ struct raft_log;
         uint64_t reserved[32]; \
     }
 
-/* Extended struct raft fields added after the v0.x ABI freeze. */
-#define RAFT__EXTENSIONS                                                     \
+#define RAFT__EXTENSIONS_LEGACY                                              \
+    /* Fields used by the v0 compatibility code */                           \
     struct                                                                   \
     {                                                                        \
-        raft_time now;   /* Current time, updated via raft_step() */         \
-        unsigned random; /* Pseudo-random number generator state */          \
-        struct raft_message *messages; /* Pre-allocated message queue */     \
-        unsigned n_messages_cap;       /* Capacity of the message queue */   \
-        unsigned unused1;              /* XXX: For backward ABI compat */    \
-        /* Index of the last snapshot that was taken */                      \
-        raft_index configuration_last_snapshot_index;                        \
-        /* Fields used by the v0 compatibility code */                       \
-        struct                                                               \
-        {                                                                    \
-            void *requests[2];              /* Completed client requests */  \
-            void (*step_cb)(struct raft *); /* Invoked after raft_step() */  \
-            unsigned short prev_state;  /* Used to detect lost leadership */ \
-            void *pending[2];           /* Pending client requests */        \
-            struct raft_change *change; /* Pending membership change */      \
-            raft_index snapshot_index;  /* Last persisted snapshot */        \
-            struct raft_buffer snapshot_chunk; /* Cache of snapshot data */  \
-        } legacy;                                                            \
-        struct raft_update *update; /* Pointer passed to raft_step() */      \
+        void *requests[2];              /* Completed client requests */      \
+        void (*step_cb)(struct raft *); /* Invoked after raft_step() */      \
+        unsigned short prev_state;      /* Used to detect lost leadership */ \
+        void *pending[2];               /* Pending client requests */        \
+        struct raft_change *change;     /* Pending membership change */      \
+        raft_index snapshot_index;      /* Last persisted snapshot */        \
+        struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
+    } legacy;
+#endif /* RAFT__LEGACY_no */
+
+/* Extended struct raft fields added after the v0.x ABI freeze. */
+#define RAFT__EXTENSIONS                                                   \
+    struct                                                                 \
+    {                                                                      \
+        raft_time now;   /* Current time, updated via raft_step() */       \
+        unsigned random; /* Pseudo-random number generator state */        \
+        struct raft_message *messages; /* Pre-allocated message queue */   \
+        unsigned n_messages_cap;       /* Capacity of the message queue */ \
+        unsigned unused1;              /* XXX: For backward ABI compat */  \
+        /* Index of the last snapshot that was taken */                    \
+        raft_index configuration_last_snapshot_index;                      \
+        RAFT__EXTENSIONS_LEGACY                                            \
+        struct raft_update *update; /* Pointer passed to raft_step() */    \
+        struct raft_trail trail;                                           \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);
 
+#if defined(RAFT__LEGACY_no)
+#define RAFT__SNAPSHOT_FIELDS_V0 \
+    struct                       \
+    {                            \
+        void *dummy;             \
+    }
+#else
 /**
  * Hold the details of a snapshot.
  * The user-provided raft_buffer structs should provide the user with enough
@@ -641,6 +695,7 @@ struct raft_io_snapshot_put
         struct raft_snapshot _pending;    \
         struct raft_io_snapshot_put _put; \
     }
+#endif /* RAFT__LEGACY_no */
 
 #define RAFT__SNAPSHOT_FIELDS_V1                                           \
     struct                                                                 \
@@ -653,6 +708,10 @@ RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
 
 typedef void (*raft_close_cb)(struct raft *raft);
 
+struct raft_progress;
+
+struct raft_log;
+
 /**
  * Hold and drive the state of a single raft server in a cluster.
  * When replacing reserved fields in the middle of this struct, you MUST use a
@@ -660,12 +719,16 @@ typedef void (*raft_close_cb)(struct raft *raft);
  */
 struct raft
 {
-    void *data;                 /* Custom user data. */
+#ifndef RAFT__LEGACY_no
+    void *data; /* Custom user data. */
+#endif
     struct raft_tracer *tracer; /* Tracer implementation. */
-    struct raft_io *io;         /* Disk and network I/O implementation. */
-    struct raft_fsm *fsm;       /* User-defined FSM to apply commands to. */
-    raft_id id;                 /* Server ID of this raft instance. */
-    char *address;              /* Server address of this raft instance. */
+#ifndef RAFT__LEGACY_no
+    struct raft_io *io;   /* Disk and network I/O implementation. */
+    struct raft_fsm *fsm; /* User-defined FSM to apply commands to. */
+#endif
+    raft_id id;    /* Server ID of this raft instance. */
+    char *address; /* Server address of this raft instance. */
 
     /*
      * Cache of the server's persistent state, updated on stable storage before
@@ -694,8 +757,8 @@ struct raft
      * most one uncommitted entry of type #RAFT_CHANGE because we allow only one
      * configuration change at a time.
      *
-     * At all times #configuration_last_snapshot is a copy of the configuration
-     * contained the most recent snapshot, if any.
+     * At all times #configuration_committed is a copy of the last committed
+     * configuration, if any.
      *
      * The possible scenarios are:
      *
@@ -703,7 +766,7 @@ struct raft
      *    are both zero. This should only happen when a brand new server starts
      *    joining a cluster and is waiting to receive log entries from the
      *    current leader. In this case #configuration and
-     *    #configuration_last_snapshot must be empty and have no servers.
+     *    #configuration_committed must be empty and have no servers.
      *
      * 2. #configuration_committed_index is non-zero and
      *    #configuration_uncommitted_index is zero. This means that
@@ -717,17 +780,15 @@ struct raft
      *    configuration change. The content of #configuration must match the one
      *    of the log entry at #configuration_uncommitted_index.
      *
-     * When a snapshot is taken, a copy of the most recent configuration known
-     * to be committed (i.e. the configuration contained in the log entry at
-     * #configuration_committed_index) is saved in #configuration_last_snapshot,
-     * so it can be easily retrieved in case the log gets truncated because of
-     * compaction and does not contain the entry at
-     * #configuration_committed_index anymore. Likewise, if a snapshot is
+     * When a new configuration is committed, a copy of it is saved in
+     * #configuration_committed, so it can be easily retrieved in case the
+     * log gets truncated because of compaction and does not contain the entry
+     * at #configuration_committed_index anymore. Likewise, if a snapshot is
      * restored its associated configuration is saved in
-     * #configuration_last_snapshot.
+     * #configuration_committed.
      */
     struct raft_configuration configuration;
-    struct raft_configuration configuration_last_snapshot;
+    struct raft_configuration configuration_committed;
     raft_index configuration_committed_index;
     raft_index configuration_uncommitted_index;
 
@@ -795,7 +856,9 @@ struct raft
                 raft_id id;
                 char *address;
             } current_leader;
+#if !defined(RAFT__LEGACY_no)
             uint64_t reserved[8]; /* Future use */
+#endif
         } follower_state;
         struct
         {
@@ -803,19 +866,27 @@ struct raft
             bool *votes;                          /* Vote results. */
             bool disrupt_leader;                  /* For leadership transfer */
             bool in_pre_vote;                     /* True in pre-vote phase. */
-            uint64_t reserved[8];                 /* Future use */
+#if !defined(RAFT__LEGACY_no)
+            uint64_t reserved[8]; /* Future use */
+#endif
         } candidate_state;
         struct
         {
             struct raft_progress *progress; /* Per-server replication state. */
-            struct raft_change *unused1;    /* XXX: unused, for ABI compat. */
-            raft_id promotee_id;            /* ID of server being promoted. */
-            unsigned short round_number;    /* Current sync round. */
-            raft_index round_index;         /* Target of the current round. */
-            raft_time round_start;          /* Start of current round. */
-            void *unused2[2];               /* XXX: unused, for ABI compat. */
+#if !defined(RAFT__LEGACY_no)
+            struct raft_change *unused1; /* XXX: unused, for ABI compat. */
+#endif
+            raft_id promotee_id;         /* ID of server being promoted. */
+            unsigned short round_number; /* Current sync round. */
+            raft_index round_index;      /* Target of the current round. */
+            raft_time round_start;       /* Start of current round. */
+#if !defined(RAFT__LEGACY_no)
+            void *unused2[2]; /* XXX: unused, for ABI compat. */
+#endif
             union {
+#if !defined(RAFT__LEGACY_no)
                 uint64_t reserved[8]; /* Future use */
+#endif
                 struct
                 {
                     raft_id transferee; /* Server ID of aleadership transfer */
@@ -836,7 +907,9 @@ struct raft
      * of voting servers. */
     raft_time election_timer_start;
 
+#if !defined(RAFT__LEGACY_no)
     struct raft_transfer *transfer; /* Used by the legacy compatibility layer */
+#endif
 
     /*
      * Information about the last snapshot that was taken (if any).
@@ -849,13 +922,17 @@ struct raft
             RAFT__SNAPSHOT_FIELDS_V0;
             RAFT__SNAPSHOT_FIELDS_V1;
         };
+#if !defined(RAFT__LEGACY_no)
         uint64_t reserved[8]; /* Future use */
+#endif
     } snapshot;
 
+#if !defined(RAFT__LEGACY_no)
     /*
      * Callback to invoke once a close request has completed.
      */
     raft_close_cb close_cb;
+#endif
 
     /*
      * Human-readable message providing diagnostic information about the last
@@ -884,6 +961,9 @@ struct raft
 
 #undef RAFT__SNAPSHOT_FIELDS_V1
 #undef RAFT__SNAPSHOT_FIELDS_V2
+
+struct raft_io;
+struct raft_fsm;
 
 RAFT_API int raft_init(struct raft *r,
                        struct raft_io *io,
@@ -1116,6 +1196,8 @@ RAFT_API void raft_heap_set_default(void);
  * the backing memory, is undefined.
  */
 RAFT_API const struct raft_heap *raft_heap_get(void);
+
+#if !defined(RAFT__LEGACY_no)
 
 /**
  * Asynchronous request to send an RPC message.
@@ -1474,6 +1556,7 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
+#endif
 
 #undef RAFT__REQUEST
 #undef RAFT__ASSERT_COMPATIBILITY

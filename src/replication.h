@@ -111,6 +111,8 @@ int replicationSnapshot(struct raft *r,
                         unsigned trailing);
 
 /* Apply a RAFT_CHANGE entry that has been committed. */
-int replicationApplyConfigurationChange(struct raft *r, raft_index index);
+int replicationApplyConfigurationChange(struct raft *r,
+                                        struct raft_configuration *conf,
+                                        raft_index index);
 
 #endif /* REPLICATION_H_ */

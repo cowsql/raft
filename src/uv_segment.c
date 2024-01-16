@@ -970,7 +970,8 @@ err:
 static int uvWriteClosedSegment(struct uv *uv,
                                 raft_index first_index,
                                 raft_index last_index,
-                                const struct raft_buffer *conf)
+                                const struct raft_buffer *conf,
+                                raft_term conf_term)
 {
     char filename[UV__FILENAME_LEN];
     struct uvSegmentBuffer buf = {0};
@@ -1001,7 +1002,7 @@ static int uvWriteClosedSegment(struct uv *uv,
         return rv;
     }
 
-    entry.term = 1;
+    entry.term = conf_term;
     entry.type = RAFT_CHANGE;
     entry.buf = *conf;
 
@@ -1026,13 +1027,14 @@ static int uvWriteClosedSegment(struct uv *uv,
 int uvSegmentCreateFirstClosed(struct uv *uv,
                                const struct raft_configuration *configuration)
 {
-    return uvSegmentCreateClosedWithConfiguration(uv, 1, configuration);
+    return uvSegmentCreateClosedWithConfiguration(uv, 1, configuration, 1);
 }
 
 int uvSegmentCreateClosedWithConfiguration(
     struct uv *uv,
     raft_index index,
-    const struct raft_configuration *configuration)
+    const struct raft_configuration *configuration,
+    raft_term conf_term)
 {
     struct raft_buffer buf;
     char filename[UV__FILENAME_LEN];
@@ -1048,7 +1050,7 @@ int uvSegmentCreateClosedWithConfiguration(
     }
 
     /* Write the file */
-    rv = uvWriteClosedSegment(uv, index, index, &buf);
+    rv = uvWriteClosedSegment(uv, index, index, &buf, conf_term);
     if (rv != 0) {
         goto err_after_configuration_encode;
     }

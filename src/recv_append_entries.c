@@ -4,11 +4,11 @@
 #include "convert.h"
 #include "entry.h"
 #include "heap.h"
-#include "log.h"
 #include "message.h"
 #include "recv.h"
 #include "replication.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -29,7 +29,7 @@ int recvAppendEntries(struct raft *r,
     assert(address != NULL);
 
     result->rejected = args->prev_log_index;
-    result->last_log_index = logLastIndex(r->log);
+    result->last_log_index = TrailLastIndex(&r->trail);
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
 

@@ -31,6 +31,7 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
     struct raft_event event;
 
     if (req->message.type == RAFT_IO_INSTALL_SNAPSHOT) {
+        configurationClose(&req->message.install_snapshot.conf);
         raft_free(req->message.install_snapshot.data.base);
     }
 
@@ -263,8 +264,9 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
 
     assert(snapshot->n_bufs == 1);
     params->data = snapshot->bufs[0];
+    params->conf = snapshot->configuration;
+    params->conf_index = snapshot->configuration_index;
 
-    configurationClose(&snapshot->configuration);
     raft_free(snapshot->bufs);
     raft_free(snapshot);
 
@@ -280,6 +282,9 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
     return;
 
 abort:
+    configurationClose(&params->conf);
+    raft_free(params->data.base);
+
     event.type = RAFT_SENT;
     event.sent.message = req->message;
     event.sent.status = status;
@@ -795,11 +800,14 @@ static int legacyApply(struct raft *r,
                 *n_events += 1;
                 *events = raft_realloc(*events, *n_events * sizeof **events);
                 assert(*events != NULL);
+
                 event = &(*events)[*n_events - 1];
                 event->type = RAFT_CONFIGURATION;
                 event->configuration.index = index;
 
-                rv = 0;
+                rv = configurationDecode(&entry->buf,
+                                         &event->configuration.conf);
+
                 break;
             default:
                 rv = 0; /* For coverity. This case can't be taken. */
@@ -1582,8 +1590,6 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
 
     event.type = RAFT_RECEIVE;
     event.time = r->now;
-    event.receive.id = message->server_id;
-    event.receive.address = message->server_address;
     event.receive.message = message;
 
     rv = LegacyForwardToRaftIo(r, &event);

@@ -5,11 +5,11 @@
 #include "configuration.h"
 #include "err.h"
 #include "heap.h"
-#include "log.h"
 #include "message.h"
 #include "progress.h"
 #include "queue.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -33,7 +33,7 @@ int membershipCanChangeConfiguration(struct raft *r)
 
     /* The index of the last committed configuration can't be greater than the
      * last log index. */
-    assert(logLastIndex(r->log) >= r->configuration_committed_index);
+    assert(TrailLastIndex(&r->trail) >= r->configuration_committed_index);
 
     /* No catch-up round should be in progress. */
     assert(r->leader_state.round_number == 0);
@@ -51,21 +51,10 @@ err:
 int membershipFetchLastCommittedConfiguration(struct raft *r,
                                               struct raft_configuration *conf)
 {
-    const struct raft_entry *entry;
     int rv;
 
-    /* Try to get the entry at r->configuration_committed_index from the log. If
-     * the entry is not present in the log anymore because the log was truncated
-     * after a snapshot, we can just use configuration_last_snapshot, which we
-     * cached when we took or restored the snapshot and is guaranteed to match
-     * the content that the entry at r->configuration_committed_index had. */
-    entry = logGet(r->log, r->configuration_committed_index);
-    if (entry != NULL) {
-        rv = configurationDecode(&entry->buf, conf);
-    } else {
-        assert(r->configuration_last_snapshot.n > 0);
-        rv = configurationCopy(&r->configuration_last_snapshot, conf);
-    }
+    assert(r->configuration_committed_index > 0);
+    rv = configurationCopy(&r->configuration_committed, conf);
     if (rv != 0) {
         return rv;
     }
@@ -101,7 +90,7 @@ bool membershipUpdateCatchUpRound(struct raft *r)
         return false;
     }
 
-    last_index = logLastIndex(r->log);
+    last_index = TrailLastIndex(&r->trail);
     round_duration = r->now - r->leader_state.round_start;
 
     is_up_to_date = match_index == last_index;
@@ -170,7 +159,7 @@ int membershipRollback(struct raft *r)
     assert(r->configuration_uncommitted_index > 0);
     infof("roll back uncommitted configuration (%llu^%llu)",
           r->configuration_uncommitted_index,
-          logTermOf(r->log, r->configuration_uncommitted_index));
+          TrailTermOf(&r->trail, r->configuration_uncommitted_index));
 
     /* Fetch the last committed configuration entry. */
     assert(r->configuration_committed_index != 0);
@@ -205,8 +194,8 @@ int membershipLeadershipTransferStart(struct raft *r)
 
     message.type = RAFT_IO_TIMEOUT_NOW;
     message.timeout_now.term = r->current_term;
-    message.timeout_now.last_log_index = logLastIndex(r->log);
-    message.timeout_now.last_log_term = logLastTerm(r->log);
+    message.timeout_now.last_log_index = TrailLastIndex(&r->trail);
+    message.timeout_now.last_log_term = TrailLastTerm(&r->trail);
 
     message.server_id = server->id;
     message.server_address = server->address;
@@ -214,8 +203,7 @@ int membershipLeadershipTransferStart(struct raft *r)
     infof("send timeout to %llu", server->id);
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
-        ErrMsgTransferf(r->io->errmsg, r->errmsg, "send timeout now to %llu",
-                        server->id);
+        ErrMsgPrintf(r->errmsg, "send timeout now to %llu", server->id);
         return rv;
     }
 

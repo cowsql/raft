@@ -3,9 +3,9 @@
 #include "assert.h"
 #include "configuration.h"
 #include "convert.h"
-#include "log.h"
 #include "recv.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -53,8 +53,8 @@ int recvTimeoutNow(struct raft *r,
     }
 
     /* Ignore the request if we our log is not up-to-date. */
-    local_last_index = logLastIndex(r->log);
-    local_last_term = logLastTerm(r->log);
+    local_last_index = TrailLastIndex(&r->trail);
+    local_last_term = TrailLastTerm(&r->trail);
     if (local_last_index != args->last_log_index ||
         local_last_term != args->last_log_term) {
         return 0;

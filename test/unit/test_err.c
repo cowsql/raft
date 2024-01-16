@@ -6,11 +6,15 @@
 #include "../lib/runner.h"
 
 /* An error messages which is 249 characters. */
+#if defined(RAFT__LEGACY_no)
+#define LONG_ERRMSG "boom boom boom boom boom boom boom boom boom boom boom bo"
+#else
 #define LONG_ERRMSG                                                          \
     "boom boom boom boom boom boom boom boom boom boom boom boom boom boom " \
     "boom boom boom boom boom boom boom boom boom boom boom boom boom boom " \
     "boom boom boom boom boom boom boom boom boom boom boom boom boom boom " \
     "boom boom boom boom boom boom boom boom"
+#endif
 
 /******************************************************************************
  *

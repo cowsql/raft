@@ -620,6 +620,7 @@ static int uvRecover(struct raft_io *io, const struct raft_configuration *conf)
     struct raft_snapshot *snapshot;
     raft_index start_index;
     raft_index next_index;
+    raft_term last_term = 0; /* Term of last entry. */
     struct raft_entry *entries;
     size_t n_entries;
     int rv;
@@ -633,16 +634,21 @@ static int uvRecover(struct raft_io *io, const struct raft_configuration *conf)
 
     /* We don't care about the actual data, just index of the last entry. */
     if (snapshot != NULL) {
+        last_term = snapshot->term;
         snapshotDestroy(snapshot);
     }
     if (entries != NULL) {
+        last_term = entries[n_entries - 1].term;
         entryBatchesDestroy(entries, n_entries);
     }
 
     assert(start_index > 0);
+    assert(last_term > 0);
+
     next_index = start_index + n_entries;
 
-    rv = uvSegmentCreateClosedWithConfiguration(uv, next_index, conf);
+    rv =
+        uvSegmentCreateClosedWithConfiguration(uv, next_index, conf, last_term);
     if (rv != 0) {
         return rv;
     }

@@ -12,7 +12,6 @@
 struct fixture
 {
     FIXTURE_CLUSTER;
-    struct raft_change req;
 };
 
 /* Set up a cluster of 2 servers, with the first as leader. */

@@ -4,7 +4,6 @@
 #include "client.h"
 #include "configuration.h"
 #include "election.h"
-#include "log.h"
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
@@ -12,6 +11,7 @@
 #include "request.h"
 #include "string.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -187,7 +187,8 @@ int convertToLeader(struct raft *r)
             r->commit_index = r->last_stored;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
         }
-    } else if (logLastIndex(r->log) > r->commit_index || isDqliteUnitTest()) {
+    } else if (TrailLastIndex(&r->trail) > r->commit_index ||
+               isDqliteUnitTest()) {
         /* Raft Dissertation, paragraph 6.4:
          *
          *   The Leader Completeness Property guarantees that a leader has all

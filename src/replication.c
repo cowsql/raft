@@ -19,6 +19,7 @@
 #include "request.h"
 #include "restore.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -36,18 +37,6 @@
  *
  * TODO: Make this number configurable. */
 #define MAX_APPEND_ENTRIES 32
-
-/* Context of a RAFT_IO_APPEND_ENTRIES request that was submitted with
- * raft_io_>send(). */
-struct sendAppendEntries
-{
-    struct raft *raft;          /* Instance sending the entries. */
-    struct raft_io_send send;   /* Underlying I/O send request. */
-    raft_index index;           /* Index of the first entry in the request. */
-    struct raft_entry *entries; /* Entries referenced in the request. */
-    unsigned n;                 /* Length of the entries array. */
-    raft_id server_id;          /* Destination server. */
-};
 
 /* Callback invoked after request to send an AppendEntries RPC has completed. */
 int replicationSendAppendEntriesDone(struct raft *r,
@@ -149,16 +138,6 @@ err:
     return rv;
 }
 
-/* Context of a RAFT_IO_INSTALL_SNAPSHOT request that was submitted with
- * raft_io_>send(). */
-struct sendInstallSnapshot
-{
-    struct raft *raft;               /* Instance sending the snapshot. */
-    struct raft_io_snapshot_get get; /* Snapshot get request. */
-    struct raft_io_send send;        /* Underlying I/O send request. */
-    raft_id server_id;               /* Destination server. */
-};
-
 int replicationSendInstallSnapshotDone(struct raft *r,
                                        struct raft_message *message,
                                        int status)
@@ -175,8 +154,6 @@ int replicationSendInstallSnapshotDone(struct raft *r,
             progressAbortSnapshot(r, i);
         }
     }
-
-    configurationClose(&message->install_snapshot.conf);
 
     return 0;
 }
@@ -202,11 +179,6 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     args->last_index = logSnapshotIndex(r->log);
     args->last_term = logTermOf(r->log, args->last_index);
     args->conf_index = r->configuration_last_snapshot_index;
-
-    rv = configurationCopy(&r->configuration_last_snapshot, &args->conf);
-    if (rv != 0) {
-        goto err;
-    }
 
     infof("sending snapshot (%llu^%llu) to server %llu", args->last_index,
           args->last_term, server->id);
@@ -411,9 +383,6 @@ static int leaderPersistEntriesDone(struct raft *r,
      * giving the cluster a chance to elect another leader that doesn't have a
      * full disk (or whatever caused our write error). */
     if (status != 0) {
-        if (r->io != NULL) {
-            ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-        }
         convertToFollower(r);
         goto out;
     }
@@ -479,6 +448,7 @@ int replicationPersistEntriesDone(struct raft *r,
     if (status != 0) {
         if (index <= logLastIndex(r->log)) {
             logTruncate(r->log, index);
+            TrailTruncate(&r->trail, index);
         }
     }
 
@@ -871,6 +841,7 @@ static int deleteConflictingEntries(struct raft *r,
             /* Delete all entries from this index on because they don't
              * match. */
             logTruncate(r->log, entry_index);
+            TrailTruncate(&r->trail, entry_index);
 
             /* Drop information about previously stored entries that have just
              * been discarded. */
@@ -953,6 +924,10 @@ int replicationAppend(struct raft *r,
             raft_free(copy.buf.base);
             goto err;
         }
+        rv = TrailAppend(&r->trail, copy.term);
+        if (rv != 0) {
+            goto err;
+        }
     }
 
     *rejected = 0;
@@ -1017,6 +992,7 @@ err_after_log_append:
      */
     if (j != 0) {
         logTruncate(r->log, index);
+        TrailTruncate(&r->trail, index);
     }
 
 err:
@@ -1129,6 +1105,7 @@ int replicationInstallSnapshot(struct raft *r,
 
     /* Preemptively update our in-memory state. */
     logRestore(r->log, args->last_index, args->last_term);
+    TrailRestore(&r->trail, args->last_index, args->last_term);
 
     r->last_stored = 0;
 
@@ -1155,11 +1132,14 @@ int replicationInstallSnapshot(struct raft *r,
     return 0;
 }
 
-int replicationApplyConfigurationChange(struct raft *r, raft_index index)
+int replicationApplyConfigurationChange(struct raft *r,
+                                        struct raft_configuration *conf,
+                                        raft_index index)
 {
     assert(index > 0);
 
     if (r->configuration_uncommitted_index != index) {
+        configurationClose(conf);
         return 0;
     }
 
@@ -1169,6 +1149,8 @@ int replicationApplyConfigurationChange(struct raft *r, raft_index index)
      * index, since that uncommitted configuration is now committed. */
     r->configuration_uncommitted_index = 0;
     r->configuration_committed_index = index;
+    configurationClose(&r->configuration_committed);
+    r->configuration_committed = *conf;
 
     if (r->state == RAFT_LEADER) {
         const struct raft_server *server;
@@ -1201,31 +1183,21 @@ int replicationSnapshot(struct raft *r,
                         struct raft_snapshot_metadata *metadata,
                         unsigned trailing)
 {
-    int rv;
-
     (void)trailing;
-
-    /* Cache the configuration contained in the snapshot. While the snapshot was
-     * written, new configuration changes could have been committed, these
-     * changes will not be purged from the log by this snapshot. However
-     * we still cache the configuration for consistency. */
-    configurationClose(&r->configuration_last_snapshot);
-    rv = configurationCopy(&metadata->configuration,
-                           &r->configuration_last_snapshot);
-    if (rv != 0) {
-        /* TODO: make this a hard fault, because if we have no backup and the
-         * log was truncated it will be impossible to rollback an aborted
-         * configuration change. */
-        tracef("failed to backup last committed configuration.");
-    }
 
     /* Make also a copy of the index of the configuration contained in the
      * snapshot, we'll need it in case we send out an InstallSnapshot RPC. */
     r->configuration_last_snapshot_index = metadata->configuration_index;
 
-    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
+    if (metadata->configuration_index > r->configuration_committed_index) {
+        configurationClose(&r->configuration_committed);
+        r->configuration_committed = metadata->configuration;
+    } else {
+        configurationClose(&metadata->configuration);
+    }
 
-    configurationClose(&metadata->configuration);
+    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
+    TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
 
     return 0;
 }

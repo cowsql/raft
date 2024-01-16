@@ -4,8 +4,8 @@
 
 #include "assert.h"
 #include "configuration.h"
-#include "log.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -36,7 +36,7 @@ int progressBuildArray(struct raft *r)
 {
     struct raft_progress *progress;
     unsigned i;
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     progress = raft_malloc(r->configuration.n * sizeof *progress);
     if (progress == NULL) {
         return RAFT_NOMEM;
@@ -54,7 +54,7 @@ int progressBuildArray(struct raft *r)
 int progressRebuildArray(struct raft *r,
                          const struct raft_configuration *configuration)
 {
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     struct raft_progress *progress;
     unsigned i;
     unsigned j;
@@ -102,14 +102,14 @@ int progressRebuildArray(struct raft *r,
 bool progressIsUpToDate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     return p->next_index == last_index + 1;
 }
 
 bool progressShouldReplicate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     bool needs_heartbeat = false;
     bool result = false;
 
@@ -221,7 +221,7 @@ void progressToSnapshot(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
     p->state = PROGRESS__SNAPSHOT;
-    p->snapshot.index = logSnapshotIndex(r->log);
+    p->snapshot.index = TrailSnapshotIndex(&r->trail);
 
     /* Set the next_index to the snapshot index + 1. While the snapshot is being
      * installed (or while we wait for the server to come online, before even

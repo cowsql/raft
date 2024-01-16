@@ -3,10 +3,10 @@
 #include "assert.h"
 #include "configuration.h"
 #include "heap.h"
-#include "log.h"
 #include "message.h"
 #include "random.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
@@ -99,7 +99,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
     message.request_vote.term = term;
     message.request_vote.candidate_id = r->id;
     message.request_vote.last_log_index = r->last_stored;
-    message.request_vote.last_log_term = logTermOf(r->log, r->last_stored);
+    message.request_vote.last_log_term = TrailTermOf(&r->trail, r->last_stored);
     message.request_vote.disrupt_leader = r->candidate_state.disrupt_leader;
     message.request_vote.pre_vote = r->candidate_state.in_pre_vote;
 
@@ -230,7 +230,7 @@ void electionVote(struct raft *r,
      * candidate's term is. We have already checked if we currently have a
      * leader upon reception of the RequestVote RPC, meaning the 2 conditions
      * will be satisfied if the candidate's log is up-to-date. */
-    local_last_index = logLastIndex(r->log);
+    local_last_index = TrailLastIndex(&r->trail);
 
     /* Our log is definitely not more up-to-date if it's empty! */
     if (local_last_index == 0) {
@@ -238,7 +238,7 @@ void electionVote(struct raft *r,
         goto grant_vote;
     }
 
-    local_last_term = logLastTerm(r->log);
+    local_last_term = TrailLastTerm(&r->trail);
 
     /* If the term of the last entry of the requesting server's log is lower
      * than the term of the last entry of our log, then our log is more

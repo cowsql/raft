@@ -12,7 +12,6 @@
 #include "entry.h"
 #include "err.h"
 #include "heap.h"
-#include "legacy.h"
 #include "log.h"
 #include "membership.h"
 #include "progress.h"
@@ -23,6 +22,11 @@
 #include "restore.h"
 #include "tick.h"
 #include "tracing.h"
+#include "trail.h"
+
+#ifndef RAFT__LEGACY_no
+#include "legacy.h"
+#endif
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
 #define DEFAULT_HEARTBEAT_TIMEOUT 100          /* One tenth of a second */
@@ -42,9 +46,24 @@ int raft_version_number(void)
     return RAFT_VERSION_NUMBER;
 }
 
+#ifndef RAFT__LEGACY_no
 static int ioFsmVersionCheck(struct raft *r,
                              struct raft_io *io,
-                             struct raft_fsm *fsm);
+                             struct raft_fsm *fsm)
+{
+    if (io->version == 0) {
+        ErrMsgPrintf(r->errmsg, "io->version must be set");
+        return -1;
+    }
+
+    if (fsm->version == 0) {
+        ErrMsgPrintf(r->errmsg, "fsm->version must be set");
+        return -1;
+    }
+
+    return 0;
+}
+#endif
 
 int raft_init(struct raft *r,
               struct raft_io *io,
@@ -69,6 +88,7 @@ int raft_init(struct raft *r,
     strcpy(r->address, address);
     r->current_term = 0;
     r->voted_for = 0;
+    TrailInit(&r->trail);
     r->log = logInit();
     if (r->log == NULL) {
         ErrMsgOom(r->errmsg);
@@ -77,7 +97,7 @@ int raft_init(struct raft *r,
     }
 
     raft_configuration_init(&r->configuration);
-    raft_configuration_init(&r->configuration_last_snapshot);
+    raft_configuration_init(&r->configuration_committed);
     r->configuration_committed_index = 0;
     r->configuration_uncommitted_index = 0;
     r->configuration_last_snapshot_index = 0;
@@ -99,6 +119,10 @@ int raft_init(struct raft *r,
     r->messages = NULL;
     r->n_messages_cap = 0;
     r->update = NULL;
+#if defined(RAFT__LEGACY_no)
+    (void)io;
+    (void)fsm;
+#else
     r->io = NULL;
     r->fsm = NULL;
     if (io != NULL) {
@@ -129,10 +153,13 @@ int raft_init(struct raft *r,
         r->legacy.snapshot_index = 0;
         r->transfer = NULL;
     }
+#endif
     return 0;
 
+#ifndef RAFT__LEGACY_no
 err_after_log_init:
     logClose(r->log);
+#endif
 err_after_address_alloc:
     RaftHeapFree(r->address);
 err:
@@ -143,14 +170,16 @@ err:
 static void finalClose(struct raft *r)
 {
     raft_free(r->address);
+    TrailClose(&r->trail);
     logClose(r->log);
     raft_configuration_close(&r->configuration);
-    raft_configuration_close(&r->configuration_last_snapshot);
+    raft_configuration_close(&r->configuration_committed);
     if (r->messages != NULL) {
         raft_free(r->messages);
     }
 }
 
+#ifndef RAFT__LEGACY_no
 static void ioCloseCb(struct raft_io *io)
 {
     struct raft *r = io->data;
@@ -159,27 +188,30 @@ static void ioCloseCb(struct raft_io *io)
         r->close_cb(r);
     }
 }
+#endif
 
 void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->update == NULL);
 
+#if defined(RAFT__LEGACY_no)
+    (void)cb;
+    finalClose(r);
+#else
     if (r->io != NULL) {
-#ifdef V0_ENABLED
         struct raft_event event;
         assert(r->close_cb == NULL);
         event.time = r->io->time(r->io);
         event.type = RAFT_STOP;
 
         LegacyForwardToRaftIo(r, &event);
-#endif
-
         r->close_cb = cb;
 
         r->io->close(r->io, ioCloseCb);
     } else {
         finalClose(r);
     }
+#endif
 }
 
 void raft_seed(struct raft *r, unsigned random)
@@ -214,11 +246,11 @@ static int maybeSelfElect(struct raft *r)
 }
 
 /* Emit a start message containing information about the current state. */
-static void stepStartEmitMessage(struct raft *r)
+static void stepStartEmitMessage(const struct raft *r)
 {
     char msg[512] = {0};
-    raft_index snapshot_index = logSnapshotIndex(r->log);
-    unsigned n_entries = (unsigned)logNumEntries(r->log);
+    raft_index snapshot_index = TrailSnapshotIndex(&r->trail);
+    unsigned n_entries = TrailNumEntries(&r->trail);
 
     if (r->current_term == 0) {
         strcat(msg, "no state");
@@ -240,10 +272,10 @@ static void stepStartEmitMessage(struct raft *r)
         strcat(msg, msg_vote);
     }
 
-    if (logSnapshotIndex(r->log) > 0) {
+    if (snapshot_index) {
         char msg_snapshot[64];
-        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)",
-                logSnapshotIndex(r->log), logSnapshotTerm(r->log));
+        sprintf(msg_snapshot, "1 snapshot (%llu^%llu)", snapshot_index,
+                TrailSnapshotTerm(&r->trail));
         strcat(msg, msg_snapshot);
         if (n_entries > 0) {
             strcat(msg, ", ");
@@ -252,15 +284,16 @@ static void stepStartEmitMessage(struct raft *r)
 
     if (n_entries > 0) {
         char msg_entries[64];
-        raft_index first = logLastIndex(r->log) - logNumEntries(r->log) + 1;
+        raft_index first =
+            TrailLastIndex(&r->trail) - TrailNumEntries(&r->trail) + 1;
         if (n_entries == 1) {
             sprintf(msg_entries, "1 entry (%llu^%llu)", first,
-                    logTermOf(r->log, first));
+                    TrailTermOf(&r->trail, first));
         } else {
-            raft_index last = logLastIndex(r->log);
+            raft_index last = TrailLastIndex(&r->trail);
             sprintf(msg_entries, "%u entries (%llu^%llu..%llu^%llu)", n_entries,
-                    first, logTermOf(r->log, first), last,
-                    logTermOf(r->log, last));
+                    first, TrailTermOf(&r->trail, first), last,
+                    TrailTermOf(&r->trail, last));
         }
         strcat(msg, msg_entries);
     }
@@ -344,7 +377,7 @@ static int stepPersistedEntries(struct raft *r,
                                 int status)
 {
     raft_index last_stored = r->last_stored + n;
-    raft_index last_index = logLastIndex(r->log);
+    raft_index last_index = TrailLastIndex(&r->trail);
     int rv;
 
     assert(n > 0);
@@ -400,10 +433,7 @@ static int stepSent(struct raft *r, struct raft_message *message, int status)
 }
 
 /* Handle new messages. */
-static int stepReceive(struct raft *r,
-                       raft_id id,
-                       const char *address,
-                       struct raft_message *message)
+static int stepReceive(struct raft *r, struct raft_message *message)
 {
     const char *desc;
 
@@ -431,9 +461,9 @@ static int stepReceive(struct raft *r,
             break;
     }
 
-    infof("recv %s from server %llu", desc, id);
+    infof("recv %s from server %llu", desc, message->server_id);
 
-    return recvMessage(r, id, address, message);
+    return recvMessage(r, message);
 }
 
 int stepSnapshot(struct raft *r,
@@ -494,12 +524,11 @@ int raft_step(struct raft *r,
             rv = stepSent(r, &event->sent.message, event->sent.status);
             break;
         case RAFT_RECEIVE:
-            rv = stepReceive(r, event->receive.id, event->receive.address,
-                             event->receive.message);
+            rv = stepReceive(r, event->receive.message);
             break;
         case RAFT_CONFIGURATION:
             rv = replicationApplyConfigurationChange(
-                r, event->configuration.index);
+                r, &event->configuration.conf, event->configuration.index);
             break;
         case RAFT_SNAPSHOT:
             rv = stepSnapshot(r, &event->snapshot.metadata,
@@ -639,13 +668,15 @@ void raft_set_election_timeout(struct raft *r, const unsigned msecs)
 {
     r->election_timeout = msecs;
 
-    /* FIXME: workaround for failures in the dqlite test suite, which sets
-     * timeouts too low and end up in failures when run on slow harder. */
+/* FIXME: workaround for failures in the dqlite test suite, which sets
+ * timeouts too low and end up in failures when run on slow harder. */
+#ifndef RAFT__LEGACY_no
     if (r->io != NULL && r->election_timeout == 150 &&
         r->heartbeat_timeout == 15) {
         r->election_timeout *= 3;
         r->heartbeat_timeout *= 3;
     }
+#endif
 
     switch (r->state) {
         case RAFT_FOLLOWER:
@@ -724,6 +755,12 @@ int raft_configuration_encode(const struct raft_configuration *c,
     return configurationEncode(c, buf);
 }
 
+int raft_configuration_decode(const struct raft_buffer *buf,
+                              struct raft_configuration *c)
+{
+    return configurationDecode(buf, c);
+}
+
 unsigned long long raft_digest(const char *text, unsigned long long n)
 {
     struct byteSha1 sha1;
@@ -787,21 +824,4 @@ const char *raft_role_name(int role)
             break;
     }
     return name;
-}
-
-static int ioFsmVersionCheck(struct raft *r,
-                             struct raft_io *io,
-                             struct raft_fsm *fsm)
-{
-    if (io->version == 0) {
-        ErrMsgPrintf(r->errmsg, "io->version must be set");
-        return -1;
-    }
-
-    if (fsm->version == 0) {
-        ErrMsgPrintf(r->errmsg, "fsm->version must be set");
-        return -1;
-    }
-
-    return 0;
 }

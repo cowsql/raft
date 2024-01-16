@@ -19,11 +19,10 @@
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 
 /* Dispatch a single RPC message to the appropriate handler. */
-int recvMessage(struct raft *r,
-                raft_id id,
-                const char *address,
-                struct raft_message *message)
+int recvMessage(struct raft *r, struct raft_message *message)
 {
+    raft_id id = message->server_id;
+    const char *address = message->server_address;
     int rv = 0;
 
     switch (message->type) {
