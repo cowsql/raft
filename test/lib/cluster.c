@@ -253,14 +253,6 @@ static void diskTruncateEntries(struct test_disk *d, raft_index index)
 }
 
 /* Append a new entry to the log. */
-static void diskPersistEntry(struct test_disk *d, struct raft_entry *entry)
-{
-    d->n_entries++;
-    d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
-    munit_assert_ptr_not_null(d->entries);
-    entryCopy(entry, &d->entries[d->n_entries - 1]);
-}
-
 /* Custom emit tracer function which includes the server ID. */
 static void serverEmit(struct raft_tracer *t, int type, const void *data)
 {
@@ -833,7 +825,7 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     diskTruncateEntries(&s->disk, event->persisted_entries.index);
 
     for (i = 0; i < event->persisted_entries.n; i++) {
-        diskPersistEntry(&s->disk, &event->persisted_entries.batch[i]);
+        diskAddEntry(&s->disk, &event->persisted_entries.batch[i]);
     }
 
     serverStep(s, event);
