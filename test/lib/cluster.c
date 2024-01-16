@@ -872,13 +872,17 @@ static void serverEnqueueReceive(struct test_server *s,
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    raft_index index = event->persisted_entries.index;
+    unsigned n = event->persisted_entries.n;
     unsigned i;
 
     /* Possibly truncate stale entries. */
-    diskTruncateEntries(&s->disk, event->persisted_entries.index);
+    diskTruncateEntries(&s->disk, index);
 
-    for (i = 0; i < event->persisted_entries.n; i++) {
-        diskAddEntry(&s->disk, &event->persisted_entries.batch[i]);
+    munit_assert_ullong(index, >=, s->log.start);
+
+    for (i = 0; i < n; i++) {
+        diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
     }
 
     serverStep(s, event);
