@@ -359,6 +359,10 @@ static void serverInit(struct test_server *s,
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
+    s->log.start = 1;
+    s->log.entries = NULL;
+    s->log.n = 0;
+
     s->last_applied = 0;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;
@@ -461,6 +465,7 @@ static void serverStop(struct test_server *s)
 {
     struct raft_event event;
     struct raft_update update;
+    unsigned i;
     int rv;
 
     event.time = s->cluster->time;
@@ -470,6 +475,11 @@ static void serverStop(struct test_server *s)
     munit_assert_int(rv, ==, 0);
 
     s->running = false;
+
+    for (i = 0; i < s->log.n; i++) {
+        free(s->log.entries[i].buf.base);
+    }
+    free(s->log.entries);
 
     /* Re-initialized the raft object. */
     raft_close(&s->raft, NULL);
@@ -512,12 +522,47 @@ done:
     s->randomized_election_timeout_prev = s->randomized_election_timeout;
 }
 
+/* Truncate all in-memory entries from the given index onwards. If there are no
+ * entries at the given index, this is a no-op. */
+static void serverTruncateEntries(struct test_server *s, raft_index index)
+{
+    unsigned i;
+
+    if (index == s->log.start + s->log.n) {
+        return;
+    }
+
+    munit_assert_ulong(index, >=, s->log.start);
+    munit_assert_ulong(index, <=, s->log.start + s->log.n);
+
+    for (i = (unsigned)(index - s->log.start); i < s->log.n; i++) {
+        free(s->log.entries[i].buf.base);
+        s->log.n--;
+    }
+}
+
+static void serverAddEntry(struct test_server *s,
+                           const struct raft_entry *entry)
+{
+    s->log.n++;
+    s->log.entries = realloc(s->log.entries, s->log.n * sizeof *s->log.entries);
+    munit_assert_ptr_not_null(s->log.entries);
+    entryCopy(entry, &s->log.entries[s->log.n - 1]);
+}
+
 static void serverProcessEntries(struct test_server *s,
                                  raft_index first_index,
                                  struct raft_entry *entries,
                                  unsigned n)
 {
     struct step *step = munit_malloc(sizeof *step);
+    unsigned i;
+
+    serverTruncateEntries(s, first_index);
+
+    for (i = 0; i < n; i++) {
+        serverAddEntry(s, &entries[i]);
+    }
 
     step->id = s->raft.id;
 
@@ -695,6 +740,7 @@ static void serverStep(struct test_server *s, struct raft_event *event)
 static void serverStart(struct test_server *s)
 {
     struct raft_event event;
+    unsigned i;
 
     s->running = true;
 
@@ -706,6 +752,13 @@ static void serverStart(struct test_server *s)
     diskLoad(&s->disk, &event.start.term, &event.start.voted_for,
              &event.start.metadata, &event.start.start_index,
              &event.start.entries, &event.start.n_entries);
+
+    s->log.start = event.start.start_index;
+    s->log.n = event.start.n_entries;
+    s->log.entries = munit_malloc(s->log.n * sizeof *s->log.entries);
+    for (i = 0; i < s->log.n; i++) {
+        entryCopy(&event.start.entries[i], &s->log.entries[i]);
+    }
 
     serverStep(s, &event);
 
