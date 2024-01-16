@@ -624,6 +624,7 @@ struct raft; /* Forward declaration. */
         struct raft_change *change;     /* Pending membership change */      \
         raft_index snapshot_index;      /* Last persisted snapshot */        \
         struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
+        struct raft_log *log;              /* Cache on-disk log */           \
     } legacy;
 #endif /* RAFT__LEGACY_no */
 

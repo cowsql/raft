@@ -152,6 +152,10 @@ int raft_init(struct raft *r,
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
         r->transfer = NULL;
+        r->legacy.log = logInit();
+        if (r->legacy.log == NULL) {
+            goto err_after_log_init;
+        }
     }
 #endif
     return 0;
@@ -172,6 +176,11 @@ static void finalClose(struct raft *r)
     raft_free(r->address);
     TrailClose(&r->trail);
     logClose(r->log);
+#ifndef RAFT__LEGACY_no
+    if (r->io != NULL) {
+        logClose(r->legacy.log);
+    }
+#endif
     raft_configuration_close(&r->configuration);
     raft_configuration_close(&r->configuration_committed);
     if (r->messages != NULL) {
