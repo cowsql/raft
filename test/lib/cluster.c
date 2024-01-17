@@ -380,8 +380,19 @@ static void serverCancelSend(struct test_server *s, struct step *step)
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
+    unsigned n = step->event.persisted_entries.n;
+    struct raft_buffer buf;
+
+    if (n > 0) {
+        buf = step->event.persisted_entries.batch[0].buf;
+    }
+
     step->event.persisted_entries.status = RAFT_CANCELED;
     serverStep(s, &step->event);
+
+    if (n > 0) {
+        raft_free(buf.base);
+    }
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
@@ -886,6 +897,7 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
     raft_index index = event->persisted_entries.index;
+    struct raft_buffer buf;
     unsigned n = event->persisted_entries.n;
     unsigned i;
 
@@ -898,7 +910,15 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
         diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
     }
 
+    if (n > 0) {
+        buf = event->persisted_entries.batch[0].buf;
+    }
+
     serverStep(s, event);
+
+    if (n > 0) {
+        raft_free(buf.base);
+    }
 }
 
 static void serverCompleteSnapshot(struct test_server *s, struct step *step)

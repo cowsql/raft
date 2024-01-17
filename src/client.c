@@ -2,7 +2,6 @@
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
-#include "log.h"
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
@@ -106,37 +105,30 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
             }
         }
 
-        rv = logAppend(r->log, entry->term, entry->type, &entry->buf, NULL);
-        if (rv != 0) {
-            /* This logAppend call can't fail with RAFT_BUSY, because these are
-             * brand new entries. */
-            assert(rv == RAFT_NOMEM);
-            goto err_after_log_append;
-        }
         rv = TrailAppend(&r->trail, entry->term);
         if (rv != 0) {
             assert(rv == RAFT_NOMEM);
-            goto err_after_log_append;
+            goto err;
         }
 
         if (entry->type == RAFT_CHANGE) {
             rv = clientSubmitConfiguration(r, entry);
             if (rv != 0) {
-                goto err_after_log_append;
+                goto err_after_trail_append;
             }
         }
     }
 
-    rv = replicationTrigger(r, index);
+    rv = replicationTrigger(r, index, entries, n);
     if (rv != 0) {
         /* TODO: assert the possible error values */
-        goto err_after_log_append;
+        goto err_after_trail_append;
     }
 
     return 0;
 
-err_after_log_append:
-    logDiscard(r->log, index);
+err_after_trail_append:
+    TrailTruncate(&r->trail, index);
 err:
     assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM);
     return rv;

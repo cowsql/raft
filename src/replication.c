@@ -10,7 +10,6 @@
 #endif
 #include "err.h"
 #include "heap.h"
-#include "log.h"
 #include "membership.h"
 #include "message.h"
 #include "progress.h"
@@ -449,11 +448,10 @@ int replicationPersistEntriesDone(struct raft *r,
             break;
     }
 
-    logRelease(r->log, index, entries, n);
+    raft_free(entries);
 
     if (status != 0) {
         if (index <= TrailLastIndex(&r->trail)) {
-            logTruncate(r->log, index);
             TrailTruncate(&r->trail, index);
         }
     }
@@ -470,6 +468,9 @@ static void persistEntries(struct raft *r,
                            struct raft_entry entries[],
                            unsigned n)
 {
+    assert(n > 0);
+    assert(entries != NULL);
+
     /* This must be the first time during this raft_step() call where we set new
      * entries to be persisted. */
     assert(!(r->update->flags & RAFT_UPDATE_ENTRIES));
@@ -477,56 +478,18 @@ static void persistEntries(struct raft *r,
     r->update->flags |= RAFT_UPDATE_ENTRIES;
 
     r->update->entries.index = index;
-    r->update->entries.batch = entries;
+    r->update->entries.batch = raft_malloc(n * sizeof *entries);
+    assert(r->update->entries.batch != NULL);
+    memcpy(r->update->entries.batch, entries, n * sizeof *entries);
     r->update->entries.n = n;
 }
 
-/* Submit a disk write for all entries from the given index onward. */
-static int appendLeader(struct raft *r, raft_index index)
+int replicationTrigger(struct raft *r,
+                       raft_index index,
+                       struct raft_entry *entries,
+                       unsigned n)
 {
-    struct raft_entry *entries = NULL;
-    unsigned n;
-    int rv;
-
-    assert(r->state == RAFT_LEADER);
-    assert(index > 0);
-    assert(index > r->last_stored);
-
-    /* Acquire all the entries from the given index onwards. */
-    rv = logAcquire(r->log, index, &entries, &n);
-    if (rv != 0) {
-        goto err;
-    }
-
-    /* We expect this function to be called only when there are actually
-     * some entries to write. */
-    if (n == 0) {
-        assert(false);
-        ErrMsgPrintf(r->errmsg, "No log entries found at index %llu", index);
-        rv = RAFT_SHUTDOWN;
-        goto err_after_entries_acquired;
-    }
-
     persistEntries(r, index, entries, n);
-
-    return 0;
-
-err_after_entries_acquired:
-    logRelease(r->log, index, entries, n);
-err:
-    assert(rv != 0);
-    return rv;
-}
-
-int replicationTrigger(struct raft *r, raft_index index)
-{
-    int rv;
-
-    rv = appendLeader(r, index);
-    if (rv != 0) {
-        return rv;
-    }
-
     return triggerAll(r);
 }
 
@@ -846,7 +809,6 @@ static int deleteConflictingEntries(struct raft *r,
 
             /* Delete all entries from this index on because they don't
              * match. */
-            logTruncate(r->log, entry_index);
             TrailTruncate(&r->trail, entry_index);
 
             /* Drop information about previously stored entries that have just
@@ -909,28 +871,15 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
+    /* Index of first new entry */
+    index = args->prev_log_index + 1 + i;
+
     /* Update our in-memory log to reflect that we received these entries. We'll
      * notify the leader of a successful append once the write entries request
      * that we issue below actually completes.  */
     for (j = 0; j < n; j++) {
         struct raft_entry *entry = &args->entries[i + j];
-        /* TODO This copy should not strictly be necessary, as the batch logic
-         * will take care of freeing the batch buffer in which the entries are
-         * received. However, this would lead to memory spikes in certain edge
-         * cases. https://github.com/canonical/dqlite/issues/276
-         */
-        struct raft_entry copy = {0};
-        rv = entryCopy(entry, &copy);
-        if (rv != 0) {
-            goto err;
-        }
-
-        rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
-        if (rv != 0) {
-            raft_free(copy.buf.base);
-            goto err;
-        }
-        rv = TrailAppend(&r->trail, copy.term);
+        rv = TrailAppend(&r->trail, entry->term);
         if (rv != 0) {
             goto err;
         }
@@ -957,21 +906,16 @@ int replicationAppend(struct raft *r,
 
     *async = true;
 
-    /* Index of first new entry */
-    index = args->prev_log_index + 1 + i;
+    /* Double check we are tracking the relevant entries in the log trail. */
+    n_entries = (unsigned)(TrailLastIndex(&r->trail) - index) + 1;
 
-    /* Acquire the relevant entries from the log. */
-    rv = logAcquire(r->log, index, &entries, &n_entries);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    /* The number of entries we just acquired must be exactly n, which is the
-     * number of new entries present in the message (here "new entries" means
-     * entries that we don't have yet in our in-memory log).  That's because we
-     * call logAppend above exactly n times, once for each new log entry, so
-     * logAcquire will return exactly n entries. */
+    /* The number of entries we must be exactly n, which is the number of new
+     * entries present in the message (here "new entries" means entries that we
+     * don't have yet in our in-memory log).  That's because we call TrailAppend
+     * above exactly n times, once for each new log entry. */
     assert(n_entries == n);
+
+    entries = &args->entries[i];
 
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
@@ -987,21 +931,19 @@ int replicationAppend(struct raft *r,
 
     persistEntries(r, index, entries, n_entries);
 
-    entryBatchesDestroy(args->entries, args->n_entries);
+    raft_free(args->entries);
 
     return 0;
 
-err_after_log_append:
+err:
     /* Release all entries added to the in-memory log, making
      * sure the in-memory log and disk don't diverge, leading
-     * to future log entries not being persisted to disk.
-     */
+     * to future log entries not being persisted to disk. */
     if (j != 0) {
-        logTruncate(r->log, index);
         TrailTruncate(&r->trail, index);
     }
+    raft_free(args->entries);
 
-err:
     assert(rv != 0);
     return rv;
 }
@@ -1110,7 +1052,6 @@ int replicationInstallSnapshot(struct raft *r,
     *async = true;
 
     /* Preemptively update our in-memory state. */
-    logRestore(r->log, args->last_index, args->last_term);
     TrailRestore(&r->trail, args->last_index, args->last_term);
 
     r->last_stored = 0;
@@ -1202,7 +1143,6 @@ int replicationSnapshot(struct raft *r,
         configurationClose(&metadata->configuration);
     }
 
-    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
     TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
 
     return 0;

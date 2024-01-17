@@ -11,6 +11,7 @@
 #include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvAppendEntries(struct raft *r,
                       raft_id id,
@@ -148,3 +149,4 @@ reply:
 }
 
 #undef infof
+#undef tracef

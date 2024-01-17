@@ -14,6 +14,7 @@
 #include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Convenience for setting a new state value and asserting that the transition
  * is valid. */
@@ -208,6 +209,8 @@ int convertToLeader(struct raft *r)
             goto err;
         }
 
+        entry.batch = entry.buf.base;
+
         rv = ClientSubmit(r, &entry, 1);
         if (rv != 0) {
             /* This call to ClientSubmit can only fail with RAFT_NOMEM, because
@@ -235,3 +238,4 @@ void convertToUnavailable(struct raft *r)
 }
 
 #undef infof
+#undef tracef
