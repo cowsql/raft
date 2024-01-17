@@ -380,19 +380,12 @@ static void serverCancelSend(struct test_server *s, struct step *step)
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
-    unsigned n = step->event.persisted_entries.n;
-    struct raft_buffer buf;
+    struct raft_event *event = &step->event;
+    raft_index index = event->persisted_entries.index;
 
-    if (n > 0) {
-        buf = step->event.persisted_entries.batch[0].buf;
-    }
-
+    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
     step->event.persisted_entries.status = RAFT_CANCELED;
     serverStep(s, &step->event);
-
-    if (n > 0) {
-        raft_free(buf.base);
-    }
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
@@ -575,13 +568,18 @@ static void serverProcessEntries(struct test_server *s,
         serverAddEntry(s, &entries[i]);
     }
 
+    if (n > 0) {
+        raft_free(entries[0].buf.base);
+    }
+
+    raft_free(entries);
+
     step->id = s->raft.id;
 
     step->event.time = s->cluster->time + s->disk_latency;
     step->event.type = RAFT_PERSISTED_ENTRIES;
 
     step->event.persisted_entries.index = first_index;
-    step->event.persisted_entries.batch = entries;
     step->event.persisted_entries.n = n;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
@@ -897,7 +895,6 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
     raft_index index = event->persisted_entries.index;
-    struct raft_buffer buf;
     unsigned n = event->persisted_entries.n;
     unsigned i;
 
@@ -905,20 +902,15 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     diskTruncateEntries(&s->disk, index);
 
     munit_assert_ullong(index, >=, s->log.start);
+    munit_assert_uint(n, <=, s->log.n);
 
     for (i = 0; i < n; i++) {
         diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
     }
 
-    if (n > 0) {
-        buf = event->persisted_entries.batch[0].buf;
-    }
+    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
 
     serverStep(s, event);
-
-    if (n > 0) {
-        raft_free(buf.base);
-    }
 }
 
 static void serverCompleteSnapshot(struct test_server *s, struct step *step)

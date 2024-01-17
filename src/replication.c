@@ -448,8 +448,6 @@ int replicationPersistEntriesDone(struct raft *r,
             break;
     }
 
-    raft_free(entries);
-
     if (status != 0) {
         if (index <= TrailLastIndex(&r->trail)) {
             TrailTruncate(&r->trail, index);
