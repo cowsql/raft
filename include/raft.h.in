@@ -642,6 +642,7 @@ struct raft; /* Forward declaration. */
         RAFT__EXTENSIONS_LEGACY                                            \
         struct raft_update *update; /* Pointer passed to raft_step() */    \
         struct raft_trail trail;                                           \
+        struct raft_entry barrier;                                         \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__RESERVED, RAFT__EXTENSIONS);

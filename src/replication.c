@@ -476,9 +476,7 @@ static void persistEntries(struct raft *r,
     r->update->flags |= RAFT_UPDATE_ENTRIES;
 
     r->update->entries.index = index;
-    r->update->entries.batch = raft_malloc(n * sizeof *entries);
-    assert(r->update->entries.batch != NULL);
-    memcpy(r->update->entries.batch, entries, n * sizeof *entries);
+    r->update->entries.batch = entries;
     r->update->entries.n = n;
 }
 
@@ -928,8 +926,6 @@ int replicationAppend(struct raft *r,
     }
 
     persistEntries(r, index, entries, n_entries);
-
-    raft_free(args->entries);
 
     return 0;
 

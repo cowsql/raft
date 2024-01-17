@@ -572,8 +572,6 @@ static void serverProcessEntries(struct test_server *s,
         raft_free(entries[0].buf.base);
     }
 
-    raft_free(entries);
-
     step->id = s->raft.id;
 
     step->event.time = s->cluster->time + s->disk_latency;
@@ -978,6 +976,9 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     }
 
     serverStep(s, event);
+    if (event->receive.message->type == RAFT_IO_APPEND_ENTRIES) {
+        raft_free(event->receive.message->append_entries.entries);
+    }
     free(event->receive.message);
 }
 

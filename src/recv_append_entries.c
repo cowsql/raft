@@ -105,7 +105,9 @@ int recvAppendEntries(struct raft *r,
      * should be in charge of serializing everything. */
     if (replicationInstallSnapshotBusy(r) && args->n_entries > 0) {
         infof("snapshot install in progress -> ignore");
-        entryBatchesDestroy(args->entries, args->n_entries);
+        if (args->n_entries > 0 && args->entries[0].batch != NULL) {
+            raft_free(args->entries[0].batch);
+        }
         return 0;
     }
 
@@ -127,10 +129,6 @@ reply:
     /* Free the entries batch, if any. */
     if (args->n_entries > 0 && args->entries[0].batch != NULL) {
         raft_free(args->entries[0].batch);
-    }
-
-    if (args->entries != NULL) {
-        raft_free(args->entries);
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
