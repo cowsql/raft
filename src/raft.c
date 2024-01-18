@@ -418,9 +418,6 @@ static int stepSent(struct raft *r, struct raft_message *message, int status)
 {
     int rv;
     switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
-            rv = replicationSendAppendEntriesDone(r, message, status);
-            break;
         case RAFT_IO_INSTALL_SNAPSHOT:
             rv = replicationSendInstallSnapshotDone(r, message, status);
             break;

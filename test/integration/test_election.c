@@ -1058,8 +1058,9 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 240] 1 > recv append entries result from server 4\n"
         "[ 270] 1 > timeout as leader\n"
+        "           server 3 is unreachable -> abort pipeline\n"
         "           probe server 2 sending 2 entries (2^2..3^2)\n"
-        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
         "           pipeline server 4 sending a heartbeat (no entries)\n"
         "[ 280] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"

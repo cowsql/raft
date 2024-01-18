@@ -37,27 +37,6 @@
  * TODO: Make this number configurable. */
 #define MAX_APPEND_ENTRIES 32
 
-/* Callback invoked after request to send an AppendEntries RPC has completed. */
-int replicationSendAppendEntriesDone(struct raft *r,
-                                     struct raft_message *message,
-                                     int status)
-{
-    unsigned i = configurationIndexOf(&r->configuration, message->server_id);
-
-    if (r->state == RAFT_LEADER && i < r->configuration.n) {
-        if (status != 0) {
-            tracef("failed to send append entries to server %llu: %s",
-                   message->server_id, raft_strerror(status));
-            /* Go back to probe mode. */
-            if (progressState(r, i) != PROGRESS__PROBE) {
-                progressToProbe(r, i);
-            }
-        }
-    }
-
-    return 0;
-}
-
 /* Send an AppendEntries message to the i'th server, including all log entries
  * from the given point onwards. */
 static int sendAppendEntries(struct raft *r,
