@@ -735,6 +735,8 @@ static void legacyCheckChangeRequest(struct raft *r,
         rv = configurationEncode(&configuration, &entry->buf);
         assert(rv == 0);
 
+        entry->batch = entry->buf.base;
+
         *n_events += 1;
         *events = raft_realloc(*events, *n_events * sizeof **events);
         assert(*events != NULL);
@@ -1216,7 +1218,7 @@ int raft_apply(struct raft *r,
     entry.type = RAFT_COMMAND;
     entry.term = r->current_term;
     entry.buf = bufs[0];
-    entry.batch = NULL;
+    entry.batch = entry.buf.base;
 
     event.time = r->io->time(r->io);
     event.type = RAFT_SUBMIT;
@@ -1255,6 +1257,8 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
         rv = RAFT_NOMEM;
         goto err;
     }
+
+    entry.batch = entry.buf.base;
 
     event.time = r->io->time(r->io);
     event.type = RAFT_SUBMIT;
@@ -1295,6 +1299,8 @@ static int clientChangeConfiguration(
     if (rv != 0) {
         return rv;
     }
+
+    entry.batch = entry.buf.base;
 
     event.time = r->io->time(r->io);
     event.type = RAFT_SUBMIT;

@@ -934,6 +934,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     configuration.servers[1].role = RAFT_STANDBY;
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
+    entry.batch = entry.buf.base;
 
     test_cluster_submit(&f->cluster_, 1, &entry);
 
@@ -982,6 +983,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
 
     test_cluster_submit(&f->cluster_, 1, &entry);
     CLUSTER_TRACE(

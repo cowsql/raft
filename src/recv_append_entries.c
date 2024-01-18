@@ -105,7 +105,8 @@ int recvAppendEntries(struct raft *r,
      * should be in charge of serializing everything. */
     if (replicationInstallSnapshotBusy(r) && args->n_entries > 0) {
         infof("snapshot install in progress -> ignore");
-        if (args->n_entries > 0 && args->entries[0].batch != NULL) {
+        if (args->n_entries > 0) {
+            assert(args->entries[0].batch != NULL);
             raft_free(args->entries[0].batch);
         }
         return 0;
@@ -113,7 +114,7 @@ int recvAppendEntries(struct raft *r,
 
     rv = replicationAppend(r, args, &result->rejected, &async);
     if (rv != 0 && rv != RAFT_BUSY) {
-        return rv;
+        goto err;
     }
 
     if (async) {
@@ -127,7 +128,8 @@ reply:
     result->term = r->current_term;
 
     /* Free the entries batch, if any. */
-    if (args->n_entries > 0 && args->entries[0].batch != NULL) {
+    if (args->n_entries) {
+        assert(args->entries[0].batch != NULL);
         raft_free(args->entries[0].batch);
     }
 
@@ -137,10 +139,18 @@ reply:
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
-        return rv;
+        goto err;
     }
 
     return 0;
+
+err:
+    assert(rv != 0);
+    if (args->n_entries) {
+        assert(args->entries[0].batch != NULL);
+        raft_free(args->entries[0].batch);
+    }
+    return rv;
 }
 
 #undef infof

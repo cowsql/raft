@@ -84,6 +84,7 @@ TEST_V1(raft_add, Committed, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
@@ -161,6 +162,7 @@ TEST_V1(raft_add, NotLeader, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
 
     event.time = f->cluster_.time;
     event.type = RAFT_SUBMIT;
@@ -211,6 +213,7 @@ TEST_V1(raft_add, Busy, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 1 /* S */);
@@ -219,6 +222,7 @@ TEST_V1(raft_add, Busy, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
 
     event.time = f->cluster_.time;
     event.type = RAFT_SUBMIT;
@@ -301,6 +305,7 @@ TEST_V1(raft_remove, Committed, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
@@ -376,6 +381,7 @@ TEST_V1(raft_remove, Self, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -450,6 +456,7 @@ TEST_V1(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     /* The removed- leader should still replicate entries.
@@ -526,6 +533,7 @@ TEST_V1(raft_assign, NotLeader, setup, tear_down, 0, NULL)
     rv = raft_configuration_encode(&configuration, &entry.buf);
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
+    entry.batch = entry.buf.base;
 
     event.time = f->cluster_.time;
     event.type = RAFT_SUBMIT;

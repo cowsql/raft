@@ -274,6 +274,7 @@ TEST_V1(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -336,6 +337,7 @@ TEST_V1(replication, SkipSpare, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -398,6 +400,7 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
 
     test_cluster_submit(&f->cluster_, 1, &entry);
 
@@ -432,6 +435,7 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -491,6 +495,7 @@ TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -516,6 +521,7 @@ TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(8);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -623,10 +629,12 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -1234,6 +1242,7 @@ TEST_V1(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     /* The follower eventually receive the entry. */
@@ -2021,6 +2030,7 @@ TEST_V1(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
