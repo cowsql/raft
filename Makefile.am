@@ -21,7 +21,6 @@ libraft_la_SOURCES = \
   src/entry.c \
   src/err.c \
   src/heap.c \
-  src/log.c \
   src/membership.c \
   src/message.c \
   src/progress.c \
@@ -109,6 +108,7 @@ endif # LZ4_AVAILABLE
 
 if V0_ENABLED
 libraft_la_SOURCES += \
+  src/log.c \
   src/legacy.c \
   src/snapshot.c
 libraft_la_CFLAGS += -DV0_ENABLED

@@ -12,7 +12,6 @@
 #include "entry.h"
 #include "err.h"
 #include "heap.h"
-#include "log.h"
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
@@ -26,6 +25,7 @@
 
 #ifndef RAFT__LEGACY_no
 #include "legacy.h"
+#include "log.h"
 #endif
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -154,8 +154,10 @@ int raft_init(struct raft *r,
 #endif
     return 0;
 
+#ifndef RAFT__LEGACY_no
 err_after_address_alloc:
     RaftHeapFree(r->address);
+#endif
 err:
     assert(rv != 0);
     return rv;
