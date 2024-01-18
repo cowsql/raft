@@ -125,10 +125,17 @@ static bool checkContactQuorum(struct raft *r)
         }
 
         if (!is_recent) {
-            if (progressState(r, i) == PROGRESS__PIPELINE) {
-                infof("server %llu is unreachable -> abort pipeline",
-                      server->id);
-                progressToProbe(r, i);
+            switch (progressState(r, i)) {
+                case PROGRESS__PIPELINE:
+                    infof("server %llu is unreachable -> abort pipeline",
+                          server->id);
+                    progressToProbe(r, i);
+                    break;
+                case PROGRESS__SNAPSHOT:
+                    infof("server %llu is unreachable -> abort snapshot",
+                          server->id);
+                    progressAbortSnapshot(r, i);
+                    break;
             }
         }
     }

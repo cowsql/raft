@@ -413,22 +413,6 @@ static int stepPersistedSnapshot(struct raft *r,
     return 0;
 }
 
-/* Handle the completion of a send message operation. */
-static int stepSent(struct raft *r, struct raft_message *message, int status)
-{
-    int rv;
-    switch (message->type) {
-        case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = replicationSendInstallSnapshotDone(r, message, status);
-            break;
-        default:
-            /* Ignore the status, in case of errors we'll retry. */
-            rv = 0;
-            break;
-    }
-    return rv;
-}
-
 /* Handle new messages. */
 static int stepReceive(struct raft *r, struct raft_message *message)
 {
@@ -518,7 +502,7 @@ int raft_step(struct raft *r,
                                        event->persisted_snapshot.status);
             break;
         case RAFT_SENT:
-            rv = stepSent(r, &event->sent.message, event->sent.status);
+            rv = 0;
             break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.message);

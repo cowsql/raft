@@ -122,26 +122,6 @@ err:
     return rv;
 }
 
-int replicationSendInstallSnapshotDone(struct raft *r,
-                                       struct raft_message *message,
-                                       int status)
-{
-    const struct raft_server *server;
-
-    server = configurationGet(&r->configuration, message->server_id);
-
-    if (status != 0) {
-        tracef("send install snapshot: %s", raft_strerror(status));
-        if (r->state == RAFT_LEADER && server != NULL) {
-            unsigned i;
-            i = configurationIndexOf(&r->configuration, message->server_id);
-            progressAbortSnapshot(r, i);
-        }
-    }
-
-    return 0;
-}
-
 /* Send the latest snapshot to the i'th server */
 static int sendSnapshot(struct raft *r, const unsigned i)
 {

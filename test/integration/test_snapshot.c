@@ -673,6 +673,7 @@ TEST_V1(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
         "[ 210] 1 > timeout as leader\n"
         "           server 2 is unreachable -> abort pipeline\n"
         "[ 230] 1 > timeout as leader\n"
+        "           server 3 is unreachable -> abort snapshot\n"
         "           unable to contact majority of cluster -> step down\n");
 
     /* Let server 2 win the elections */
