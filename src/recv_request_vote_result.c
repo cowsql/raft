@@ -32,10 +32,7 @@ int recvRequestVoteResult(struct raft *r,
     if (r->candidate_state.in_pre_vote) {
         recvCheckMatchingTerms(r, result->term, &match);
     } else {
-        rv = recvEnsureMatchingTerms(r, result->term, &match);
-        if (rv != 0) {
-            return rv;
-        }
+        recvEnsureMatchingTerms(r, result->term, &match);
     }
 
     /* Ignore responses if we are not candidate anymore */
@@ -85,8 +82,8 @@ int recvRequestVoteResult(struct raft *r,
         if (match > 0) {
             if (result->term > r->current_term + 1) {
                 assert(!result->vote_granted);
-                rv = recvBumpCurrentTerm(r, result->term);
-                return rv;
+                recvBumpCurrentTerm(r, result->term);
+                return 0;
             }
         }
     } else {

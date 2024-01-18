@@ -17,7 +17,7 @@ void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match);
 
 /* Bump the current term and possibly step down from candidate or leader
  * state. */
-int recvBumpCurrentTerm(struct raft *r, raft_term term);
+void recvBumpCurrentTerm(struct raft *r, raft_term term);
 
 /* Common logic for RPC handlers, comparing the request's term with the server's
  * current term and possibly deciding to reject the request or step down from
@@ -34,7 +34,7 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term);
  * request's term was higher but we have successfully bumped the local one to
  * match it (and stepped down to follower in that case, if we were not
  * follower already). */
-int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match);
+void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match);
 
 /* If different from the current one, update information about the current
  * leader. Must be called only by followers. */

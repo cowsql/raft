@@ -34,10 +34,7 @@ int recvAppendEntries(struct raft *r,
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
 
-    rv = recvEnsureMatchingTerms(r, args->term, &match);
-    if (rv != 0) {
-        return rv;
-    }
+    recvEnsureMatchingTerms(r, args->term, &match);
 
     /* From Figure 3.1:
      *

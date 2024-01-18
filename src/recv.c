@@ -69,7 +69,7 @@ int recvMessage(struct raft *r, struct raft_message *message)
     return 0;
 }
 
-int recvBumpCurrentTerm(struct raft *r, raft_term term)
+void recvBumpCurrentTerm(struct raft *r, raft_term term)
 {
     char msg[128];
 
@@ -94,8 +94,6 @@ int recvBumpCurrentTerm(struct raft *r, raft_term term)
         /* Also convert to follower. */
         convertToFollower(r);
     }
-
-    return 0;
 }
 
 void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match)
@@ -109,17 +107,15 @@ void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match)
     }
 }
 
-int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
+void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
 {
-    int rv;
-
     assert(r != NULL);
     assert(match != NULL);
 
     recvCheckMatchingTerms(r, term, match);
 
     if (*match == -1) {
-        return 0;
+        return;
     }
 
     /* From Figure 3.1:
@@ -137,13 +133,8 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
      *   immediately reverts to follower state.
      */
     if (*match == 1) {
-        rv = recvBumpCurrentTerm(r, term);
-        if (rv != 0) {
-            return rv;
-        }
+        recvBumpCurrentTerm(r, term);
     }
-
-    return 0;
 }
 
 int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)
