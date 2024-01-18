@@ -197,6 +197,7 @@ TEST_V1(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(

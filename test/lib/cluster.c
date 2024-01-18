@@ -253,14 +253,6 @@ static void diskTruncateEntries(struct test_disk *d, raft_index index)
 }
 
 /* Append a new entry to the log. */
-static void diskPersistEntry(struct test_disk *d, struct raft_entry *entry)
-{
-    d->n_entries++;
-    d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
-    munit_assert_ptr_not_null(d->entries);
-    entryCopy(entry, &d->entries[d->n_entries - 1]);
-}
-
 /* Custom emit tracer function which includes the server ID. */
 static void serverEmit(struct raft_tracer *t, int type, const void *data)
 {
@@ -367,6 +359,10 @@ static void serverInit(struct test_server *s,
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
+    s->log.start = 1;
+    s->log.entries = NULL;
+    s->log.n = 0;
+
     s->last_applied = 0;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;
@@ -384,6 +380,10 @@ static void serverCancelSend(struct test_server *s, struct step *step)
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
+    struct raft_event *event = &step->event;
+    raft_index index = event->persisted_entries.index;
+
+    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
     step->event.persisted_entries.status = RAFT_CANCELED;
     serverStep(s, &step->event);
 }
@@ -469,6 +469,7 @@ static void serverStop(struct test_server *s)
 {
     struct raft_event event;
     struct raft_update update;
+    unsigned i;
     int rv;
 
     event.time = s->cluster->time;
@@ -478,6 +479,11 @@ static void serverStop(struct test_server *s)
     munit_assert_int(rv, ==, 0);
 
     s->running = false;
+
+    for (i = 0; i < s->log.n; i++) {
+        free(s->log.entries[i].buf.base);
+    }
+    free(s->log.entries);
 
     /* Re-initialized the raft object. */
     raft_close(&s->raft, NULL);
@@ -520,12 +526,52 @@ done:
     s->randomized_election_timeout_prev = s->randomized_election_timeout;
 }
 
+/* Truncate all in-memory entries from the given index onwards. If there are no
+ * entries at the given index, this is a no-op. */
+static void serverTruncateEntries(struct test_server *s, raft_index index)
+{
+    unsigned i;
+
+    if (index == s->log.start + s->log.n) {
+        return;
+    }
+
+    munit_assert_ulong(index, >=, s->log.start);
+    munit_assert_ulong(index, <=, s->log.start + s->log.n);
+
+    for (i = (unsigned)(index - s->log.start); i < s->log.n; i++) {
+        free(s->log.entries[i].buf.base);
+        s->log.n--;
+    }
+}
+
+static void serverAddEntry(struct test_server *s,
+                           const struct raft_entry *entry)
+{
+    s->log.n++;
+    s->log.entries = realloc(s->log.entries, s->log.n * sizeof *s->log.entries);
+    munit_assert_ptr_not_null(s->log.entries);
+    entryCopy(entry, &s->log.entries[s->log.n - 1]);
+}
+
 static void serverProcessEntries(struct test_server *s,
                                  raft_index first_index,
                                  struct raft_entry *entries,
                                  unsigned n)
 {
     struct step *step = munit_malloc(sizeof *step);
+    unsigned i;
+
+    serverTruncateEntries(s, first_index);
+
+    for (i = 0; i < n; i++) {
+        serverAddEntry(s, &entries[i]);
+    }
+
+    if (n > 0) {
+        munit_assert_ptr_not_null(entries[0].batch);
+        raft_free(entries[0].batch);
+    }
 
     step->id = s->raft.id;
 
@@ -533,7 +579,6 @@ static void serverProcessEntries(struct test_server *s,
     step->event.type = RAFT_PERSISTED_ENTRIES;
 
     step->event.persisted_entries.index = first_index;
-    step->event.persisted_entries.batch = entries;
     step->event.persisted_entries.n = n;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
@@ -703,6 +748,7 @@ static void serverStep(struct test_server *s, struct raft_event *event)
 static void serverStart(struct test_server *s)
 {
     struct raft_event event;
+    unsigned i;
 
     s->running = true;
 
@@ -715,10 +761,22 @@ static void serverStart(struct test_server *s)
              &event.start.metadata, &event.start.start_index,
              &event.start.entries, &event.start.n_entries);
 
+    s->log.start = event.start.start_index;
+    s->log.n = event.start.n_entries;
+    s->log.entries = munit_malloc(s->log.n * sizeof *s->log.entries);
+    for (i = 0; i < s->log.n; i++) {
+        entryCopy(&event.start.entries[i], &s->log.entries[i]);
+    }
+
     serverStep(s, &event);
 
     if (event.start.metadata != NULL) {
         free(event.start.metadata);
+    }
+
+    if (event.start.entries != NULL) {
+        raft_free(event.start.entries[0].batch);
+        raft_free(event.start.entries);
     }
 }
 
@@ -778,7 +836,36 @@ static void copyEntries(const struct raft_entry *src,
     }
 }
 
-static struct test_server *clusterGetServer(struct test_cluster *c, raft_id id);
+/* Use the log cache to populate the given AppendEntries message. */
+static void serverFillAppendEntries(struct test_server *s,
+                                    struct raft_append_entries *args)
+{
+    raft_index index = args->prev_log_index + 1;
+    unsigned i;
+
+    munit_assert_ullong(index, >=, s->log.start);
+    munit_assert_ullong(index + args->n_entries, <=, s->log.start + s->log.n);
+
+    if (args->n_entries == 0) {
+        args->entries = NULL;
+        return;
+    }
+
+    i = (unsigned)(index - s->log.start);
+    copyEntries(&s->log.entries[i], &args->entries, args->n_entries);
+}
+
+/* Load from disk the data of the snapshot being sent. */
+static void serverFillInstallSnapshot(struct test_server *s,
+                                      struct raft_install_snapshot *args)
+{
+    struct raft_snapshot_metadata metadata;
+    diskLoadSnapshotData(&s->disk, args->last_index, args->last_term,
+                         &args->data);
+    diskLoadSnapshotMetadata(&s->disk, &metadata);
+    args->conf = metadata.configuration;
+    args->conf_index = metadata.configuration_index;
+}
 
 static void serverEnqueueReceive(struct test_server *s,
                                  struct raft_message *message)
@@ -797,27 +884,11 @@ static void serverEnqueueReceive(struct test_server *s,
 
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
-            /* Create a copy of the entries being sent, so the memory of the
-             * original message can be released when raft_done() is called. */
-            copyEntries(message->append_entries.entries,
-                        &event->receive.message->append_entries.entries,
-                        message->append_entries.n_entries);
+            serverFillAppendEntries(s, &event->receive.message->append_entries);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            /* Load from disk the data of the snapshot being sent. */
-            {
-                struct raft_install_snapshot *src = &message->install_snapshot;
-                struct raft_install_snapshot *dst =
-                    &event->receive.message->install_snapshot;
-                struct raft_snapshot_metadata metadata;
-                dst->last_index = src->last_index;
-                dst->last_term = src->last_term;
-                diskLoadSnapshotData(&s->disk, src->last_index, src->last_term,
-                                     &dst->data);
-                diskLoadSnapshotMetadata(&s->disk, &metadata);
-                dst->conf = metadata.configuration;
-                dst->conf_index = metadata.configuration_index;
-            }
+            serverFillInstallSnapshot(
+                s, &event->receive.message->install_snapshot);
             break;
     }
 
@@ -827,14 +898,21 @@ static void serverEnqueueReceive(struct test_server *s,
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    raft_index index = event->persisted_entries.index;
+    unsigned n = event->persisted_entries.n;
     unsigned i;
 
     /* Possibly truncate stale entries. */
-    diskTruncateEntries(&s->disk, event->persisted_entries.index);
+    diskTruncateEntries(&s->disk, index);
 
-    for (i = 0; i < event->persisted_entries.n; i++) {
-        diskPersistEntry(&s->disk, &event->persisted_entries.batch[i]);
+    munit_assert_ullong(index, >=, s->log.start);
+    munit_assert_uint(n, <=, s->log.n);
+
+    for (i = 0; i < n; i++) {
+        diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
     }
+
+    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
 
     serverStep(s, event);
 }
@@ -904,6 +982,9 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     }
 
     serverStep(s, event);
+    if (event->receive.message->type == RAFT_IO_APPEND_ENTRIES) {
+        raft_free(event->receive.message->append_entries.entries);
+    }
     free(event->receive.message);
 }
 

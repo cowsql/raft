@@ -14,6 +14,7 @@
 #include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Convenience for setting a new state value and asserting that the transition
  * is valid. */
@@ -196,19 +197,19 @@ int convertToLeader(struct raft *r)
          *   which those are. To find out, it needs to commit an entry from its
          *   term. Raft handles this by having each leader commit a blank no-op
          *   entry into the log at the start of its term. */
-        struct raft_entry entry;
+        r->barrier.type = RAFT_BARRIER;
+        r->barrier.term = r->current_term;
+        r->barrier.buf.len = 8;
+        r->barrier.buf.base = raft_malloc(r->barrier.buf.len);
 
-        entry.type = RAFT_BARRIER;
-        entry.term = r->current_term;
-        entry.buf.len = 8;
-        entry.buf.base = raft_malloc(entry.buf.len);
-
-        if (entry.buf.base == NULL) {
+        if (r->barrier.buf.base == NULL) {
             rv = RAFT_NOMEM;
             goto err;
         }
 
-        rv = ClientSubmit(r, &entry, 1);
+        r->barrier.batch = r->barrier.buf.base;
+
+        rv = ClientSubmit(r, &r->barrier, 1);
         if (rv != 0) {
             /* This call to ClientSubmit can only fail with RAFT_NOMEM, because
              * it's not a RAFT_CHANGE entry (RAFT_MALFORMED can't be returned)
@@ -216,7 +217,7 @@ int convertToLeader(struct raft *r)
             assert(rv == RAFT_NOMEM);
             infof("can't submit no-op after converting to leader: %s",
                   raft_strerror(rv));
-            raft_free(entry.buf.base);
+            raft_free(r->barrier.buf.base);
             goto err;
         }
     }
@@ -235,3 +236,4 @@ void convertToUnavailable(struct raft *r)
 }
 
 #undef infof
+#undef tracef

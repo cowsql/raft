@@ -47,7 +47,7 @@ TEST(raft_init, nullFsmAndIo, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-static char *oom_heap_fault_delay[] = {"0", "1", NULL};
+static char *oom_heap_fault_delay[] = {"0", NULL};
 static char *oom_heap_fault_repeat[] = {"1", NULL};
 
 static MunitParameterEnum oom_params[] = {

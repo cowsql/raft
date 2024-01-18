@@ -71,6 +71,7 @@ TEST_V1(snapshot, Install, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -151,6 +152,7 @@ TEST_V1(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -232,6 +234,7 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -375,10 +378,12 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -425,6 +430,7 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
      * waiting for it to complete installing the snapshot. */
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -542,6 +548,7 @@ TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(
@@ -611,6 +618,7 @@ TEST_V1(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
     entry.buf.len = 8;
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
+    entry.batch = entry.buf.base;
     test_cluster_submit(&f->cluster_, 1, &entry);
 
     CLUSTER_TRACE(

@@ -67,10 +67,7 @@ int recvRequestVote(struct raft *r,
     if (args->pre_vote) {
         recvCheckMatchingTerms(r, args->term, &match);
     } else {
-        rv = recvEnsureMatchingTerms(r, args->term, &match);
-        if (rv != 0) {
-            return rv;
-        }
+        recvEnsureMatchingTerms(r, args->term, &match);
     }
 
     /* Reject the request if we are installing a snapshot.

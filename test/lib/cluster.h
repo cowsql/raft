@@ -192,6 +192,13 @@ struct test_server
     unsigned disk_latency;        /* Disk latency */
     bool running;                 /* Whether the server is running */
 
+    struct
+    {
+        raft_index start;
+        struct raft_entry *entries;
+        unsigned n;
+    } log; /* Cache of the on-disk log. */
+
     /* The randomized_election_timeout field stores the value that the raft
      * instance will obtain the next time it calls RandomWithinRange() to obtain
      * a random number in the [election_timeout, election_timeout * 2] range. We

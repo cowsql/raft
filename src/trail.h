@@ -74,3 +74,6 @@ raft_term TrailSnapshotTerm(const struct raft_trail *t);
 void TrailRestore(struct raft_trail *t,
                   raft_index last_index,
                   raft_term last_term);
+
+/* Return true if there is an entry at the given index. */
+bool TrailHasEntry(const struct raft_trail *t, raft_index index);

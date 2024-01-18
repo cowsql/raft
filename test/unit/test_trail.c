@@ -39,6 +39,7 @@ TEST(trail, Empty, setUp, tearDown, 0, NULL)
     munit_assert_uint(TrailNumEntries(&f->trail), ==, 0);
     munit_assert_ullong(TrailLastIndex(&f->trail), ==, 0);
     munit_assert_ullong(TrailLastTerm(&f->trail), ==, 0);
+    munit_assert_false(TrailHasEntry(&f->trail, 1));
     return MUNIT_OK;
 }
 
@@ -165,6 +166,9 @@ TEST(trail, Truncate, setUp, tearDown, 0, NULL)
 
     TrailTruncate(&f->trail, 3);
 
+    munit_assert_true(TrailHasEntry(&f->trail, 2));
+    munit_assert_false(TrailHasEntry(&f->trail, 3));
+
     munit_assert_uint(TrailNumEntries(&f->trail), ==, 2);
 
     munit_assert_ullong(TrailLastIndex(&f->trail), ==, 2);
@@ -194,6 +198,9 @@ TEST(trail, Snapshot, setUp, tearDown, 0, NULL)
 
     munit_assert_ullong(TrailTermOf(&f->trail, 1), ==, 0);
     munit_assert_ullong(TrailTermOf(&f->trail, 2), ==, 1);
+
+    munit_assert_false(TrailHasEntry(&f->trail, 1));
+    munit_assert_true(TrailHasEntry(&f->trail, 2));
 
     TrailAppend(&f->trail, 4); /* index 6, term 4 */
     TrailAppend(&f->trail, 4); /* index 7, term 4 */

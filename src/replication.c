@@ -10,7 +10,6 @@
 #endif
 #include "err.h"
 #include "heap.h"
-#include "log.h"
 #include "membership.h"
 #include "message.h"
 #include "progress.h"
@@ -43,7 +42,6 @@ int replicationSendAppendEntriesDone(struct raft *r,
                                      struct raft_message *message,
                                      int status)
 {
-    struct raft_append_entries *args = &message->append_entries;
     unsigned i = configurationIndexOf(&r->configuration, message->server_id);
 
     if (r->state == RAFT_LEADER && i < r->configuration.n) {
@@ -56,10 +54,6 @@ int replicationSendAppendEntriesDone(struct raft *r,
             }
         }
     }
-
-    /* Tell the log that we're done referencing these entries. */
-    logRelease(r->log, args->prev_log_index + 1, args->entries,
-               args->n_entries);
 
     return 0;
 }
@@ -78,16 +72,28 @@ static int sendAppendEntries(struct raft *r,
     raft_index next_index = prev_index + 1;
     int rv;
 
+    assert(max == 0 || max == MAX_APPEND_ENTRIES);
+
     args->term = r->current_term;
     args->prev_log_index = prev_index;
     args->prev_log_term = prev_term;
 
-    /* TODO: implement a limit to the total *size* of the entries being sent,
-     * not only the number. Also, make the number and the size configurable. */
-    rv = logAcquireAtMost(r->log, next_index, max, &args->entries,
-                          &args->n_entries);
-    if (rv != 0) {
-        goto err;
+    if (max == 0 || !TrailHasEntry(&r->trail, next_index)) {
+        args->entries = NULL;
+        args->n_entries = 0;
+    } else {
+        assert(max > 0);
+        assert(TrailHasEntry(&r->trail, next_index));
+
+        args->n_entries =
+            (unsigned)(TrailLastIndex(&r->trail) - next_index) + 1;
+
+        /* TODO: implement a limit to the total *size* of the entries being
+         * sent, not only the number. Also, make the number and the size
+         * configurable. */
+        if (args->n_entries > (unsigned)max) {
+            args->n_entries = (unsigned)max;
+        }
     }
 
     /* From Section 3.5:
@@ -106,12 +112,13 @@ static int sendAppendEntries(struct raft *r,
     } else if (args->n_entries == 1) {
         infof("%s server %llu sending 1 entry (%llu^%llu)",
               progressStateName(r, i), server->id, next_index,
-              args->entries[0].term);
+              TrailTermOf(&r->trail, next_index));
     } else {
         infof("%s server %llu sending %u entries (%llu^%llu..%llu^%llu)",
               progressStateName(r, i), server->id, args->n_entries, next_index,
-              args->entries[0].term, next_index + args->n_entries - 1,
-              args->entries[args->n_entries - 1].term);
+              TrailTermOf(&r->trail, next_index),
+              next_index + args->n_entries - 1,
+              TrailTermOf(&r->trail, next_index + args->n_entries - 1));
     }
 
     message.type = RAFT_IO_APPEND_ENTRIES;
@@ -120,7 +127,7 @@ static int sendAppendEntries(struct raft *r,
 
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
-        goto err_after_entries_acquired;
+        goto err;
     }
 
     if (progressState(r, i) == PROGRESS__PIPELINE) {
@@ -131,8 +138,6 @@ static int sendAppendEntries(struct raft *r,
     progressUpdateLastSend(r, i);
     return 0;
 
-err_after_entries_acquired:
-    logRelease(r->log, next_index, args->entries, args->n_entries);
 err:
     assert(rv != 0);
     return rv;
@@ -176,8 +181,8 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     message.server_address = server->address;
 
     args->term = r->current_term;
-    args->last_index = logSnapshotIndex(r->log);
-    args->last_term = logTermOf(r->log, args->last_index);
+    args->last_index = TrailSnapshotIndex(&r->trail);
+    args->last_term = TrailTermOf(&r->trail, args->last_index);
     args->conf_index = r->configuration_last_snapshot_index;
 
     infof("sending snapshot (%llu^%llu) to server %llu", args->last_index,
@@ -240,13 +245,13 @@ int replicationProgress(struct raft *r, unsigned i)
 
         /* If we don't have entry 1 anymore in our log, we need to send a
          * snapshot. */
-        if (logTermOf(r->log, 1) == 0) {
+        if (TrailTermOf(&r->trail, 1) == 0) {
             needs_snapshot = true;
         }
     } else {
         /* Set prevIndex and prevTerm to the index and term of the entry at
          * next_index - 1. */
-        prev_term = logTermOf(r->log, prev_index);
+        prev_term = TrailTermOf(&r->trail, prev_index);
 
         /* We need to send a snapshot if one of the following two cases is true:
          *
@@ -257,8 +262,8 @@ int replicationProgress(struct raft *r, unsigned i)
          * - prev_index is not the last entry in the log and we don't have
          *   anymore the entry at next_index.
          */
-        if (prev_term == 0 || (logLastIndex(r->log) > prev_index &&
-                               logTermOf(r->log, next_index) == 0)) {
+        if (prev_term == 0 || (TrailLastIndex(&r->trail) > prev_index &&
+                               TrailTermOf(&r->trail, next_index) == 0)) {
             needs_snapshot = true;
         }
     }
@@ -266,7 +271,7 @@ int replicationProgress(struct raft *r, unsigned i)
     /* If we have to send entries that are not anymore in our log, send the last
      * snapshot if we're not doing so already. */
     if (needs_snapshot || progress_state_is_snapshot) {
-        raft_index snapshot_index = logSnapshotIndex(r->log);
+        raft_index snapshot_index = TrailSnapshotIndex(&r->trail);
 
         infof("missing previous entry at index %lld -> needs snapshot",
               prev_index);
@@ -284,7 +289,7 @@ int replicationProgress(struct raft *r, unsigned i)
 
         /* Send heartbeats anchored to the snapshot index */
         prev_index = snapshot_index;
-        prev_term = logSnapshotTerm(r->log);
+        prev_term = TrailSnapshotTerm(&r->trail);
         assert(prev_term > 0);
         max = 0;
     }
@@ -348,7 +353,7 @@ static size_t updateLastStored(struct raft *r,
     for (i = 0; i < n_entries; i++) {
         struct raft_entry *entry = &entries[i];
         raft_index index = first_index + i;
-        raft_term local_term = logTermOf(r->log, index);
+        raft_term local_term = TrailTermOf(&r->trail, index);
 
         /* If we have no entry at this index, or if the entry we have now has a
          * different term, it means that this entry got truncated, so let's stop
@@ -443,11 +448,8 @@ int replicationPersistEntriesDone(struct raft *r,
             break;
     }
 
-    logRelease(r->log, index, entries, n);
-
     if (status != 0) {
-        if (index <= logLastIndex(r->log)) {
-            logTruncate(r->log, index);
+        if (index <= TrailLastIndex(&r->trail)) {
             TrailTruncate(&r->trail, index);
         }
     }
@@ -464,6 +466,9 @@ static void persistEntries(struct raft *r,
                            struct raft_entry entries[],
                            unsigned n)
 {
+    assert(n > 0);
+    assert(entries != NULL);
+
     /* This must be the first time during this raft_step() call where we set new
      * entries to be persisted. */
     assert(!(r->update->flags & RAFT_UPDATE_ENTRIES));
@@ -475,52 +480,12 @@ static void persistEntries(struct raft *r,
     r->update->entries.n = n;
 }
 
-/* Submit a disk write for all entries from the given index onward. */
-static int appendLeader(struct raft *r, raft_index index)
+int replicationTrigger(struct raft *r,
+                       raft_index index,
+                       struct raft_entry *entries,
+                       unsigned n)
 {
-    struct raft_entry *entries = NULL;
-    unsigned n;
-    int rv;
-
-    assert(r->state == RAFT_LEADER);
-    assert(index > 0);
-    assert(index > r->last_stored);
-
-    /* Acquire all the entries from the given index onwards. */
-    rv = logAcquire(r->log, index, &entries, &n);
-    if (rv != 0) {
-        goto err;
-    }
-
-    /* We expect this function to be called only when there are actually
-     * some entries to write. */
-    if (n == 0) {
-        assert(false);
-        ErrMsgPrintf(r->errmsg, "No log entries found at index %llu", index);
-        rv = RAFT_SHUTDOWN;
-        goto err_after_entries_acquired;
-    }
-
     persistEntries(r, index, entries, n);
-
-    return 0;
-
-err_after_entries_acquired:
-    logRelease(r->log, index, entries, n);
-err:
-    assert(rv != 0);
-    return rv;
-}
-
-int replicationTrigger(struct raft *r, raft_index index)
-{
-    int rv;
-
-    rv = appendLeader(r, index);
-    if (rv != 0) {
-        return rv;
-    }
-
     return triggerAll(r);
 }
 
@@ -569,8 +534,8 @@ int replicationUpdate(struct raft *r,
      * value of prevLogIndex + len(entriesToAppend). If it has a longer log, it
      * might be a leftover from previous terms. */
     last_index = result->last_log_index;
-    if (last_index > logLastIndex(r->log)) {
-        last_index = logLastIndex(r->log);
+    if (last_index > TrailLastIndex(&r->trail)) {
+        last_index = TrailLastIndex(&r->trail);
     }
 
     /* If the RPC succeeded, update our counters for this server.
@@ -725,7 +690,7 @@ static int followerPersistEntriesDone(struct raft *r,
     for (j = 0; j < i; j++) {
         struct raft_entry *entry = &entries[j];
         raft_index index = first_index + j;
-        raft_term local_term = logTermOf(r->log, index);
+        raft_term local_term = TrailTermOf(&r->trail, index);
 
         assert(local_term != 0 && local_term == entry->term);
 
@@ -772,7 +737,7 @@ static int checkLogMatchingProperty(struct raft *r,
         return 0;
     }
 
-    local_prev_term = logTermOf(r->log, args->prev_log_index);
+    local_prev_term = TrailTermOf(&r->trail, args->prev_log_index);
     if (local_prev_term == 0) {
         infof("missing previous entry (%llu^%llu) -> reject",
               args->prev_log_index, args->prev_log_term);
@@ -819,7 +784,7 @@ static int deleteConflictingEntries(struct raft *r,
     for (j = 0; j < args->n_entries; j++) {
         struct raft_entry *entry = &args->entries[j];
         raft_index entry_index = args->prev_log_index + 1 + j;
-        raft_term local_term = logTermOf(r->log, entry_index);
+        raft_term local_term = TrailTermOf(&r->trail, entry_index);
 
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
@@ -840,7 +805,6 @@ static int deleteConflictingEntries(struct raft *r,
 
             /* Delete all entries from this index on because they don't
              * match. */
-            logTruncate(r->log, entry_index);
             TrailTruncate(&r->trail, entry_index);
 
             /* Drop information about previously stored entries that have just
@@ -903,28 +867,15 @@ int replicationAppend(struct raft *r,
 
     n = args->n_entries - i; /* Number of new entries */
 
+    /* Index of first new entry */
+    index = args->prev_log_index + 1 + i;
+
     /* Update our in-memory log to reflect that we received these entries. We'll
      * notify the leader of a successful append once the write entries request
      * that we issue below actually completes.  */
     for (j = 0; j < n; j++) {
         struct raft_entry *entry = &args->entries[i + j];
-        /* TODO This copy should not strictly be necessary, as the batch logic
-         * will take care of freeing the batch buffer in which the entries are
-         * received. However, this would lead to memory spikes in certain edge
-         * cases. https://github.com/canonical/dqlite/issues/276
-         */
-        struct raft_entry copy = {0};
-        rv = entryCopy(entry, &copy);
-        if (rv != 0) {
-            goto err;
-        }
-
-        rv = logAppend(r->log, copy.term, copy.type, &copy.buf, NULL);
-        if (rv != 0) {
-            raft_free(copy.buf.base);
-            goto err;
-        }
-        rv = TrailAppend(&r->trail, copy.term);
+        rv = TrailAppend(&r->trail, entry->term);
         if (rv != 0) {
             goto err;
         }
@@ -951,21 +902,16 @@ int replicationAppend(struct raft *r,
 
     *async = true;
 
-    /* Index of first new entry */
-    index = args->prev_log_index + 1 + i;
+    /* Double check we are tracking the relevant entries in the log trail. */
+    n_entries = (unsigned)(TrailLastIndex(&r->trail) - index) + 1;
 
-    /* Acquire the relevant entries from the log. */
-    rv = logAcquire(r->log, index, &entries, &n_entries);
-    if (rv != 0) {
-        goto err_after_log_append;
-    }
-
-    /* The number of entries we just acquired must be exactly n, which is the
-     * number of new entries present in the message (here "new entries" means
-     * entries that we don't have yet in our in-memory log).  That's because we
-     * call logAppend above exactly n times, once for each new log entry, so
-     * logAcquire will return exactly n entries. */
+    /* The number of entries we must be exactly n, which is the number of new
+     * entries present in the message (here "new entries" means entries that we
+     * don't have yet in our in-memory log).  That's because we call TrailAppend
+     * above exactly n times, once for each new log entry. */
     assert(n_entries == n);
+
+    entries = &args->entries[i];
 
     /* The n == 0 case is handled above. */
     assert(n_entries > 0);
@@ -981,21 +927,16 @@ int replicationAppend(struct raft *r,
 
     persistEntries(r, index, entries, n_entries);
 
-    entryBatchesDestroy(args->entries, args->n_entries);
-
     return 0;
 
-err_after_log_append:
+err:
     /* Release all entries added to the in-memory log, making
      * sure the in-memory log and disk don't diverge, leading
-     * to future log entries not being persisted to disk.
-     */
+     * to future log entries not being persisted to disk. */
     if (j != 0) {
-        logTruncate(r->log, index);
         TrailTruncate(&r->trail, index);
     }
 
-err:
     assert(rv != 0);
     return rv;
 }
@@ -1087,14 +1028,14 @@ int replicationInstallSnapshot(struct raft *r,
     }
 
     /* If our last snapshot is more up-to-date, this is a no-op */
-    if (r->log->snapshot.last_index >= args->last_index) {
+    if (TrailSnapshotIndex(&r->trail) >= args->last_index) {
         infof("have more recent snapshot");
         *rejected = 0;
         return 0;
     }
 
     /* If we already have all entries in the snapshot, this is a no-op */
-    local_term = logTermOf(r->log, args->last_index);
+    local_term = TrailTermOf(&r->trail, args->last_index);
     if (local_term != 0 && local_term >= args->last_term) {
         infof("have all entries");
         *rejected = 0;
@@ -1104,7 +1045,6 @@ int replicationInstallSnapshot(struct raft *r,
     *async = true;
 
     /* Preemptively update our in-memory state. */
-    logRestore(r->log, args->last_index, args->last_term);
     TrailRestore(&r->trail, args->last_index, args->last_term);
 
     r->last_stored = 0;
@@ -1196,7 +1136,6 @@ int replicationSnapshot(struct raft *r,
         configurationClose(&metadata->configuration);
     }
 
-    logSnapshot(r->log, metadata->index, r->snapshot.trailing);
     TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
 
     return 0;
@@ -1242,7 +1181,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
     n_voters = configurationVoterCount(&r->configuration);
 
     while (index > r->commit_index) {
-        term = logTermOf(r->log, index);
+        term = TrailTermOf(&r->trail, index);
 
         /* TODO: fuzzy-test --seed 0x8db5fccc replication/entries/partitioned
          * fails the assertion below. */
@@ -1268,7 +1207,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
             } else {
                 infof("commit %u new entries (%llu^%llu..%llu^%llu)", n,
                       r->commit_index + 1,
-                      logTermOf(r->log, r->commit_index + 1), index, term);
+                      TrailTermOf(&r->trail, r->commit_index + 1), index, term);
             }
             r->commit_index = index;
             r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
@@ -1286,7 +1225,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
             suffix = "s";
         }
         infof("next uncommitted entry (%llu^%llu) has %u vote%s out of %u",
-              uncommitted, logTermOf(r->log, uncommitted), votes, suffix,
+              uncommitted, TrailTermOf(&r->trail, uncommitted), votes, suffix,
               n_voters);
     }
 }

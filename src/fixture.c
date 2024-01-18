@@ -1341,13 +1341,13 @@ static void checkLeaderAppendOnly(struct raft_fixture *f)
         size_t i;
 
         entry1 = logGet(f->log, index);
-        entry2 = logGet(raft->log, index);
+        entry2 = logGet(raft->legacy.log, index);
 
         assert(entry1 != NULL);
 
         /* Check if the entry was snapshotted. */
         if (entry2 == NULL) {
-            assert(raft->log->snapshot.last_index >= index);
+            assert(raft->legacy.log->snapshot.last_index >= index);
             continue;
         }
 
@@ -1377,7 +1377,7 @@ static void copyLeaderLog(struct raft_fixture *f)
         return;
     }
 
-    rv = logAcquire(raft->log, 1, &entries, &n);
+    rv = logAcquire(raft->legacy.log, 1, &entries, &n);
     assert(rv == 0);
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
@@ -1389,7 +1389,7 @@ static void copyLeaderLog(struct raft_fixture *f)
         rv = logAppend(f->log, entry->term, entry->type, &buf, NULL);
         assert(rv == 0);
     }
-    logRelease(raft->log, 1, entries, n);
+    logRelease(raft->legacy.log, 1, entries, n);
 }
 
 /* Update the commit index to match the one from the current leader. */

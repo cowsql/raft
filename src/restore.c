@@ -66,16 +66,10 @@ int RestoreEntries(struct raft *r,
     raft_index conf_index = 0;
     unsigned i;
     int rv;
-    logStart(r->log, snapshot_index, snapshot_term, start_index);
     TrailStart(&r->trail, snapshot_index, snapshot_term, start_index);
     r->last_stored = start_index - 1;
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
-        rv = logAppend(r->log, entry->term, entry->type, &entry->buf,
-                       entry->batch);
-        if (rv != 0) {
-            goto err;
-        }
         rv = TrailAppend(&r->trail, entry->term);
         if (rv != 0) {
             goto err;
@@ -119,13 +113,9 @@ int RestoreEntries(struct raft *r,
         }
     }
 
-    raft_free(entries);
     return 0;
 
 err:
-    if (logNumEntries(r->log) > 0) {
-        logDiscard(r->log, r->log->offset + 1);
-    }
     return rv;
 }
 
