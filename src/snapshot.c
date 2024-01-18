@@ -6,7 +6,6 @@
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
-#include "log.h"
 #include "tracing.h"
 
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
