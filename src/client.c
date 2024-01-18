@@ -62,6 +62,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     assert(r != NULL);
     assert(entries != NULL);
     assert(n > 0);
+    assert(entries[0].batch != NULL);
 
     if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;

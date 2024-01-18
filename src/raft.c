@@ -89,12 +89,6 @@ int raft_init(struct raft *r,
     r->current_term = 0;
     r->voted_for = 0;
     TrailInit(&r->trail);
-    r->log = logInit();
-    if (r->log == NULL) {
-        ErrMsgOom(r->errmsg);
-        rv = RAFT_NOMEM;
-        goto err_after_address_alloc;
-    }
 
     raft_configuration_init(&r->configuration);
     raft_configuration_init(&r->configuration_committed);
@@ -129,7 +123,7 @@ int raft_init(struct raft *r,
         assert(fsm != NULL);
         rv = ioFsmVersionCheck(r, io, fsm);
         if (rv != 0) {
-            goto err_after_log_init;
+            goto err_after_address_alloc;
         }
 
         r->io = io;
@@ -141,7 +135,7 @@ int raft_init(struct raft *r,
         rv = r->io->init(r->io, r->id, r->address);
         if (rv != 0) {
             ErrMsgTransfer(r->io->errmsg, r->errmsg, "io");
-            goto err_after_log_init;
+            goto err_after_address_alloc;
         }
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
@@ -154,16 +148,12 @@ int raft_init(struct raft *r,
         r->transfer = NULL;
         r->legacy.log = logInit();
         if (r->legacy.log == NULL) {
-            goto err_after_log_init;
+            goto err_after_address_alloc;
         }
     }
 #endif
     return 0;
 
-#ifndef RAFT__LEGACY_no
-err_after_log_init:
-    logClose(r->log);
-#endif
 err_after_address_alloc:
     RaftHeapFree(r->address);
 err:
@@ -175,7 +165,6 @@ static void finalClose(struct raft *r)
 {
     raft_free(r->address);
     TrailClose(&r->trail);
-    logClose(r->log);
 #ifndef RAFT__LEGACY_no
     if (r->io != NULL) {
         logClose(r->legacy.log);

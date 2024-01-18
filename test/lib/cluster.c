@@ -773,6 +773,11 @@ static void serverStart(struct test_server *s)
     if (event.start.metadata != NULL) {
         free(event.start.metadata);
     }
+
+    if (event.start.entries != NULL) {
+        raft_free(event.start.entries[0].batch);
+        raft_free(event.start.entries);
+    }
 }
 
 /* Fire a RAFT_TIMEOUT event. */

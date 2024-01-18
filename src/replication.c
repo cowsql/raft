@@ -936,7 +936,6 @@ err:
     if (j != 0) {
         TrailTruncate(&r->trail, index);
     }
-    raft_free(args->entries);
 
     assert(rv != 0);
     return rv;

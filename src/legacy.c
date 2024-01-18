@@ -151,6 +151,9 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     raft_free(req);
 
     LegacyForwardToRaftIo(r, &event);
+
+    logRelease(r->legacy.log, event.persisted_entries.index,
+               event.persisted_entries.batch, event.persisted_entries.n);
 }
 
 static int legacyHandleUpdateEntries(struct raft *r,
@@ -159,6 +162,8 @@ static int legacyHandleUpdateEntries(struct raft *r,
                                      unsigned n)
 {
     struct legacyPersistEntries *req;
+    struct raft_entry *acquired;
+    unsigned n_acquired;
     unsigned i;
     int rv;
 
@@ -168,7 +173,6 @@ static int legacyHandleUpdateEntries(struct raft *r,
     }
     req->r = r;
     req->index = index;
-    req->entries = entries;
     req->n = n;
     req->append.data = req;
 
@@ -188,18 +192,34 @@ static int legacyHandleUpdateEntries(struct raft *r,
         }
     }
 
+    if (n > 0) {
+        assert(entries[0].batch != NULL);
+        raft_free(entries[0].batch);
+    }
+
     rv = r->io->truncate(r->io, index);
     if (rv != 0) {
         goto err;
     }
 
-    rv = r->io->append(r->io, &req->append, entries, n, legacyPersistEntriesCb);
+    rv = logAcquire(r->legacy.log, index, &acquired, &n_acquired);
+    assert(n_acquired == n);
     if (rv != 0) {
         goto err;
     }
 
+    req->entries = acquired;
+
+    rv =
+        r->io->append(r->io, &req->append, acquired, n, legacyPersistEntriesCb);
+    if (rv != 0) {
+        goto err_after_acquired;
+    }
+
     return 0;
 
+err_after_acquired:
+    logRelease(r->legacy.log, index, acquired, n_acquired);
 err:
     logDiscard(r->legacy.log, index);
     raft_free(req);
@@ -429,7 +449,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
      * should retry instead of truncating). */
     assert(metadata.term != 0);
     if (r->state == RAFT_UNAVAILABLE ||
-        logTermOf(r->log, metadata.index) != metadata.term) {
+        logTermOf(r->legacy.log, metadata.index) != metadata.term) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
     }
@@ -487,14 +507,15 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
     };
 
     /* If we didn't reach the threshold yet, do nothing. */
-    if (r->commit_index - r->log->snapshot.last_index < r->snapshot.threshold) {
+    if (r->commit_index - r->legacy.log->snapshot.last_index <
+        r->snapshot.threshold) {
         return false;
     }
 
     /* If the last committed index is not anymore in our log, it means that the
      * log got truncated because we have received an InstallSnapshot
      * message. Don't take a snapshot now.*/
-    if (logTermOf(r->log, r->commit_index) == 0) {
+    if (logTermOf(r->legacy.log, r->commit_index) == 0) {
         return false;
     }
 
@@ -516,7 +537,7 @@ static void legacyTakeSnapshot(struct raft *r)
     tracef("take snapshot at %lld", r->commit_index);
 
     metadata.index = r->commit_index;
-    metadata.term = logTermOf(r->log, r->commit_index);
+    metadata.term = logTermOf(r->legacy.log, r->commit_index);
 
     req = raft_malloc(sizeof *req);
     if (req == NULL) {
@@ -848,7 +869,7 @@ static int legacyApply(struct raft *r,
     }
 
     for (index = r->last_applied + 1; index <= r->commit_index; index++) {
-        const struct raft_entry *entry = logGet(r->log, index);
+        const struct raft_entry *entry = logGet(r->legacy.log, index);
         if (entry == NULL) {
             /* This can happen while installing a snapshot */
             tracef("replicationApply - ENTRY NULL");
@@ -1210,7 +1231,7 @@ int raft_apply(struct raft *r,
     assert(n == 1);
 
     /* Index of the first entry being appended. */
-    index = logLastIndex(r->log) + 1;
+    index = logLastIndex(r->legacy.log) + 1;
     req->type = RAFT_COMMAND;
     req->index = index;
     req->cb = cb;
@@ -1243,7 +1264,7 @@ int raft_barrier(struct raft *r, struct raft_barrier *req, raft_barrier_cb cb)
     int rv;
 
     /* Index of the barrier entry being appended. */
-    index = logLastIndex(r->log) + 1;
+    index = logLastIndex(r->legacy.log) + 1;
     req->type = RAFT_BARRIER;
     req->index = index;
     req->cb = cb;
@@ -1431,7 +1452,7 @@ int raft_assign(struct raft *r,
     server_index = configurationIndexOf(&r->configuration, id);
     assert(server_index < r->configuration.n);
 
-    last_index = logLastIndex(r->log);
+    last_index = logLastIndex(r->legacy.log);
 
     req->cb = cb;
     req->catch_up_id = 0;
@@ -1669,14 +1690,21 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     event.receive.message = message;
 
     rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
+
+    switch (message->type) {
+        case RAFT_IO_APPEND_ENTRIES:
+            if (message->append_entries.n_entries > 0) {
+                if (rv != 0) {
+                    raft_free(message->append_entries.entries[0].batch);
+                }
+                raft_free(message->append_entries.entries);
+            }
+            break;
     }
 
-    return;
-
-err:
-    convertToUnavailable(r);
+    if (rv != 0) {
+        convertToUnavailable(r);
+    }
 }
 
 int raft_start(struct raft *r)
@@ -1699,8 +1727,8 @@ int raft_start(struct raft *r)
     assert(r->heartbeat_timeout != 0);
     assert(r->heartbeat_timeout < r->election_timeout);
     assert(r->install_snapshot_timeout != 0);
-    assert(logNumEntries(r->log) == 0);
-    assert(logSnapshotIndex(r->log) == 0);
+    assert(logNumEntries(r->legacy.log) == 0);
+    assert(logSnapshotIndex(r->legacy.log) == 0);
     assert(r->last_stored == 0);
 
     tracef("starting");
@@ -1740,12 +1768,9 @@ int raft_start(struct raft *r)
 
     logStart(r->legacy.log, snapshot_index, snapshot_term, start_index);
     for (i = 0; i < n_entries; i++) {
-        struct raft_entry entry;
-        rv = entryCopy(&entries[i], &entry);
-        if (rv != 0) {
-            return rv;
-        }
-        rv = logAppend(r->legacy.log, entry.term, entry.type, &entry.buf, NULL);
+        struct raft_entry *entry = &entries[i];
+        rv = logAppend(r->legacy.log, entry->term, entry->type, &entry->buf,
+                       entry->batch);
         if (rv != 0) {
             return rv;
         }
@@ -1768,6 +1793,10 @@ int raft_start(struct raft *r)
     event.start.n_entries = (unsigned)n_entries;
 
     LegacyForwardToRaftIo(r, &event);
+
+    if (entries != NULL) {
+        raft_free(entries);
+    }
 
     /* Start the I/O backend. The tickCb function is expected to fire every
      * r->heartbeat_timeout milliseconds and recvCb whenever an RPC is
