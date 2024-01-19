@@ -123,6 +123,21 @@ static bool checkContactQuorum(struct raft *r)
         if ((server->role == RAFT_VOTER && is_recent) || server->id == r->id) {
             contacts++;
         }
+
+        if (!is_recent) {
+            switch (progressState(r, i)) {
+                case PROGRESS__PIPELINE:
+                    infof("server %llu is unreachable -> abort pipeline",
+                          server->id);
+                    progressToProbe(r, i);
+                    break;
+                case PROGRESS__SNAPSHOT:
+                    infof("server %llu is unreachable -> abort snapshot",
+                          server->id);
+                    progressAbortSnapshot(r, i);
+                    break;
+            }
+        }
     }
 
     return contacts > configurationVoterCount(&r->configuration) / 2;

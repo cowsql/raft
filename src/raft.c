@@ -12,7 +12,6 @@
 #include "entry.h"
 #include "err.h"
 #include "heap.h"
-#include "log.h"
 #include "membership.h"
 #include "progress.h"
 #include "queue.h"
@@ -26,6 +25,7 @@
 
 #ifndef RAFT__LEGACY_no
 #include "legacy.h"
+#include "log.h"
 #endif
 
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
@@ -154,8 +154,10 @@ int raft_init(struct raft *r,
 #endif
     return 0;
 
+#ifndef RAFT__LEGACY_no
 err_after_address_alloc:
     RaftHeapFree(r->address);
+#endif
 err:
     assert(rv != 0);
     return rv;
@@ -411,25 +413,6 @@ static int stepPersistedSnapshot(struct raft *r,
     return 0;
 }
 
-/* Handle the completion of a send message operation. */
-static int stepSent(struct raft *r, struct raft_message *message, int status)
-{
-    int rv;
-    switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
-            rv = replicationSendAppendEntriesDone(r, message, status);
-            break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = replicationSendInstallSnapshotDone(r, message, status);
-            break;
-        default:
-            /* Ignore the status, in case of errors we'll retry. */
-            rv = 0;
-            break;
-    }
-    return rv;
-}
-
 /* Handle new messages. */
 static int stepReceive(struct raft *r, struct raft_message *message)
 {
@@ -517,9 +500,6 @@ int raft_step(struct raft *r,
                                        &event->persisted_snapshot.chunk,
                                        event->persisted_snapshot.last,
                                        event->persisted_snapshot.status);
-            break;
-        case RAFT_SENT:
-            rv = stepSent(r, &event->sent.message, event->sent.status);
             break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.message);

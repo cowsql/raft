@@ -320,12 +320,12 @@ TEST_V1(raft_remove, Committed, setup, tear_down, 0, NULL)
     ASSERT_CONFIGURATION_INDEXES(1, 1 /* committed */, 2 /* uncomitted */);
 
     CLUSTER_TRACE(
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 1 vote out of 2\n"
         "[ 130] 2 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 130] 3 > recv append entries from server 1\n"
         "           no new entries to persist\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 2\n"
         "[ 140] 1 > recv append entries result from server 2\n"
         "           pipeline server 2 sending 1 entry (2^2)\n"
         "[ 140] 1 > recv append entries result from server 3\n"
@@ -478,12 +478,12 @@ TEST_V1(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
 
     /* The removed leader eventually steps down */
     CLUSTER_TRACE(
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 0 votes out of 2\n"
         "[ 130] 2 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 130] 3 > recv append entries from server 1\n"
         "           no new entries to persist\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 0 votes out of 2\n"
         "[ 140] 1 > recv append entries result from server 2\n"
         "           pipeline server 2 sending 1 entry (2^2)\n"
         "[ 140] 1 > recv append entries result from server 3\n"

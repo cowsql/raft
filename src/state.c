@@ -1,8 +1,8 @@
 #include "assert.h"
 #include "configuration.h"
 #include "election.h"
-#include "log.h"
 #include "queue.h"
+#include "trail.h"
 
 int raft_state(struct raft *r)
 {
@@ -35,7 +35,7 @@ void raft_leader(struct raft *r, raft_id *id, const char **address)
 
 raft_index raft_last_index(struct raft *r)
 {
-    return logLastIndex(r->legacy.log);
+    return TrailLastIndex(&r->trail);
 }
 
 raft_index raft_last_applied(struct raft *r)

@@ -389,8 +389,6 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
         "[ 130] 2 > recv append entries from server 1\n"
         "           no new entries to persist\n");
 
-    test_cluster_step(&f->cluster_);
-
     /* Server 1 receives a new entry after a few milliseconds. Since the
      * follower is still in probe mode and since an AppendEntries message was
      * already sent recently, it does not send the new entry immediately. */
@@ -431,7 +429,6 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
     /* Server 1 receives a second entry. Since the follower is still in probe
      * mode and since an AppendEntries message was already sent recently, it
      * does not send the new entry immediately. */
-    test_cluster_step(&f->cluster_);
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
@@ -517,7 +514,6 @@ TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
         "[ 165] 2 > persisted 1 entry (2^2)\n"
         "           send success result to 1\n");
 
-    test_cluster_step(&f->cluster_);
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(8);
     munit_assert_not_null(entry.buf.base);
@@ -650,8 +646,8 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
 
     CLUSTER_DISCONNECT(1, 2);
 
-    /* A heartbeat timeout eventually kicks in, but sending the empty
-     * AppendEntries message fails, transitioning server 2 back to probe
+    /* A full election timeout eventually elapses, and since server 1 did not
+     * receive any message from server 2, it transitions server 2 back to probe
      * mode. */
     CLUSTER_TRACE(
         "[ 160] 1 > persisted 1 entry (2^2)\n"
@@ -659,6 +655,9 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
         "[ 160] 1 > persisted 1 entry (3^2)\n"
         "           next uncommitted entry (2^2) has 1 vote out of 2\n"
         "[ 200] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "[ 250] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
         "           probe server 2 sending 2 entries (2^2..3^2)\n");
 
     munit_assert_ullong(raft->leader_state.progress[1].next_index, ==, 2);
@@ -668,9 +667,9 @@ TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
     CLUSTER_RECONNECT(1, 2);
 
     CLUSTER_TRACE(
-        "[ 210] 2 > recv append entries from server 1\n"
+        "[ 260] 2 > recv append entries from server 1\n"
         "           start persisting 2 new entries (2^2..3^2)\n"
-        "[ 220] 2 > persisted 2 entry (2^2..3^2)\n"
+        "[ 270] 2 > persisted 2 entry (2^2..3^2)\n"
         "           send success result to 1\n");
 
     return MUNIT_OK;
@@ -1268,6 +1267,7 @@ TEST_V1(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
         "[ 190] 1 > timeout as leader\n"
         "           pipeline server 2 sending a heartbeat (no entries)\n"
         "[ 240] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
         "           probe server 2 sending 1 entry (2^2)\n");
 
     /* The follower reconnects, it receives the duplicate entry but does not
@@ -1679,17 +1679,6 @@ TEST_V1(replication, ReceiveResultWithHigherTerm, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/*
-static void applyAssertStatusCb(struct raft_apply *req,
-                                int status,
-                                void *result)
-{
-    (void)result;
-    int status_expected = (int)(intptr_t)(req->data);
-    munit_assert_int(status_expected, ==, status);
-}
-*/
-
 /* A leader with slow disk commits an entry that it hasn't persisted yet,
  * because enough followers to have a majority have aknowledged that they have
  * appended the entry. The leader's last_stored field hence lags behind its
@@ -1804,6 +1793,8 @@ TEST_V1(replication,
         "           remote term is higher (4 vs 3) -> bump term, step down\n"
         "           remote log is equal (3^2) -> grant vote\n"
         "[ 220] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
+        "           server 3 is unreachable -> abort pipeline\n"
         "           probe server 2 sending a heartbeat (no entries)\n"
         "           probe server 3 sending a heartbeat (no entries)\n"
         "[ 230] 2 > recv request vote result from server 3\n"
@@ -1834,8 +1825,9 @@ TEST_V1(replication,
     CLUSTER_TRACE(
         "[ 270] 2 > timeout as leader\n"
         "[ 280] 2 > timeout as leader\n"
+        "           server 3 is unreachable -> abort pipeline\n"
         "           probe server 1 sending 1 entry (4^4)\n"
-        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
         "[ 290] 1 > recv append entries from server 2\n"
         "           no new entries to persist\n");
 

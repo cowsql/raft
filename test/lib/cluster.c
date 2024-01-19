@@ -10,6 +10,9 @@
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
+/* Maximum number of log entries. */
+#define MAX_LOG_ENTRIES 15
+
 /* Track the event to to fire in a cluster step. */
 struct step
 {
@@ -316,7 +319,6 @@ static void serverInit(struct test_server *s,
                        raft_id id,
                        struct test_cluster *cluster)
 {
-    char address[64];
     unsigned delta;
     int rv;
 
@@ -325,9 +327,9 @@ static void serverInit(struct test_server *s,
     s->tracer.emit = serverEmit;
     s->randomized_election_timeout_prev = 0;
 
-    sprintf(address, "%llu", id);
+    sprintf(s->address, "%llu", id);
 
-    rv = raft_init(&s->raft, NULL, NULL, id, address);
+    rv = raft_init(&s->raft, NULL, NULL, id, s->address);
     munit_assert_int(rv, ==, 0);
 
     s->raft.tracer = &s->tracer;
@@ -360,7 +362,7 @@ static void serverInit(struct test_server *s,
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
     s->log.start = 1;
-    s->log.entries = NULL;
+    s->log.entries = munit_malloc(MAX_LOG_ENTRIES * sizeof *s->log.entries);
     s->log.n = 0;
 
     s->last_applied = 0;
@@ -372,26 +374,28 @@ static void serverInit(struct test_server *s,
 
 static void serverStep(struct test_server *s, struct raft_event *event);
 
-static void serverCancelSend(struct test_server *s, struct step *step)
-{
-    step->event.sent.status = RAFT_CANCELED;
-    serverStep(s, &step->event);
-}
-
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    raft_index index = event->persisted_entries.index;
+    unsigned n = event->persisted_entries.n;
 
-    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
-    step->event.persisted_entries.status = RAFT_CANCELED;
+    event->time = s->cluster->time;
+    event->persisted_entries.status = RAFT_CANCELED;
+
     serverStep(s, &step->event);
+
+    if (n > 0) {
+        raft_free(event->persisted_entries.batch[0].batch);
+        raft_free(event->persisted_entries.batch);
+    }
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    step->event.persisted_snapshot.status = RAFT_CANCELED;
+
+    event->time = s->cluster->time;
+    event->persisted_snapshot.status = RAFT_CANCELED;
 
     /* XXX: this should probably be done by raft core */
     raft_free(event->persisted_snapshot.chunk.base);
@@ -441,9 +445,6 @@ static void serverCancelPending(struct test_server *s)
         }
 
         switch (step->event.type) {
-            case RAFT_SENT:
-                serverCancelSend(s, step);
-                break;
             case RAFT_PERSISTED_ENTRIES:
                 serverCancelEntries(s, step);
                 break;
@@ -461,6 +462,30 @@ static void serverCancelPending(struct test_server *s)
         }
         QUEUE_REMOVE(&step->queue);
 
+        free(step);
+    }
+
+    while (1) {
+        struct step *step = NULL;
+        queue *head;
+        QUEUE_FOREACH (head, &s->cluster->send) {
+            struct step *current;
+            struct raft_message *message;
+            current = QUEUE_DATA(head, struct step, queue);
+            munit_assert_int(current->event.type, ==, RAFT_RECEIVE);
+            message = current->event.receive.message;
+            if (message->server_id /* sender */ == s->raft.id) {
+                step = current;
+                break;
+            }
+        }
+        if (step == NULL) {
+            break;
+        }
+
+        QUEUE_REMOVE(&step->queue);
+
+        dropReceiveEvent(step);
         free(step);
     }
 }
@@ -496,6 +521,7 @@ static void serverClose(struct test_server *s)
     if (s->running) {
         serverStop(s);
     }
+    free(s->log.entries);
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
 }
@@ -531,15 +557,16 @@ done:
 static void serverTruncateEntries(struct test_server *s, raft_index index)
 {
     unsigned i;
+    unsigned n = s->log.n;
 
-    if (index == s->log.start + s->log.n) {
+    if (index == s->log.start + n) {
         return;
     }
 
     munit_assert_ulong(index, >=, s->log.start);
-    munit_assert_ulong(index, <=, s->log.start + s->log.n);
+    munit_assert_ulong(index, <=, s->log.start + n);
 
-    for (i = (unsigned)(index - s->log.start); i < s->log.n; i++) {
+    for (i = (unsigned)(index - s->log.start); i < n; i++) {
         free(s->log.entries[i].buf.base);
         s->log.n--;
     }
@@ -549,10 +576,13 @@ static void serverAddEntry(struct test_server *s,
                            const struct raft_entry *entry)
 {
     s->log.n++;
-    s->log.entries = realloc(s->log.entries, s->log.n * sizeof *s->log.entries);
-    munit_assert_ptr_not_null(s->log.entries);
+    munit_assert_uint(s->log.n, <=, MAX_LOG_ENTRIES);
     entryCopy(entry, &s->log.entries[s->log.n - 1]);
 }
+
+static void copyEntries(const struct raft_entry *src,
+                        struct raft_entry **dst,
+                        const size_t n);
 
 static void serverProcessEntries(struct test_server *s,
                                  raft_index first_index,
@@ -560,6 +590,7 @@ static void serverProcessEntries(struct test_server *s,
                                  unsigned n)
 {
     struct step *step = munit_malloc(sizeof *step);
+    struct raft_event *event = &step->event;
     unsigned i;
 
     serverTruncateEntries(s, first_index);
@@ -568,6 +599,8 @@ static void serverProcessEntries(struct test_server *s,
         serverAddEntry(s, &entries[i]);
     }
 
+    copyEntries(entries, &event->persisted_entries.batch, n);
+
     if (n > 0) {
         munit_assert_ptr_not_null(entries[0].batch);
         raft_free(entries[0].batch);
@@ -575,11 +608,11 @@ static void serverProcessEntries(struct test_server *s,
 
     step->id = s->raft.id;
 
-    step->event.time = s->cluster->time + s->disk_latency;
-    step->event.type = RAFT_PERSISTED_ENTRIES;
+    event->time = s->cluster->time + s->disk_latency;
+    event->type = RAFT_PERSISTED_ENTRIES;
 
-    step->event.persisted_entries.index = first_index;
-    step->event.persisted_entries.n = n;
+    event->persisted_entries.index = first_index;
+    event->persisted_entries.n = n;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
@@ -594,6 +627,11 @@ static void serverProcessSnapshot(struct test_server *s,
 
     step->id = s->raft.id;
 
+    /* Update the in-memory log */
+    serverTruncateEntries(s, s->log.start);
+    munit_assert_uint(s->log.n, ==, 0);
+    s->log.start = metadata->index + 1;
+
     step->event.time = s->cluster->time + s->disk_latency;
     step->event.type = RAFT_PERSISTED_SNAPSHOT;
 
@@ -605,6 +643,12 @@ static void serverProcessSnapshot(struct test_server *s,
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
 
+static void serverFillAppendEntries(struct test_server *s,
+                                    struct raft_append_entries *args);
+
+static void serverFillInstallSnapshot(struct test_server *s,
+                                      struct raft_install_snapshot *args);
+
 static void serverProcessMessages(struct test_server *s,
                                   struct raft_message *messages,
                                   unsigned n)
@@ -613,17 +657,30 @@ static void serverProcessMessages(struct test_server *s,
 
     for (i = 0; i < n; i++) {
         struct step *step = munit_malloc(sizeof *step);
+        struct raft_event *event = &step->event;
+        struct raft_message *message = &messages[i];
 
-        step->id = s->raft.id;
+        step->id = message->server_id;
 
-        /* TODO: simulate the presence of an OS send buffer, whose available
-         * size might delay the completion of send requests */
-        step->event.time = s->cluster->time;
+        event->time = s->cluster->time + s->network_latency;
+        event->type = RAFT_RECEIVE;
+        event->receive.message = munit_malloc(sizeof *event->receive.message);
+        *event->receive.message = *message;
+        event->receive.message->server_id = s->raft.id;
+        event->receive.message->server_address = s->address;
 
-        step->event.type = RAFT_SENT;
-        step->event.sent.message = messages[i];
+        switch (message->type) {
+            case RAFT_IO_APPEND_ENTRIES:
+                serverFillAppendEntries(
+                    s, &event->receive.message->append_entries);
+                break;
+            case RAFT_IO_INSTALL_SNAPSHOT:
+                serverFillInstallSnapshot(
+                    s, &event->receive.message->install_snapshot);
+                break;
+        }
 
-        QUEUE_PUSH(&s->cluster->steps, &step->queue);
+        QUEUE_PUSH(&s->cluster->send, &step->queue);
     }
 }
 
@@ -763,7 +820,7 @@ static void serverStart(struct test_server *s)
 
     s->log.start = event.start.start_index;
     s->log.n = event.start.n_entries;
-    s->log.entries = munit_malloc(s->log.n * sizeof *s->log.entries);
+    munit_assert_uint(s->log.n, <=, MAX_LOG_ENTRIES);
     for (i = 0; i < s->log.n; i++) {
         entryCopy(&event.start.entries[i], &s->log.entries[i]);
     }
@@ -867,37 +924,10 @@ static void serverFillInstallSnapshot(struct test_server *s,
     args->conf_index = metadata.configuration_index;
 }
 
-static void serverEnqueueReceive(struct test_server *s,
-                                 struct raft_message *message)
-{
-    struct step *step = munit_malloc(sizeof *step);
-    struct raft_event *event = &step->event;
-
-    step->id = message->server_id;
-
-    event->time = s->cluster->time + s->network_latency;
-    event->type = RAFT_RECEIVE;
-    event->receive.message = munit_malloc(sizeof *event->receive.message);
-    *event->receive.message = *message;
-    event->receive.message->server_id = s->raft.id;
-    event->receive.message->server_address = s->raft.address;
-
-    switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
-            serverFillAppendEntries(s, &event->receive.message->append_entries);
-            break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
-            serverFillInstallSnapshot(
-                s, &event->receive.message->install_snapshot);
-            break;
-    }
-
-    QUEUE_PUSH(&s->cluster->steps, &step->queue);
-}
-
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    struct raft_entry *entries = event->persisted_entries.batch;
     raft_index index = event->persisted_entries.index;
     unsigned n = event->persisted_entries.n;
     unsigned i;
@@ -905,16 +935,16 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     /* Possibly truncate stale entries. */
     diskTruncateEntries(&s->disk, index);
 
-    munit_assert_ullong(index, >=, s->log.start);
-    munit_assert_uint(n, <=, s->log.n);
-
     for (i = 0; i < n; i++) {
-        diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
+        diskAddEntry(&s->disk, &entries[i]);
     }
 
-    event->persisted_entries.batch = &s->log.entries[index - s->log.start];
-
     serverStep(s, event);
+
+    if (n > 0) {
+        raft_free(event->persisted_entries.batch[0].batch);
+        raft_free(event->persisted_entries.batch);
+    }
 }
 
 static void serverCompleteSnapshot(struct test_server *s, struct step *step)
@@ -936,35 +966,29 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     serverStep(s, event);
 }
 
-static void serverCompleteSend(struct test_server *s, struct step *step)
+/* Return true if the server with id1 is connected with the server with id2 */
+static bool clusterAreConnected(struct test_cluster *c,
+                                raft_id id1,
+                                raft_id id2)
 {
-    struct raft_event *event = &step->event;
+    bool connected = true;
     queue *head;
-    int status = 0;
 
     /* Check if there's a disconnection. */
-    QUEUE_FOREACH (head, &s->cluster->disconnect) {
+    QUEUE_FOREACH (head, &c->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
-        if (d->id1 == s->raft.id &&
-            d->id2 == step->event.sent.message.server_id) {
-            status = RAFT_NOCONNECTION;
+        if (d->id1 == id1 && d->id2 == id2) {
+            connected = false;
             break;
         }
     }
 
-    if (status == 0) {
-        serverEnqueueReceive(s, &step->event.sent.message);
-    }
-
-    event->sent.status = status;
-
-    serverStep(s, event);
+    return connected;
 }
 
 static void serverCompleteReceive(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    queue *head;
 
     if (!s->running) {
         dropReceiveEvent(step);
@@ -972,13 +996,11 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     }
 
     /* Check if there's a disconnection. */
-    QUEUE_FOREACH (head, &s->cluster->disconnect) {
-        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
-        if (d->id1 == event->receive.message->server_id &&
-            d->id2 == s->raft.id) {
-            dropReceiveEvent(step);
-            return;
-        }
+    if (!clusterAreConnected(s->cluster,
+                             event->receive.message->server_id /* sender */,
+                             s->raft.id /* receiver */)) {
+        dropReceiveEvent(step);
+        return;
     }
 
     serverStep(s, event);
@@ -1037,9 +1059,6 @@ static void serverComplete(struct test_server *s, struct step *step)
         case RAFT_PERSISTED_SNAPSHOT:
             serverCompleteSnapshot(s, step);
             break;
-        case RAFT_SENT:
-            serverCompleteSend(s, step);
-            break;
         case RAFT_RECEIVE:
             serverCompleteReceive(s, step);
             break;
@@ -1070,6 +1089,7 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     c->time = 0;
     c->in_tear_down = false;
     QUEUE_INIT(&c->steps);
+    QUEUE_INIT(&c->send);
     QUEUE_INIT(&c->disconnect);
 }
 
@@ -1092,6 +1112,7 @@ void test_cluster_tear_down(struct test_cluster *c)
         serverCancelPending(server);
     }
     munit_assert_true(QUEUE_IS_EMPTY(&c->steps));
+    munit_assert_true(QUEUE_IS_EMPTY(&c->send));
 
     /* Drop outstanding disconnections */
     while (!QUEUE_IS_EMPTY(&c->disconnect)) {
@@ -1271,11 +1292,37 @@ static struct test_server *clusterGetServerWithEarliestTimeout(
     return server;
 }
 
+/* Consume the queue of pending messages to be sent, and enqueue them as regular
+ * RAFT_RECEIVE events in the steps queue . */
+static void clusterEnqueueReceives(struct test_cluster *c)
+{
+    while (!QUEUE_IS_EMPTY(&c->send)) {
+        struct step *step;
+        queue *head;
+        struct raft_message *message;
+        head = QUEUE_HEAD(&c->send);
+        step = QUEUE_DATA(head, struct step, queue);
+        munit_assert_int(step->event.type, ==, RAFT_RECEIVE);
+        QUEUE_REMOVE(&step->queue);
+        message = step->event.receive.message;
+
+        if (!clusterAreConnected(c, message->server_id /* sender */,
+                                 step->id /* receiver */)) {
+            dropReceiveEvent(step);
+            free(step);
+            continue;
+        }
+
+        QUEUE_PUSH(&c->steps, &step->queue);
+    }
+}
+
 void test_cluster_step(struct test_cluster *c)
 {
     struct test_server *server;
     struct step *step;
 
+    clusterEnqueueReceives(c);
     clusterSeed(c);
 
     server = clusterGetServerWithEarliestTimeout(c);
@@ -1296,6 +1343,8 @@ void test_cluster_elapse(struct test_cluster *c, unsigned msecs)
     while (1) {
         struct test_server *server;
         struct step *step;
+
+        clusterEnqueueReceives(c);
 
         server = clusterGetServerWithEarliestTimeout(c);
         step = clusterGetStepWithEarliestExecution(c);

@@ -82,16 +82,6 @@ int replicationInstallSnapshot(struct raft *r,
 /* Returns `true` if the raft instance is currently installing a snapshot */
 bool replicationInstallSnapshotBusy(struct raft *r);
 
-/* Called when an enqueued AppendEntries message has been processed. */
-int replicationSendAppendEntriesDone(struct raft *r,
-                                     struct raft_message *message,
-                                     int status);
-
-/* Called when an enqueued InstallSnapshot message has been processed. */
-int replicationSendInstallSnapshotDone(struct raft *r,
-                                       struct raft_message *message,
-                                       int status);
-
 /* Called when handling a RAFT_PERSISTED_ENTRIES event. */
 int replicationPersistEntriesDone(struct raft *r,
                                   raft_index index,

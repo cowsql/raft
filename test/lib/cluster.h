@@ -190,6 +190,7 @@ struct test_server
     raft_time timeout;            /* Next scheduled timeout */
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */
+    char address[8];              /* Server address */
     bool running;                 /* Whether the server is running */
 
     struct
@@ -226,6 +227,7 @@ struct test_cluster
     bool in_tear_down;                                  /* Tearing down */
     char trace[8192];                                   /* Captured messages */
     void *steps[2];                                     /* Pending events */
+    void *send[2];                                      /* Pending messages */
     void *disconnect[2];                                /* Network faults */
 };
 
