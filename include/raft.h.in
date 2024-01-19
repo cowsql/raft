@@ -454,8 +454,7 @@ enum {
     RAFT_STOP,
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
-    RAFT_SENT,    /* A message has been sent (either successfully or not). */
-    RAFT_RECEIVE, /* A message has been received. */
+    RAFT_RECEIVE,            /* A message has been received. */
     RAFT_CONFIGURATION, /* A new committed configuration must be applied. */
     RAFT_SNAPSHOT,      /* A snapshot has been taken. */
     RAFT_TIMEOUT,       /* The timeout has expired. */
@@ -498,11 +497,6 @@ struct raft_event
             bool last;
             int status;
         } persisted_snapshot;
-        struct
-        {
-            struct raft_message message;
-            int status;
-        } sent;
         struct
         {
             struct raft_message *message;

@@ -501,9 +501,6 @@ int raft_step(struct raft *r,
                                        event->persisted_snapshot.last,
                                        event->persisted_snapshot.status);
             break;
-        case RAFT_SENT:
-            rv = 0;
-            break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.message);
             break;
