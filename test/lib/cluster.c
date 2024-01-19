@@ -934,30 +934,38 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     serverStep(s, event);
 }
 
-static void serverCompleteSend(struct test_server *s, struct step *step)
+/* Return true if the server with id1 is connected with the server with id2 */
+static bool clusterAreConnected(struct test_cluster *c,
+                                raft_id id1,
+                                raft_id id2)
 {
-    queue *head;
     bool connected = true;
+    queue *head;
 
     /* Check if there's a disconnection. */
-    QUEUE_FOREACH (head, &s->cluster->disconnect) {
+    QUEUE_FOREACH (head, &c->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
-        if (d->id1 == s->raft.id &&
-            d->id2 == step->event.sent.message.server_id) {
+        if (d->id1 == id1 && d->id2 == id2) {
             connected = false;
             break;
         }
     }
 
-    if (connected) {
-        serverEnqueueReceive(s, &step->event.sent.message);
+    return connected;
+}
+
+static void serverCompleteSend(struct test_server *s, struct step *step)
+{
+    if (!clusterAreConnected(s->cluster, s->raft.id,
+                             step->event.sent.message.server_id)) {
+        return;
     }
+    serverEnqueueReceive(s, &step->event.sent.message);
 }
 
 static void serverCompleteReceive(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    queue *head;
 
     if (!s->running) {
         dropReceiveEvent(step);
@@ -965,13 +973,11 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     }
 
     /* Check if there's a disconnection. */
-    QUEUE_FOREACH (head, &s->cluster->disconnect) {
-        struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
-        if (d->id1 == event->receive.message->server_id &&
-            d->id2 == s->raft.id) {
-            dropReceiveEvent(step);
-            return;
-        }
+    if (!clusterAreConnected(s->cluster,
+                             event->receive.message->server_id /* sender */,
+                             s->raft.id /* receiver */)) {
+        dropReceiveEvent(step);
+        return;
     }
 
     serverStep(s, event);
