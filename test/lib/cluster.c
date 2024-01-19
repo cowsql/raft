@@ -374,12 +374,6 @@ static void serverInit(struct test_server *s,
 
 static void serverStep(struct test_server *s, struct raft_event *event);
 
-static void serverCancelSend(struct test_server *s, struct step *step)
-{
-    step->event.sent.status = RAFT_CANCELED;
-    serverStep(s, &step->event);
-}
-
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
@@ -447,9 +441,6 @@ static void serverCancelPending(struct test_server *s)
         }
 
         switch (step->event.type) {
-            case RAFT_SENT:
-                serverCancelSend(s, step);
-                break;
             case RAFT_PERSISTED_ENTRIES:
                 serverCancelEntries(s, step);
                 break;
