@@ -470,9 +470,11 @@ static void serverCancelPending(struct test_server *s)
         queue *head;
         QUEUE_FOREACH (head, &s->cluster->send) {
             struct step *current;
+            struct raft_message *message;
             current = QUEUE_DATA(head, struct step, queue);
-            munit_assert_int(current->event.type, ==, RAFT_SENT);
-            if (current->id == s->raft.id) {
+            munit_assert_int(current->event.type, ==, RAFT_RECEIVE);
+            message = current->event.receive.message;
+            if (message->server_id /* sender */ == s->raft.id) {
                 step = current;
                 break;
             }
@@ -483,6 +485,7 @@ static void serverCancelPending(struct test_server *s)
 
         QUEUE_REMOVE(&step->queue);
 
+        dropReceiveEvent(step);
         free(step);
     }
 }
@@ -640,6 +643,12 @@ static void serverProcessSnapshot(struct test_server *s,
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
 
+static void serverFillAppendEntries(struct test_server *s,
+                                    struct raft_append_entries *args);
+
+static void serverFillInstallSnapshot(struct test_server *s,
+                                      struct raft_install_snapshot *args);
+
 static void serverProcessMessages(struct test_server *s,
                                   struct raft_message *messages,
                                   unsigned n)
@@ -648,15 +657,28 @@ static void serverProcessMessages(struct test_server *s,
 
     for (i = 0; i < n; i++) {
         struct step *step = munit_malloc(sizeof *step);
+        struct raft_event *event = &step->event;
+        struct raft_message *message = &messages[i];
 
-        step->id = s->raft.id;
+        step->id = message->server_id;
 
-        /* TODO: simulate the presence of an OS send buffer, whose available
-         * size might delay the completion of send requests */
-        step->event.time = s->cluster->time;
+        event->time = s->cluster->time + s->network_latency;
+        event->type = RAFT_RECEIVE;
+        event->receive.message = munit_malloc(sizeof *event->receive.message);
+        *event->receive.message = *message;
+        event->receive.message->server_id = s->raft.id;
+        event->receive.message->server_address = s->address;
 
-        step->event.type = RAFT_SENT;
-        step->event.sent.message = messages[i];
+        switch (message->type) {
+            case RAFT_IO_APPEND_ENTRIES:
+                serverFillAppendEntries(
+                    s, &event->receive.message->append_entries);
+                break;
+            case RAFT_IO_INSTALL_SNAPSHOT:
+                serverFillInstallSnapshot(
+                    s, &event->receive.message->install_snapshot);
+                break;
+        }
 
         QUEUE_PUSH(&s->cluster->send, &step->queue);
     }
@@ -902,34 +924,6 @@ static void serverFillInstallSnapshot(struct test_server *s,
     args->conf_index = metadata.configuration_index;
 }
 
-static void serverEnqueueReceive(struct test_server *s,
-                                 struct raft_message *message)
-{
-    struct step *step = munit_malloc(sizeof *step);
-    struct raft_event *event = &step->event;
-
-    step->id = message->server_id;
-
-    event->time = s->cluster->time + s->network_latency;
-    event->type = RAFT_RECEIVE;
-    event->receive.message = munit_malloc(sizeof *event->receive.message);
-    *event->receive.message = *message;
-    event->receive.message->server_id = s->raft.id;
-    event->receive.message->server_address = s->address;
-
-    switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
-            serverFillAppendEntries(s, &event->receive.message->append_entries);
-            break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
-            serverFillInstallSnapshot(
-                s, &event->receive.message->install_snapshot);
-            break;
-    }
-
-    QUEUE_PUSH(&s->cluster->steps, &step->queue);
-}
-
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
@@ -990,15 +984,6 @@ static bool clusterAreConnected(struct test_cluster *c,
     }
 
     return connected;
-}
-
-static void serverCompleteSend(struct test_server *s, struct step *step)
-{
-    if (!clusterAreConnected(s->cluster, s->raft.id,
-                             step->event.sent.message.server_id)) {
-        return;
-    }
-    serverEnqueueReceive(s, &step->event.sent.message);
 }
 
 static void serverCompleteReceive(struct test_server *s, struct step *step)
@@ -1073,9 +1058,6 @@ static void serverComplete(struct test_server *s, struct step *step)
             break;
         case RAFT_PERSISTED_SNAPSHOT:
             serverCompleteSnapshot(s, step);
-            break;
-        case RAFT_SENT:
-            munit_assert(false);
             break;
         case RAFT_RECEIVE:
             serverCompleteReceive(s, step);
@@ -1317,14 +1299,21 @@ static void clusterEnqueueReceives(struct test_cluster *c)
     while (!QUEUE_IS_EMPTY(&c->send)) {
         struct step *step;
         queue *head;
-        struct test_server *server;
+        struct raft_message *message;
         head = QUEUE_HEAD(&c->send);
         step = QUEUE_DATA(head, struct step, queue);
-        munit_assert_int(step->event.type, ==, RAFT_SENT);
+        munit_assert_int(step->event.type, ==, RAFT_RECEIVE);
         QUEUE_REMOVE(&step->queue);
-        server = clusterGetServer(c, step->id);
-        serverCompleteSend(server, step);
-        free(step);
+        message = step->event.receive.message;
+
+        if (!clusterAreConnected(c, message->server_id /* sender */,
+                                 step->id /* receiver */)) {
+            dropReceiveEvent(step);
+            free(step);
+            continue;
+        }
+
+        QUEUE_PUSH(&c->steps, &step->queue);
     }
 }
 
