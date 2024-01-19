@@ -28,7 +28,8 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
 {
     struct legacySendMessage *req = send->data;
     struct raft *r = req->r;
-    struct raft_event event;
+
+    (void)status;
 
     switch (req->message.type) {
         case RAFT_IO_APPEND_ENTRIES:
@@ -43,13 +44,7 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
             break;
     }
 
-    event.type = RAFT_SENT;
-    event.sent.message = req->message;
-    event.sent.status = status;
-
     raft_free(req);
-
-    LegacyForwardToRaftIo(r, &event);
 }
 
 static int legacyLoadSnapshot(struct legacySendMessage *req);
@@ -336,7 +331,6 @@ static void legacyLoadSnapshotCb(struct raft_io_snapshot_get *get,
     struct legacySendMessage *req = get->data;
     struct raft *r = req->r;
     struct raft_install_snapshot *params = &req->message.install_snapshot;
-    struct raft_event event;
     int rv;
 
     if (status != 0) {
@@ -373,13 +367,7 @@ abort:
     configurationClose(&params->conf);
     raft_free(params->data.base);
 
-    event.type = RAFT_SENT;
-    event.sent.message = req->message;
-    event.sent.status = status;
-
     raft_free(req);
-
-    LegacyForwardToRaftIo(r, &event);
 }
 
 static int legacyLoadSnapshot(struct legacySendMessage *req)
