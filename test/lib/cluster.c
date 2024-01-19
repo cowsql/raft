@@ -383,15 +383,19 @@ static void serverCancelEntries(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     raft_index index = event->persisted_entries.index;
 
+    event->time = s->cluster->time;
     event->persisted_entries.batch = &s->log.entries[index - s->log.start];
-    step->event.persisted_entries.status = RAFT_CANCELED;
+    event->persisted_entries.status = RAFT_CANCELED;
+
     serverStep(s, &step->event);
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    step->event.persisted_snapshot.status = RAFT_CANCELED;
+
+    event->time = s->cluster->time;
+    event->persisted_snapshot.status = RAFT_CANCELED;
 
     /* XXX: this should probably be done by raft core */
     raft_free(event->persisted_snapshot.chunk.base);
