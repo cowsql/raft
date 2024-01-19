@@ -10,6 +10,9 @@
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
 
+/* Maximum number of log entries. */
+#define MAX_LOG_ENTRIES 15
+
 /* Track the event to to fire in a cluster step. */
 struct step
 {
@@ -360,7 +363,7 @@ static void serverInit(struct test_server *s,
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
     s->log.start = 1;
-    s->log.entries = NULL;
+    s->log.entries = munit_malloc(MAX_LOG_ENTRIES * sizeof *s->log.entries);
     s->log.n = 0;
 
     s->last_applied = 0;
@@ -500,6 +503,7 @@ static void serverClose(struct test_server *s)
     if (s->running) {
         serverStop(s);
     }
+    free(s->log.entries);
     raft_close(&s->raft, NULL);
     diskClose(&s->disk);
 }
@@ -554,8 +558,7 @@ static void serverAddEntry(struct test_server *s,
                            const struct raft_entry *entry)
 {
     s->log.n++;
-    s->log.entries = realloc(s->log.entries, s->log.n * sizeof *s->log.entries);
-    munit_assert_ptr_not_null(s->log.entries);
+    munit_assert_uint(s->log.n, <=, MAX_LOG_ENTRIES);
     entryCopy(entry, &s->log.entries[s->log.n - 1]);
 }
 
@@ -768,7 +771,7 @@ static void serverStart(struct test_server *s)
 
     s->log.start = event.start.start_index;
     s->log.n = event.start.n_entries;
-    s->log.entries = munit_malloc(s->log.n * sizeof *s->log.entries);
+    munit_assert_uint(s->log.n, <=, MAX_LOG_ENTRIES);
     for (i = 0; i < s->log.n; i++) {
         entryCopy(&event.start.entries[i], &s->log.entries[i]);
     }
