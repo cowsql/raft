@@ -936,27 +936,22 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
 
 static void serverCompleteSend(struct test_server *s, struct step *step)
 {
-    struct raft_event *event = &step->event;
     queue *head;
-    int status = 0;
+    bool connected = true;
 
     /* Check if there's a disconnection. */
     QUEUE_FOREACH (head, &s->cluster->disconnect) {
         struct disconnect *d = QUEUE_DATA(head, struct disconnect, queue);
         if (d->id1 == s->raft.id &&
             d->id2 == step->event.sent.message.server_id) {
-            status = RAFT_NOCONNECTION;
+            connected = false;
             break;
         }
     }
 
-    if (status == 0) {
+    if (connected) {
         serverEnqueueReceive(s, &step->event.sent.message);
     }
-
-    event->sent.status = status;
-
-    serverStep(s, event);
 }
 
 static void serverCompleteReceive(struct test_server *s, struct step *step)
