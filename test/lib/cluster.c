@@ -535,15 +535,16 @@ done:
 static void serverTruncateEntries(struct test_server *s, raft_index index)
 {
     unsigned i;
+    unsigned n = s->log.n;
 
-    if (index == s->log.start + s->log.n) {
+    if (index == s->log.start + n) {
         return;
     }
 
     munit_assert_ulong(index, >=, s->log.start);
-    munit_assert_ulong(index, <=, s->log.start + s->log.n);
+    munit_assert_ulong(index, <=, s->log.start + n);
 
-    for (i = (unsigned)(index - s->log.start); i < s->log.n; i++) {
+    for (i = (unsigned)(index - s->log.start); i < n; i++) {
         free(s->log.entries[i].buf.base);
         s->log.n--;
     }
