@@ -389,8 +389,6 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
         "[ 130] 2 > recv append entries from server 1\n"
         "           no new entries to persist\n");
 
-    test_cluster_step(&f->cluster_);
-
     /* Server 1 receives a new entry after a few milliseconds. Since the
      * follower is still in probe mode and since an AppendEntries message was
      * already sent recently, it does not send the new entry immediately. */
@@ -431,7 +429,6 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
     /* Server 1 receives a second entry. Since the follower is still in probe
      * mode and since an AppendEntries message was already sent recently, it
      * does not send the new entry immediately. */
-    test_cluster_step(&f->cluster_);
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
@@ -517,7 +514,6 @@ TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
         "[ 165] 2 > persisted 1 entry (2^2)\n"
         "           send success result to 1\n");
 
-    test_cluster_step(&f->cluster_);
     CLUSTER_ELAPSE(5);
     entry.buf.base = raft_malloc(8);
     munit_assert_not_null(entry.buf.base);

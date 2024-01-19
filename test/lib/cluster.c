@@ -464,6 +464,27 @@ static void serverCancelPending(struct test_server *s)
 
         free(step);
     }
+
+    while (1) {
+        struct step *step = NULL;
+        queue *head;
+        QUEUE_FOREACH (head, &s->cluster->send) {
+            struct step *current;
+            current = QUEUE_DATA(head, struct step, queue);
+            munit_assert_int(current->event.type, ==, RAFT_SENT);
+            if (current->id == s->raft.id) {
+                step = current;
+                break;
+            }
+        }
+        if (step == NULL) {
+            break;
+        }
+
+        QUEUE_REMOVE(&step->queue);
+
+        free(step);
+    }
 }
 
 static void serverStop(struct test_server *s)
@@ -603,6 +624,11 @@ static void serverProcessSnapshot(struct test_server *s,
 
     step->id = s->raft.id;
 
+    /* Update the in-memory log */
+    serverTruncateEntries(s, s->log.start);
+    munit_assert_uint(s->log.n, ==, 0);
+    s->log.start = metadata->index + 1;
+
     step->event.time = s->cluster->time + s->disk_latency;
     step->event.type = RAFT_PERSISTED_SNAPSHOT;
 
@@ -632,7 +658,7 @@ static void serverProcessMessages(struct test_server *s,
         step->event.type = RAFT_SENT;
         step->event.sent.message = messages[i];
 
-        QUEUE_PUSH(&s->cluster->steps, &step->queue);
+        QUEUE_PUSH(&s->cluster->send, &step->queue);
     }
 }
 
@@ -907,6 +933,7 @@ static void serverEnqueueReceive(struct test_server *s,
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    struct raft_entry *entries = event->persisted_entries.batch;
     raft_index index = event->persisted_entries.index;
     unsigned n = event->persisted_entries.n;
     unsigned i;
@@ -914,11 +941,8 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     /* Possibly truncate stale entries. */
     diskTruncateEntries(&s->disk, index);
 
-    munit_assert_ullong(index, >=, s->log.start);
-    munit_assert_uint(n, <=, s->log.n);
-
     for (i = 0; i < n; i++) {
-        diskAddEntry(&s->disk, &s->log.entries[index - s->log.start + i]);
+        diskAddEntry(&s->disk, &entries[i]);
     }
 
     serverStep(s, event);
@@ -1051,7 +1075,7 @@ static void serverComplete(struct test_server *s, struct step *step)
             serverCompleteSnapshot(s, step);
             break;
         case RAFT_SENT:
-            serverCompleteSend(s, step);
+            munit_assert(false);
             break;
         case RAFT_RECEIVE:
             serverCompleteReceive(s, step);
@@ -1083,6 +1107,7 @@ void test_cluster_setup(const MunitParameter params[], struct test_cluster *c)
     c->time = 0;
     c->in_tear_down = false;
     QUEUE_INIT(&c->steps);
+    QUEUE_INIT(&c->send);
     QUEUE_INIT(&c->disconnect);
 }
 
@@ -1105,6 +1130,7 @@ void test_cluster_tear_down(struct test_cluster *c)
         serverCancelPending(server);
     }
     munit_assert_true(QUEUE_IS_EMPTY(&c->steps));
+    munit_assert_true(QUEUE_IS_EMPTY(&c->send));
 
     /* Drop outstanding disconnections */
     while (!QUEUE_IS_EMPTY(&c->disconnect)) {
@@ -1284,11 +1310,30 @@ static struct test_server *clusterGetServerWithEarliestTimeout(
     return server;
 }
 
+/* Consume the queue of pending messages to be sent, and enqueue them as regular
+ * RAFT_RECEIVE events in the steps queue . */
+static void clusterEnqueueReceives(struct test_cluster *c)
+{
+    while (!QUEUE_IS_EMPTY(&c->send)) {
+        struct step *step;
+        queue *head;
+        struct test_server *server;
+        head = QUEUE_HEAD(&c->send);
+        step = QUEUE_DATA(head, struct step, queue);
+        munit_assert_int(step->event.type, ==, RAFT_SENT);
+        QUEUE_REMOVE(&step->queue);
+        server = clusterGetServer(c, step->id);
+        serverCompleteSend(server, step);
+        free(step);
+    }
+}
+
 void test_cluster_step(struct test_cluster *c)
 {
     struct test_server *server;
     struct step *step;
 
+    clusterEnqueueReceives(c);
     clusterSeed(c);
 
     server = clusterGetServerWithEarliestTimeout(c);
@@ -1309,6 +1354,8 @@ void test_cluster_elapse(struct test_cluster *c, unsigned msecs)
     while (1) {
         struct test_server *server;
         struct step *step;
+
+        clusterEnqueueReceives(c);
 
         server = clusterGetServerWithEarliestTimeout(c);
         step = clusterGetStepWithEarliestExecution(c);

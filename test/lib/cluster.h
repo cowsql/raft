@@ -227,6 +227,7 @@ struct test_cluster
     bool in_tear_down;                                  /* Tearing down */
     char trace[8192];                                   /* Captured messages */
     void *steps[2];                                     /* Pending events */
+    void *send[2];                                      /* Pending messages */
     void *disconnect[2];                                /* Network faults */
 };
 

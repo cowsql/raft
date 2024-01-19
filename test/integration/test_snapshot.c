@@ -624,10 +624,10 @@ TEST_V1(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
         "           replicate 1 new command entry (2^2)\n"
-        "[ 130] 1 > persisted 1 entry (2^2)\n"
-        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
         "[ 130] 2 > recv append entries from server 1\n"
         "           no new entries to persist\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
         "[ 140] 1 > recv append entries result from server 2\n"
         "           pipeline server 2 sending 1 entry (2^2)\n"
         "[ 150] 2 > recv append entries from server 1\n"
