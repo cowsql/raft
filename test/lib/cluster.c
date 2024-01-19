@@ -319,7 +319,6 @@ static void serverInit(struct test_server *s,
                        raft_id id,
                        struct test_cluster *cluster)
 {
-    char address[64];
     unsigned delta;
     int rv;
 
@@ -328,9 +327,9 @@ static void serverInit(struct test_server *s,
     s->tracer.emit = serverEmit;
     s->randomized_election_timeout_prev = 0;
 
-    sprintf(address, "%llu", id);
+    sprintf(s->address, "%llu", id);
 
-    rv = raft_init(&s->raft, NULL, NULL, id, address);
+    rv = raft_init(&s->raft, NULL, NULL, id, s->address);
     munit_assert_int(rv, ==, 0);
 
     s->raft.tracer = &s->tracer;
@@ -888,7 +887,7 @@ static void serverEnqueueReceive(struct test_server *s,
     event->receive.message = munit_malloc(sizeof *event->receive.message);
     *event->receive.message = *message;
     event->receive.message->server_id = s->raft.id;
-    event->receive.message->server_address = s->raft.address;
+    event->receive.message->server_address = s->address;
 
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
