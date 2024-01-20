@@ -23,38 +23,31 @@
 /* Start the server with the given ID, using the state persisted on its disk. */
 #define CLUSTER_START(ID) test_cluster_start(&f->cluster_, ID)
 
+/* Stop the server with the given ID. */
+#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
+
+/* Step the cluster until the all expected output is consumed. Fail the test if
+ * a mismatch is found. */
 #define CLUSTER_TRACE(EXPECTED)                        \
     if (!test_cluster_trace(&f->cluster_, EXPECTED)) { \
         munit_error("trace does not match");           \
     }
 
+/* Step the cluster until the given amount of milliseconds has elapsed. */
 #define CLUSTER_ELAPSE(MSECS) test_cluster_elapse(&f->cluster_, MSECS)
 
-#define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
-
-/* Stop the server with the given ID. */
-#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
-
+/* Disconnect the server with ID1 with the one with ID2. */
 #define CLUSTER_DISCONNECT(ID1, ID2) \
     test_cluster_disconnect(&f->cluster_, ID1, ID2)
 
-/* Reconnect A to B. */
+/* Reconnect two servers. */
 #define CLUSTER_RECONNECT(ID1, ID2) \
     test_cluster_reconnect(&f->cluster_, ID1, ID2)
 
-/* Set the network latency of outgoing messages of server I. */
-#define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
-    test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
-
-/* Set the disk I/O latency of server I. */
-#define CLUSTER_SET_DISK_LATENCY(ID, MSECS) \
-    test_cluster_set_disk_latency(&f->cluster_, ID, MSECS)
-
+/* Set the persisted vote of the server with the given ID. Must me called before
+ * starting the server. */
 #define CLUSTER_SET_VOTE(ID, VOTE) \
     test_cluster_set_vote(&f->cluster_, ID, VOTE);
-
-#define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
-    test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
 
 /* Set the persisted term of the server with the given ID. Must me called before
  * starting the server. */
@@ -144,6 +137,20 @@
  * be called before starting the cluster. */
 #define CLUSTER_ADD_ENTRY_RAW(ID, ENTRY) \
     test_cluster_add_entry(&f->cluster_, ID, ENTRY)
+
+/* Return the struct raft object with the given ID. */
+#define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
+
+/* Set the network latency of outgoing messages of server I. */
+#define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
+    test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
+
+/* Set the disk I/O latency of server I. */
+#define CLUSTER_SET_DISK_LATENCY(ID, MSECS) \
+    test_cluster_set_disk_latency(&f->cluster_, ID, MSECS)
+
+#define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
+    test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
 
 /* Test snapshot that is just persisted in-memory. */
 struct test_snapshot
