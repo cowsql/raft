@@ -105,9 +105,6 @@ void progressResetRecentRecv(struct raft *r);
  * timestamp if more recent. */
 raft_time progressGetLastSend(const struct raft *r, unsigned i);
 
-/* Return the value of the last_recv flag. */
-raft_time progressGetLastRecv(const struct raft *r, unsigned i);
-
 /* Convert to the i'th server to snapshot mode. */
 void progressToSnapshot(struct raft *r, unsigned i);
 

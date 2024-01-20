@@ -235,11 +235,6 @@ raft_time progressGetLastSend(const struct raft *r, const unsigned i)
     return last_send;
 }
 
-raft_time progressGetLastRecv(const struct raft *r, const unsigned i)
-{
-    return r->leader_state.progress[i].last_recv;
-}
-
 void progressToSnapshot(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
