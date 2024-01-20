@@ -152,10 +152,10 @@
         test_cluster_add_entry(&f->cluster_, ID, &_entry); \
     } while (0);
 
-/* Add an entry to the ones persisted on the I'th server. This must be called
- * before starting the cluster. */
-#define CLUSTER_ADD_ENTRY_RAW(I, ENTRY) \
-    test_cluster_add_entry(&f->cluster_, I, ENTRY)
+/* Add an entry to the ones persisted on the server with the given ID. This must
+ * be called before starting the cluster. */
+#define CLUSTER_ADD_ENTRY_RAW(ID, ENTRY) \
+    test_cluster_add_entry(&f->cluster_, ID, ENTRY)
 
 /* Test snapshot that is just persisted in-memory. */
 struct test_snapshot
