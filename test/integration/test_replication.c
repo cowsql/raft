@@ -960,7 +960,7 @@ TEST(replication, RollbackConfigurationToInitial, setUp, tearDown, 0, NULL)
     munit_assert_int(rv, ==, 0);
     raft_configuration_encode(&conf, &entry.buf);
     munit_assert_int(rv, ==, 0);
-    CLUSTER_ADD_ENTRY_RAW(2 /* ID */, &entry);
+    CLUSTER_ADD_ENTRY(2 /* ID */, &entry);
     raft_free(entry.buf.base);
     raft_configuration_close(&conf);
 
@@ -1049,7 +1049,7 @@ TEST(replication, RollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
     raft_configuration_add(&conf, 3, "3", 2);
     rv = raft_configuration_encode(&conf, &entry.buf);
     munit_assert_int(rv, ==, 0);
-    CLUSTER_ADD_ENTRY_RAW(2, &entry);
+    CLUSTER_ADD_ENTRY(2, &entry);
     raft_configuration_close(&conf);
     raft_free(entry.buf.base);
 
@@ -1146,7 +1146,7 @@ TEST(replication, RollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
     munit_assert_int(rv, ==, 0);
     rv = raft_configuration_encode(&conf, &entry.buf);
     munit_assert_int(rv, ==, 0);
-    CLUSTER_ADD_ENTRY_RAW(2 /* ID */, &entry);
+    CLUSTER_ADD_ENTRY(2 /* ID */, &entry);
     raft_configuration_close(&conf);
     raft_free(entry.buf.base);
 

@@ -93,15 +93,20 @@
         test_cluster_set_snapshot(&f->cluster_, ID, _snapshot);                \
     } while (0)
 
-#define CLUSTER_ADD_ENTRY__CHOOSER(...)                                  \
-    GET_5TH_ARG(__VA_ARGS__, CLUSTER_ADD_ENTRY_V1, CLUSTER_ADD_ENTRY_V1, \
-                CLUSTER_ADD_ENTRY_RAW, )
+#define CLUSTER_ADD_ENTRY__CHOOSER(...)                                        \
+    GET_5TH_ARG(__VA_ARGS__, CLUSTER_ADD_ENTRY__TYPE, CLUSTER_ADD_ENTRY__TYPE, \
+                CLUSTER_ADD_ENTRY__RAW, )
 
 #define CLUSTER_ADD_ENTRY(...) \
     CLUSTER_ADD_ENTRY__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
-#define CLUSTER_ADD_ENTRY_V1(ID, TYPE, ...) \
+#define CLUSTER_ADD_ENTRY__TYPE(ID, TYPE, ...) \
     CLUSTER_ADD_ENTRY__##TYPE(ID, __VA_ARGS__)
+
+/* Add an entry to the ones persisted on the server with the given ID. This must
+ * be called before starting the cluster. */
+#define CLUSTER_ADD_ENTRY__RAW(ID, ENTRY) \
+    test_cluster_add_entry(&f->cluster_, ID, ENTRY)
 
 #define CLUSTER_ADD_ENTRY__RAFT_CHANGE(ID, CONF_N, CONF_N_VOTING)              \
     do {                                                                       \
@@ -116,7 +121,7 @@
         munit_assert_int(_rv, ==, 0);                                          \
         raft_configuration_close(&_configuration);                             \
                                                                                \
-        test_cluster_add_entry(&f->cluster_, ID, &_entry);                     \
+        CLUSTER_ADD_ENTRY__RAW(ID, &_entry);                                   \
                                                                                \
         raft_free(_entry.buf.base);                                            \
     } while (0);
@@ -130,13 +135,8 @@
         _entry.term = TERM;                                \
         _entry.buf.base = &_payload;                       \
         _entry.buf.len = sizeof _payload;                  \
-        test_cluster_add_entry(&f->cluster_, ID, &_entry); \
+        CLUSTER_ADD_ENTRY__RAW(ID, &_entry);               \
     } while (0);
-
-/* Add an entry to the ones persisted on the server with the given ID. This must
- * be called before starting the cluster. */
-#define CLUSTER_ADD_ENTRY_RAW(ID, ENTRY) \
-    test_cluster_add_entry(&f->cluster_, ID, ENTRY)
 
 /* Return the struct raft object with the given ID. */
 #define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
