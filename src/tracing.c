@@ -39,7 +39,7 @@ static inline void stderrTracerEmit(struct raft_tracer *t,
             info->diagnostic.message);
 }
 struct raft_tracer StderrTracer = {.impl = NULL,
-                                   .version = 0,
+                                   .version = 2,
                                    .emit = stderrTracerEmit};
 
 void raft_tracer_maybe_enable(struct raft_tracer *tracer, bool enabled)
