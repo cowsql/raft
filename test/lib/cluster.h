@@ -12,18 +12,6 @@
 #include "munit.h"
 #include "snapshot.h"
 
-#define TEST_V1(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)         \
-    static void *setUp__##S##_##C(const MunitParameter params[], \
-                                  void *user_data)               \
-    {                                                            \
-        return SETUP(params, user_data);                         \
-    }                                                            \
-    static void tearDown__##S##_##C(void *data)                  \
-    {                                                            \
-        TEAR_DOWN(data);                                         \
-    }                                                            \
-    TEST(S, C, setUp__##S##_##C, tearDown__##S##_##C, OPTIONS, PARAMS)
-
 #define FIXTURE_CLUSTER \
     FIXTURE_HEAP;       \
     struct test_cluster cluster_

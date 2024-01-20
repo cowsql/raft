@@ -31,7 +31,7 @@ SUITE(tick)
 /* If the election timeout expires, the follower is a voting server, and it
  * hasn't voted yet in this term, then become candidate and start a new
  * election. */
-TEST_V1(tick, ConvertToCandidate, setUp, tearDown, 0, NULL)
+TEST(tick, ConvertToCandidate, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft;
@@ -91,7 +91,7 @@ static MunitParameterEnum elapse_non_voter_params[] = {
 
 /* If the election timeout has elapsed, but we're not part of the current
  * configuration, stay follower. */
-TEST_V1(tick, NotInCurrentConfiguration, setUp, tearDown, 0, NULL)
+TEST(tick, NotInCurrentConfiguration, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(2, 1 /* term */);
@@ -109,7 +109,7 @@ TEST_V1(tick, NotInCurrentConfiguration, setUp, tearDown, 0, NULL)
 }
 
 /* If the election timeout has elapsed, but we're not voters, stay follower. */
-TEST_V1(tick, NotVoter, setUp, tearDown, 0, elapse_non_voter_params)
+TEST(tick, NotVoter, setUp, tearDown, 0, elapse_non_voter_params)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(2, 1 /* term */);
@@ -128,7 +128,7 @@ TEST_V1(tick, NotVoter, setUp, tearDown, 0, elapse_non_voter_params)
 
 /* If we're leader and an election timeout elapses without hearing from a
  * majority of the cluster, step down. */
-TEST_V1(tick, StepDownIfNoContact, setUp, tearDown, 0, NULL)
+TEST(tick, StepDownIfNoContact, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -166,7 +166,7 @@ TEST_V1(tick, StepDownIfNoContact, setUp, tearDown, 0, NULL)
 
 /* If we're candidate and the election timeout has elapsed, start a new
  * election. */
-TEST_V1(tick, NewElection, setUp, tearDown, 0, NULL)
+TEST(tick, NewElection, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 

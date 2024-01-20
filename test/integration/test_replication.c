@@ -66,7 +66,7 @@ SUITE(replication)
 
 /* A leader doesn't send an initial no-op barrier entry if its committed index
  * is as big as its last log index. */
-TEST_V1(replication, NoInitialBarrier, setUp, tearDown, 0, NULL)
+TEST(replication, NoInitialBarrier, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -102,7 +102,7 @@ TEST_V1(replication, NoInitialBarrier, setUp, tearDown, 0, NULL)
 
 /* A leader sends an initial no-op barrier entry if its committed index
  * is behind its last log index. */
-TEST_V1(replication, InitialBarrier, setUp, tearDown, 0, NULL)
+TEST(replication, InitialBarrier, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -143,7 +143,7 @@ TEST_V1(replication, InitialBarrier, setUp, tearDown, 0, NULL)
 
 /* After receiving an AppendEntriesResult, a leader has set the feature flags of
  * a node. */
-TEST_V1(replication, FeatureFlags, setUp, tearDown, 0, NULL)
+TEST(replication, FeatureFlags, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -187,7 +187,7 @@ TEST_V1(replication, FeatureFlags, setUp, tearDown, 0, NULL)
 
 /* A leader keeps sending heartbeat messages at regular intervals to
  * maintain leadership. */
-TEST_V1(replication, Heartbeat, setUp, tearDown, 0, NULL)
+TEST(replication, Heartbeat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -230,7 +230,7 @@ TEST_V1(replication, Heartbeat, setUp, tearDown, 0, NULL)
 
 /* If a leader replicates some entries during a given heartbeat interval, it
  * skips sending the heartbeat for that interval. */
-TEST_V1(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
+TEST(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -275,7 +275,7 @@ TEST_V1(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
     entry.buf.base = raft_malloc(entry.buf.len);
     munit_assert_not_null(entry.buf.base);
     entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     CLUSTER_TRACE(
         "[ 145] 1 > submit 1 new client entry\n"
@@ -311,7 +311,7 @@ TEST_V1(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
 }
 
 /* The leader doesn't send replication messages to idle servers. */
-TEST_V1(replication, SkipSpare, setUp, tearDown, 0, NULL)
+TEST(replication, SkipSpare, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -354,7 +354,7 @@ TEST_V1(replication, SkipSpare, setUp, tearDown, 0, NULL)
 
 /* A follower remains in probe mode until the leader receives a successful
  * AppendEntries response. */
-TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
+TEST(replication, Probe, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -452,7 +452,7 @@ TEST_V1(replication, Probe, setUp, tearDown, 0, NULL)
 
 /* A follower transitions to pipeline mode after the leader receives a
  * successful AppendEntries response from it. */
-TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
+TEST(replication, Pipeline, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -544,7 +544,7 @@ TEST_V1(replication, Pipeline, setUp, tearDown, 0, NULL)
 }
 
 /* A follower disconnects while in probe mode. */
-TEST_V1(replication, Disconnect, setUp, tearDown, 0, NULL)
+TEST(replication, Disconnect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -586,7 +586,7 @@ TEST_V1(replication, Disconnect, setUp, tearDown, 0, NULL)
 }
 
 /* A follower disconnects while in pipeline mode. */
-TEST_V1(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
+TEST(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft;
@@ -676,7 +676,7 @@ TEST_V1(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
 }
 
 /* Receive the same entry a second time, before the first has been persisted. */
-TEST_V1(replication, ReceiveSameEntryTwice, setUp, tearDown, 0, NULL)
+TEST(replication, ReceiveSameEntryTwice, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -738,7 +738,7 @@ TEST_V1(replication, ReceiveSameEntryTwice, setUp, tearDown, 0, NULL)
 }
 
 /* If the term in the request is stale, the server rejects it. */
-TEST_V1(replication, AppendEntriesRequestHasStaleTerm, setUp, tearDown, 0, NULL)
+TEST(replication, AppendEntriesRequestHasStaleTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -818,7 +818,7 @@ TEST_V1(replication, AppendEntriesRequestHasStaleTerm, setUp, tearDown, 0, NULL)
 
 /* If the log of the receiving server is shorter than prevLogIndex, the request
  * is rejected . */
-TEST_V1(replication, FollowerHasMissingEntries, setUp, tearDown, 0, NULL)
+TEST(replication, FollowerHasMissingEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -874,7 +874,7 @@ TEST_V1(replication, FollowerHasMissingEntries, setUp, tearDown, 0, NULL)
 /* If the term of the last log entry on the server is different from the one
  * in prevLogTerm, and value of prevLogIndex is greater than the server's commit
  * index (i.e. this is a normal inconsistency), we reject the request. */
-TEST_V1(replication, PrevLogTermMismatch, setUp, tearDown, 0, NULL)
+TEST(replication, PrevLogTermMismatch, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -934,7 +934,7 @@ TEST_V1(replication, PrevLogTermMismatch, setUp, tearDown, 0, NULL)
  * entry happens to be a configuration change. In that case the follower
  * discards the conflicting entry from its log and rolls back its configuration
  * to the initial one contained in the log entry at index 1. */
-TEST_V1(replication, RollbackConfigurationToInitial, setUp, tearDown, 0, NULL)
+TEST(replication, RollbackConfigurationToInitial, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1020,7 +1020,7 @@ TEST_V1(replication, RollbackConfigurationToInitial, setUp, tearDown, 0, NULL)
  * configuration entry present. In that case the follower discards the
  * conflicting entry from its log and rolls back its configuration to the
  * committed one in the older configuration entry. */
-TEST_V1(replication, RollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
+TEST(replication, RollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1111,7 +1111,7 @@ TEST_V1(replication, RollbackConfigurationToPrevious, setUp, tearDown, 0, NULL)
  * configuration anymore. In that case the follower discards the conflicting
  * entry from its log and rolls back its configuration to the previous committed
  * one, which was cached when the snapshot was restored. */
-TEST_V1(replication, RollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
+TEST(replication, RollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -1202,7 +1202,7 @@ TEST_V1(replication, RollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
 
 /* A write log request is submitted for outstanding log entries. If some entries
  * are already existing in the log, they will be skipped. */
-TEST_V1(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
+TEST(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -1283,7 +1283,7 @@ TEST_V1(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
 
 /* If the index and term of the last snapshot on the server matches prevLogIndex
  * and prevLogTerm the request is accepted. */
-TEST_V1(replication, MatchingLastSnapshot, setUp, tearDown, 0, NULL)
+TEST(replication, MatchingLastSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -1332,7 +1332,7 @@ TEST_V1(replication, MatchingLastSnapshot, setUp, tearDown, 0, NULL)
 
 /* If a candidate server receives a request containing the same term as its
  * own, it it steps down to follower and accept the request . */
-TEST_V1(replication, CandidateRecvRequestWithSameTerm, setUp, tearDown, 0, NULL)
+TEST(replication, CandidateRecvRequestWithSameTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1393,12 +1393,7 @@ TEST_V1(replication, CandidateRecvRequestWithSameTerm, setUp, tearDown, 0, NULL)
 
 /* If a candidate server receives an append entries request contaning an higher
  * term than its own, it it steps down to follower and accept the request. */
-TEST_V1(replication,
-        CandidateRecvRequestWithHigherTerm,
-        setUp,
-        tearDown,
-        0,
-        NULL)
+TEST(replication, CandidateRecvRequestWithHigherTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1471,7 +1466,7 @@ TEST_V1(replication,
 
 /* If the server handling the response is not the leader, the result is
  * ignored. */
-TEST_V1(replication, ReceiveResultButNotLeader, setUp, tearDown, 0, NULL)
+TEST(replication, ReceiveResultButNotLeader, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1525,7 +1520,7 @@ TEST_V1(replication, ReceiveResultButNotLeader, setUp, tearDown, 0, NULL)
 
 /* If the response has a term which is lower than the server's one, it's
  * ignored. */
-TEST_V1(replication, ReceiveResultWithLowerTerm, setUp, tearDown, 0, NULL)
+TEST(replication, ReceiveResultWithLowerTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1601,7 +1596,7 @@ TEST_V1(replication, ReceiveResultWithLowerTerm, setUp, tearDown, 0, NULL)
 
 /* If the response has a term which is higher than the server's one, step down
  * to follower. */
-TEST_V1(replication, ReceiveResultWithHigherTerm, setUp, tearDown, 0, NULL)
+TEST(replication, ReceiveResultWithHigherTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1685,12 +1680,7 @@ TEST_V1(replication, ReceiveResultWithHigherTerm, setUp, tearDown, 0, NULL)
  * commit_index. A new leader gets elected, with a higher commit index, and
  * sends an an entry to the old leader, that needs to update its commit_index
  * taking into account its lagging last_stored. */
-TEST_V1(replication,
-        LastStoredLaggingBehindCommitIndex,
-        setUp,
-        tearDown,
-        0,
-        NULL)
+TEST(replication, LastStoredLaggingBehindCommitIndex, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1846,7 +1836,7 @@ TEST_V1(replication,
 
 /* A follower finds that is has no leader anymore after it completes persisting
  * entries. No AppendEntries RPC result is sent in that case. */
-TEST_V1(replication, NoLeaderAfterPersistingEntries, setUp, tearDown, 0, NULL)
+TEST(replication, NoLeaderAfterPersistingEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1904,7 +1894,7 @@ TEST_V1(replication, NoLeaderAfterPersistingEntries, setUp, tearDown, 0, NULL)
 
 /* While pipelining entries, the leader receives an AppendEntries response with
  * a stale reject index. */
-TEST_V1(replication, PipelineStaleRejectedIndex, setUp, tearDown, 0, NULL)
+TEST(replication, PipelineStaleRejectedIndex, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -1969,7 +1959,7 @@ TEST_V1(replication, PipelineStaleRejectedIndex, setUp, tearDown, 0, NULL)
 
 /* After having sent a snapshot and waiting for a response, the leader receives
  * an AppendEntries response with a stale reject index. */
-TEST_V1(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
+TEST(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;

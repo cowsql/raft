@@ -23,7 +23,7 @@ static void tearDown(void *data)
 SUITE(snapshot)
 
 /* Install a snapshot on a follower that has fallen behind. */
-TEST_V1(snapshot, Install, setUp, tearDown, 0, NULL)
+TEST(snapshot, Install, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -104,7 +104,7 @@ TEST_V1(snapshot, Install, setUp, tearDown, 0, NULL)
 }
 
 /* Install snapshot times out and leader retries */
-TEST_V1(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
+TEST(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -195,7 +195,7 @@ TEST_V1(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
 }
 
 /* Snapshots are not sent an offline nodes */
-TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
+TEST(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -260,7 +260,7 @@ TEST_V1(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
 
 /* A follower crashes while persisting a snapshot. After it resumes it sends a
  * reject response of the snapshot index. */
-TEST_V1(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
+TEST(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -327,7 +327,7 @@ TEST_V1(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
 }
 
 /* A follower receives an AppendEntries message while installing a snapshot . */
-TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
+TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
@@ -486,7 +486,7 @@ TEST_V1(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 }
 
 /* An InstallSnapshot RPC arrives while persisting Entries */
-TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
+TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -572,7 +572,7 @@ TEST_V1(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
 }
 
 /* A new term starts while a node is installing a snapshot. */
-TEST_V1(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
+TEST(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_entry entry;
