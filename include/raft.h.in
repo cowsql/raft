@@ -835,8 +835,10 @@ struct raft
      * after a server restart.
      */
     raft_index commit_index; /* Highest log entry known to be committed */
+#if !defined(RAFT__LEGACY_no)
     raft_index last_applied; /* Highest log entry applied to the FSM */
-    raft_index last_stored;  /* Highest log entry persisted on disk */
+#endif
+    raft_index last_stored; /* Highest log entry persisted on disk */
 
     /*
      * Current server state of this raft instance, along with a union defining

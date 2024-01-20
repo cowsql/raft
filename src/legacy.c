@@ -1807,4 +1807,9 @@ out:
     return 0;
 }
 
+raft_index raft_last_applied(struct raft *r)
+{
+    return r->last_applied;
+}
+
 #undef tracef
