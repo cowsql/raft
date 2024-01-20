@@ -56,9 +56,15 @@ int progressBuildArray(struct raft *r);
 int progressRebuildArray(struct raft *r,
                          const struct raft_configuration *configuration);
 
-/* Whether the log of the i'th server in the configuration up-to-date with
+/* Whether the log of the i'th server in the configuration is up-to-date with
  * ours. */
 bool progressIsUpToDate(struct raft *r, unsigned i);
+
+/* Whether the i'th server in the configuration is online or not.
+ *
+ * A server is online if we received a message from it within the last election
+ * timeout. */
+bool progressIsOnline(struct raft *r, unsigned i);
 
 /* Whether a new AppendEntries or InstallSnapshot message should be sent to the
  * i'th server at this time.
