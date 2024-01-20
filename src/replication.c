@@ -43,7 +43,7 @@ static int sendAppendEntries(struct raft *r,
                              const unsigned i,
                              const raft_index prev_index,
                              const raft_term prev_term,
-                             int max)
+                             bool heartbeat)
 {
     struct raft_server *server = &r->configuration.servers[i];
     struct raft_message message;
@@ -51,17 +51,14 @@ static int sendAppendEntries(struct raft *r,
     raft_index next_index = prev_index + 1;
     int rv;
 
-    assert(max == 0 || max == MAX_APPEND_ENTRIES);
-
     args->term = r->current_term;
     args->prev_log_index = prev_index;
     args->prev_log_term = prev_term;
 
-    if (max == 0 || !TrailHasEntry(&r->trail, next_index)) {
+    if (heartbeat || !TrailHasEntry(&r->trail, next_index)) {
         args->entries = NULL;
         args->n_entries = 0;
     } else {
-        assert(max > 0);
         assert(TrailHasEntry(&r->trail, next_index));
 
         args->n_entries =
@@ -70,8 +67,8 @@ static int sendAppendEntries(struct raft *r,
         /* TODO: implement a limit to the total *size* of the entries being
          * sent, not only the number. Also, make the number and the size
          * configurable. */
-        if (args->n_entries > (unsigned)max) {
-            args->n_entries = (unsigned)max;
+        if (args->n_entries > MAX_APPEND_ENTRIES) {
+            args->n_entries = MAX_APPEND_ENTRIES;
         }
     }
 
@@ -167,7 +164,7 @@ int replicationProgress(struct raft *r, unsigned i)
     raft_index next_index = progressNextIndex(r, i);
     raft_index prev_index;
     raft_term prev_term;
-    int max = MAX_APPEND_ENTRIES;
+    bool heartbeat = false; /* Whether to just send a heartbeat (no entries) */
     bool needs_snapshot = false;
 
     assert(r->state == RAFT_LEADER);
@@ -236,10 +233,10 @@ int replicationProgress(struct raft *r, unsigned i)
         prev_index = snapshot_index;
         prev_term = TrailSnapshotTerm(&r->trail);
         assert(prev_term > 0);
-        max = 0;
+        heartbeat = true;
     }
 
-    return sendAppendEntries(r, i, prev_index, prev_term, max);
+    return sendAppendEntries(r, i, prev_index, prev_term, heartbeat);
 }
 
 /* Possibly trigger I/O requests for newly appended log entries or heartbeats.
