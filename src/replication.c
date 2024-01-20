@@ -212,17 +212,12 @@ int replicationProgress(struct raft *r, unsigned i)
          * next_index - 1. */
         prev_term = TrailTermOf(&r->trail, prev_index);
 
-        /* We need to send a snapshot if one of the following two cases is true:
-         *
-         * - prev_term is 0: In this case we don't have information about the
-         *   previous entry (i.e. it's not in the log and also it's not the last
-         *   entry included in the last snapshot)
-         *
-         * - prev_index is not the last entry in the log and we don't have
-         *   anymore the entry at next_index.
+        /* We need to send a snapshot if prev_term prev_term is 0, because in
+         * this case we don't have anymore information about the previous entry,
+         * i.e. it's not in the log (it was truncated) and also it's not the
+         * last entry included in the last snapshot.
          */
-        if (prev_term == 0 || (TrailLastIndex(&r->trail) > prev_index &&
-                               TrailTermOf(&r->trail, next_index) == 0)) {
+        if (prev_term == 0) {
             needs_snapshot = true;
         }
     }
