@@ -66,6 +66,12 @@ bool progressIsUpToDate(struct raft *r, unsigned i);
  * timeout. */
 bool progressIsOnline(struct raft *r, unsigned i);
 
+/* Whether the i'th server in the configuration has contacted us recently.
+ *
+ * A server has contacted us recently if we received a message from it within
+ * the last election timer reset. */
+bool progressHasContactedRecently(struct raft *r, unsigned i);
+
 /* Whether a new AppendEntries or InstallSnapshot message should be sent to the
  * i'th server at this time.
  *

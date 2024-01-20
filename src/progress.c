@@ -108,7 +108,7 @@ bool progressIsUpToDate(struct raft *r, unsigned i)
 
 bool progressIsOnline(struct raft *r, unsigned i)
 {
-    raft_time last_recv = progressGetLastRecv(r, i);
+    raft_time last_recv = r->leader_state.progress[i].last_recv;
 
     if (last_recv == ULLONG_MAX) {
         return false;
@@ -116,6 +116,17 @@ bool progressIsOnline(struct raft *r, unsigned i)
 
     assert(r->now >= last_recv);
     return r->now - last_recv < r->election_timeout;
+}
+
+bool progressHasContactedRecently(struct raft *r, unsigned i)
+{
+    raft_time last_recv = r->leader_state.progress[i].last_recv;
+
+    if (last_recv != ULLONG_MAX && last_recv >= r->election_timer_start) {
+        return true;
+    }
+
+    return false;
 }
 
 bool progressShouldReplicate(struct raft *r, unsigned i)

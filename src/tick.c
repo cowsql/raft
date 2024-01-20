@@ -111,14 +111,7 @@ static bool checkContactQuorum(struct raft *r)
 
     for (i = 0; i < r->configuration.n; i++) {
         struct raft_server *server = &r->configuration.servers[i];
-        raft_time last_recv = progressGetLastRecv(r, i);
-        bool is_recent = false;
-
-        /* A contact is recent if it happened after the last election timer
-         * reset. */
-        if (last_recv != ULLONG_MAX && last_recv >= r->election_timer_start) {
-            is_recent = true;
-        }
+        bool is_recent = progressHasContactedRecently(r, i);
 
         if ((server->role == RAFT_VOTER && is_recent) || server->id == r->id) {
             contacts++;
