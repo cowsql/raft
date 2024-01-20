@@ -180,7 +180,6 @@ TEST(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
 TEST(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
 
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 1 /* servers */, 1 /* voters */);
@@ -192,13 +191,7 @@ TEST(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
 
     /* The server can make progress alone. */
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[   0] 1 > submit 1 new client entry\n"

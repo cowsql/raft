@@ -314,7 +314,6 @@ TEST(replication, SkipHeartbeatIfEntriesHaveSent, setUp, tearDown, 0, NULL)
 TEST(replication, SkipSpare, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     unsigned id;
 
     /* Bootstrap and start a cluster with one voter and one spare. */
@@ -332,13 +331,7 @@ TEST(replication, SkipSpare, setUp, tearDown, 0, NULL)
         "[   0] 2 > term 1, 1 entry (1^1)\n"
         "[ 100] 1 > timeout as leader\n");
 
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 100] 1 > submit 1 new client entry\n"
@@ -357,7 +350,6 @@ TEST(replication, SkipSpare, setUp, tearDown, 0, NULL)
 TEST(replication, Probe, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     unsigned id;
 
     /* Bootstrap and start a cluster with 2 voters. */
@@ -393,14 +385,7 @@ TEST(replication, Probe, setUp, tearDown, 0, NULL)
      * follower is still in probe mode and since an AppendEntries message was
      * already sent recently, it does not send the new entry immediately. */
     CLUSTER_ELAPSE(5);
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 135] 1 > submit 1 new client entry\n"
@@ -430,10 +415,7 @@ TEST(replication, Probe, setUp, tearDown, 0, NULL)
      * mode and since an AppendEntries message was already sent recently, it
      * does not send the new entry immediately. */
     CLUSTER_ELAPSE(5);
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 195] 1 > submit 1 new client entry\n"
@@ -455,7 +437,6 @@ TEST(replication, Probe, setUp, tearDown, 0, NULL)
 TEST(replication, Pipeline, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     struct raft *raft;
     unsigned id;
 
@@ -487,13 +468,7 @@ TEST(replication, Pipeline, setUp, tearDown, 0, NULL)
      * pipeline mode the new entry is sent immediately and the next index is
      * optimistically increased. */
     CLUSTER_ELAPSE(5);
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 145] 1 > submit 1 new client entry\n"
@@ -515,10 +490,7 @@ TEST(replication, Pipeline, setUp, tearDown, 0, NULL)
         "           send success result to 1\n");
 
     CLUSTER_ELAPSE(5);
-    entry.buf.base = raft_malloc(8);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 170] 1 > submit 1 new client entry\n"
@@ -590,7 +562,6 @@ TEST(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft;
-    struct raft_entry entry;
     unsigned id;
 
     /* Bootstrap and start a cluster with 2 voters. */
@@ -620,18 +591,8 @@ TEST(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
     /* Server 1 starts to replicate a few entries, however server 2 disconnects
      * before it can receive them. */
     CLUSTER_ELAPSE(10);
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
-
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 150] 1 > submit 1 new client entry\n"
@@ -1205,7 +1166,6 @@ TEST(replication, RollbackConfigurationToSnapshot, setUp, tearDown, 0, NULL)
 TEST(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     unsigned id;
 
     /* Bootstrap and start a cluster with 2 voters. */
@@ -1236,13 +1196,7 @@ TEST(replication, SkipExistingEntries, setUp, tearDown, 0, NULL)
         "[ 140] 1 > recv append entries result from server 2\n");
 
     /* Submit a new entry. */
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     /* The follower eventually receive the entry. */
     CLUSTER_TRACE(
@@ -2007,13 +1961,7 @@ TEST(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
         "           missing previous entry (2^1) -> reject\n");
 
     /* Server 1 commits a new entry and takes a snapshot. */
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[  10] 1 > submit 1 new client entry\n"

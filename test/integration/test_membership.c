@@ -55,10 +55,7 @@ TEST(raft_add, Committed, setup, tear_down, 0, NULL)
     struct fixture *f = data;
     struct raft *raft = CLUSTER_RAFT(1);
     const struct raft_server *server;
-    struct raft_configuration configuration;
-    struct raft_entry entry;
     unsigned id;
-    int rv;
 
     /* Start a cluster with 2 voters. */
     for (id = 1; id <= 2; id++) {
@@ -78,14 +75,7 @@ TEST(raft_add, Committed, setup, tear_down, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 3 /* n */, 2 /* V */, 0 /* S */);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (2^2)\n");
@@ -207,14 +197,7 @@ TEST(raft_add, Busy, setup, tear_down, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 3 /* n */, 2 /* V */, 0 /* S */);
 
     CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 1 /* S */);
     entry.type = RAFT_CHANGE;
@@ -269,10 +252,7 @@ TEST(raft_remove, Committed, setup, tear_down, 0, NULL)
     struct fixture *f = data;
     struct raft *raft = CLUSTER_RAFT(1);
     const struct raft_server *server;
-    struct raft_configuration configuration;
-    struct raft_entry entry;
     unsigned id;
-    int rv;
 
     /* Start a cluster with 3 voters. */
     for (id = 1; id <= 3; id++) {
@@ -299,14 +279,7 @@ TEST(raft_remove, Committed, setup, tear_down, 0, NULL)
         "[ 120] 1 > recv request vote result from server 3\n"
         "           local server is leader -> ignore\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 2, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 2 /* n */, 2 /* V */, 0 /* S */);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (2^2)\n");
@@ -382,7 +355,7 @@ TEST(raft_remove, Self, setup, tear_down, 0, NULL)
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
@@ -457,7 +430,7 @@ TEST(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     /* The removed- leader should still replicate entries.
      *

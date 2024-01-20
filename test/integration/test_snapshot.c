@@ -66,13 +66,7 @@ TEST(snapshot, Install, setUp, tearDown, 0, NULL)
 
     /* Submit an entry which will to force a snapshot to be taken. */
     CLUSTER_ELAPSE(10);
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[  10] 1 > submit 1 new client entry\n"
@@ -147,13 +141,7 @@ TEST(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
 
     /* Submit an entry which will to force a snapshot to be taken. */
     CLUSTER_ELAPSE(10);
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[  10] 1 > submit 1 new client entry\n"
@@ -229,13 +217,7 @@ TEST(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
 
     /* Submit an entry which will to force a snapshot to be taken. */
     CLUSTER_ELAPSE(10);
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[  10] 1 > submit 1 new client entry\n"
@@ -330,7 +312,6 @@ TEST(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
 TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     unsigned id;
 
     /* Set a very low threshold and trailing entries number on server 1. */
@@ -373,18 +354,8 @@ TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
         "           probe server 3 sending a heartbeat (no entries)\n");
 
     /* Apply a few of entries, to force a snapshot to be taken. */
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
-
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
@@ -428,10 +399,7 @@ TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
 
     /* Apply a new entry, server 0 won't send it to server 2 since it is
      * waiting for it to complete installing the snapshot. */
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 200] 1 > submit 1 new client entry\n"
@@ -543,13 +511,7 @@ TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
         "           start persisting 1 new entry (2^1)\n");
 
     /* Apply an entry, to force a snapshot to be taken. */
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[  30] 1 > submit 1 new client entry\n"
@@ -575,7 +537,6 @@ TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
 TEST(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
     unsigned id;
 
     /* Set very low threshold and trailing entries number */
@@ -613,13 +574,7 @@ TEST(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
     CLUSTER_DISCONNECT(1, 3);
 
     /* Submit a new entry, to trigger a snapshot on server 1. */
-    entry.term = 2;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"

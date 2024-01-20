@@ -936,7 +936,7 @@ TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     munit_assert_int(rv, ==, 0);
     entry.batch = entry.buf.base;
 
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     CLUSTER_TRACE(
         "[ 130] 1 > submit 1 new client entry\n"
@@ -985,7 +985,7 @@ TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
 
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
     CLUSTER_TRACE(
         "[ 170] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (3^2)\n"

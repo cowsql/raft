@@ -44,6 +44,46 @@
 #define CLUSTER_RECONNECT(ID1, ID2) \
     test_cluster_reconnect(&f->cluster_, ID1, ID2)
 
+#define CLUSTER_SUBMIT__CHOOSER(...)                                     \
+    GET_6TH_ARG(__VA_ARGS__, CLUSTER_SUBMIT__TYPE, CLUSTER_SUBMIT__TYPE, \
+                CLUSTER_SUBMIT__TYPE, CLUSTER_SUBMIT__RAW, )
+
+/* Submit an entry */
+#define CLUSTER_SUBMIT(...) CLUSTER_SUBMIT__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
+
+#define CLUSTER_SUBMIT__TYPE(ID, TYPE, ...) \
+    CLUSTER_SUBMIT__##TYPE(ID, __VA_ARGS__)
+
+#define CLUSTER_SUBMIT__CHANGE(ID, N, N_VOTING, N_STANDBYS)          \
+    do {                                                             \
+        struct raft_entry entry_;                                    \
+        struct raft_configuration conf_;                             \
+        int rv_;                                                     \
+        CLUSTER_FILL_CONFIGURATION(&conf_, N, N_VOTING, N_STANDBYS); \
+        entry_.type = RAFT_CHANGE;                                   \
+        entry_.term = raft_current_term(CLUSTER_RAFT(ID));           \
+        rv_ = raft_configuration_encode(&conf_, &entry_.buf);        \
+        munit_assert_int(rv_, ==, 0);                                \
+        raft_configuration_close(&conf_);                            \
+        entry_.batch = entry_.buf.base;                              \
+        CLUSTER_SUBMIT__RAW(ID, &entry_);                            \
+    } while (0)
+
+#define CLUSTER_SUBMIT__COMMAND(ID, SIZE)                  \
+    do {                                                   \
+        struct raft_entry entry_;                          \
+        entry_.type = RAFT_COMMAND;                        \
+        entry_.term = raft_current_term(CLUSTER_RAFT(ID)); \
+        entry_.buf.len = SIZE;                             \
+        entry_.buf.base = raft_malloc(entry_.buf.len);     \
+        munit_assert_not_null(entry_.buf.base);            \
+        entry_.batch = entry_.buf.base;                    \
+        CLUSTER_SUBMIT__RAW(ID, &entry_);                  \
+    } while (0)
+
+#define CLUSTER_SUBMIT__RAW(ID, ENTRY) \
+    test_cluster_submit(&f->cluster_, ID, ENTRY)
+
 /* Set the persisted vote of the server with the given ID. Must me called before
  * starting the server. */
 #define CLUSTER_SET_VOTE(ID, VOTE) \
