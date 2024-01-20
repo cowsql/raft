@@ -586,7 +586,7 @@ TEST_V1(replication, Disconnect, setUp, tearDown, 0, NULL)
 }
 
 /* A follower disconnects while in pipeline mode. */
-TEST_V1(replication, DisconnectPipeline, setUp, tearDown, 0, NULL)
+TEST_V1(replication, PipelineDisconnect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft;
@@ -1904,7 +1904,7 @@ TEST_V1(replication, NoLeaderAfterPersistingEntries, setUp, tearDown, 0, NULL)
 
 /* While pipelining entries, the leader receives an AppendEntries response with
  * a stale reject index. */
-TEST_V1(replication, StaleRejectedIndexPipeline, setUp, tearDown, 0, NULL)
+TEST_V1(replication, PipelineStaleRejectedIndex, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
