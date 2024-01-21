@@ -6,6 +6,7 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvAppendEntriesResult(struct raft *r,
                             const raft_id id,
@@ -75,3 +76,4 @@ int recvAppendEntriesResult(struct raft *r,
 }
 
 #undef infof
+#undef tracef
