@@ -332,7 +332,7 @@ bool progressMaybeDecrement(struct raft *r,
     }
 
     p->next_index = min(rejected, last_index + 1);
-    p->next_index = max(p->next_index, 1);
+    assert(p->next_index > 0);
 
     return true;
 }
