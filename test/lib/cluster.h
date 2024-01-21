@@ -12,18 +12,6 @@
 #include "munit.h"
 #include "snapshot.h"
 
-#define TEST_V1(S, C, SETUP, TEAR_DOWN, OPTIONS, PARAMS)         \
-    static void *setUp__##S##_##C(const MunitParameter params[], \
-                                  void *user_data)               \
-    {                                                            \
-        return SETUP(params, user_data);                         \
-    }                                                            \
-    static void tearDown__##S##_##C(void *data)                  \
-    {                                                            \
-        TEAR_DOWN(data);                                         \
-    }                                                            \
-    TEST(S, C, setUp__##S##_##C, tearDown__##S##_##C, OPTIONS, PARAMS)
-
 #define FIXTURE_CLUSTER \
     FIXTURE_HEAP;       \
     struct test_cluster cluster_
@@ -35,38 +23,71 @@
 /* Start the server with the given ID, using the state persisted on its disk. */
 #define CLUSTER_START(ID) test_cluster_start(&f->cluster_, ID)
 
+/* Stop the server with the given ID. */
+#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
+
+/* Step the cluster until the all expected output is consumed. Fail the test if
+ * a mismatch is found. */
 #define CLUSTER_TRACE(EXPECTED)                        \
     if (!test_cluster_trace(&f->cluster_, EXPECTED)) { \
         munit_error("trace does not match");           \
     }
 
+/* Step the cluster until the given amount of milliseconds has elapsed. */
 #define CLUSTER_ELAPSE(MSECS) test_cluster_elapse(&f->cluster_, MSECS)
 
-#define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
-
-/* Stop the server with the given ID. */
-#define CLUSTER_STOP(ID) test_cluster_stop(&f->cluster_, ID);
-
+/* Disconnect the server with ID1 with the one with ID2. */
 #define CLUSTER_DISCONNECT(ID1, ID2) \
     test_cluster_disconnect(&f->cluster_, ID1, ID2)
 
-/* Reconnect A to B. */
+/* Reconnect two servers. */
 #define CLUSTER_RECONNECT(ID1, ID2) \
     test_cluster_reconnect(&f->cluster_, ID1, ID2)
 
-/* Set the network latency of outgoing messages of server I. */
-#define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
-    test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
+#define CLUSTER_SUBMIT__CHOOSER(...)                                     \
+    GET_6TH_ARG(__VA_ARGS__, CLUSTER_SUBMIT__TYPE, CLUSTER_SUBMIT__TYPE, \
+                CLUSTER_SUBMIT__TYPE, CLUSTER_SUBMIT__RAW, )
 
-/* Set the disk I/O latency of server I. */
-#define CLUSTER_SET_DISK_LATENCY(ID, MSECS) \
-    test_cluster_set_disk_latency(&f->cluster_, ID, MSECS)
+/* Submit an entry */
+#define CLUSTER_SUBMIT(...) CLUSTER_SUBMIT__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
+#define CLUSTER_SUBMIT__TYPE(ID, TYPE, ...) \
+    CLUSTER_SUBMIT__##TYPE(ID, __VA_ARGS__)
+
+#define CLUSTER_SUBMIT__CHANGE(ID, N, N_VOTING, N_STANDBYS)          \
+    do {                                                             \
+        struct raft_entry entry_;                                    \
+        struct raft_configuration conf_;                             \
+        int rv_;                                                     \
+        CLUSTER_FILL_CONFIGURATION(&conf_, N, N_VOTING, N_STANDBYS); \
+        entry_.type = RAFT_CHANGE;                                   \
+        entry_.term = raft_current_term(CLUSTER_RAFT(ID));           \
+        rv_ = raft_configuration_encode(&conf_, &entry_.buf);        \
+        munit_assert_int(rv_, ==, 0);                                \
+        raft_configuration_close(&conf_);                            \
+        entry_.batch = entry_.buf.base;                              \
+        CLUSTER_SUBMIT__RAW(ID, &entry_);                            \
+    } while (0)
+
+#define CLUSTER_SUBMIT__COMMAND(ID, SIZE)                  \
+    do {                                                   \
+        struct raft_entry entry_;                          \
+        entry_.type = RAFT_COMMAND;                        \
+        entry_.term = raft_current_term(CLUSTER_RAFT(ID)); \
+        entry_.buf.len = SIZE;                             \
+        entry_.buf.base = raft_malloc(entry_.buf.len);     \
+        munit_assert_not_null(entry_.buf.base);            \
+        entry_.batch = entry_.buf.base;                    \
+        CLUSTER_SUBMIT__RAW(ID, &entry_);                  \
+    } while (0)
+
+#define CLUSTER_SUBMIT__RAW(ID, ENTRY) \
+    test_cluster_submit(&f->cluster_, ID, ENTRY)
+
+/* Set the persisted vote of the server with the given ID. Must me called before
+ * starting the server. */
 #define CLUSTER_SET_VOTE(ID, VOTE) \
     test_cluster_set_vote(&f->cluster_, ID, VOTE);
-
-#define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
-    test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
 
 /* Set the persisted term of the server with the given ID. Must me called before
  * starting the server. */
@@ -112,15 +133,20 @@
         test_cluster_set_snapshot(&f->cluster_, ID, _snapshot);                \
     } while (0)
 
-#define CLUSTER_ADD_ENTRY__CHOOSER(...)                                  \
-    GET_5TH_ARG(__VA_ARGS__, CLUSTER_ADD_ENTRY_V1, CLUSTER_ADD_ENTRY_V1, \
-                CLUSTER_ADD_ENTRY_RAW, )
+#define CLUSTER_ADD_ENTRY__CHOOSER(...)                                        \
+    GET_5TH_ARG(__VA_ARGS__, CLUSTER_ADD_ENTRY__TYPE, CLUSTER_ADD_ENTRY__TYPE, \
+                CLUSTER_ADD_ENTRY__RAW, )
 
 #define CLUSTER_ADD_ENTRY(...) \
     CLUSTER_ADD_ENTRY__CHOOSER(__VA_ARGS__)(__VA_ARGS__)
 
-#define CLUSTER_ADD_ENTRY_V1(ID, TYPE, ...) \
+#define CLUSTER_ADD_ENTRY__TYPE(ID, TYPE, ...) \
     CLUSTER_ADD_ENTRY__##TYPE(ID, __VA_ARGS__)
+
+/* Add an entry to the ones persisted on the server with the given ID. This must
+ * be called before starting the cluster. */
+#define CLUSTER_ADD_ENTRY__RAW(ID, ENTRY) \
+    test_cluster_add_entry(&f->cluster_, ID, ENTRY)
 
 #define CLUSTER_ADD_ENTRY__RAFT_CHANGE(ID, CONF_N, CONF_N_VOTING)              \
     do {                                                                       \
@@ -135,7 +161,7 @@
         munit_assert_int(_rv, ==, 0);                                          \
         raft_configuration_close(&_configuration);                             \
                                                                                \
-        test_cluster_add_entry(&f->cluster_, ID, &_entry);                     \
+        CLUSTER_ADD_ENTRY__RAW(ID, &_entry);                                   \
                                                                                \
         raft_free(_entry.buf.base);                                            \
     } while (0);
@@ -149,13 +175,22 @@
         _entry.term = TERM;                                \
         _entry.buf.base = &_payload;                       \
         _entry.buf.len = sizeof _payload;                  \
-        test_cluster_add_entry(&f->cluster_, ID, &_entry); \
+        CLUSTER_ADD_ENTRY__RAW(ID, &_entry);               \
     } while (0);
 
-/* Add an entry to the ones persisted on the I'th server. This must be called
- * before starting the cluster. */
-#define CLUSTER_ADD_ENTRY_RAW(I, ENTRY) \
-    test_cluster_add_entry(&f->cluster_, I, ENTRY)
+/* Return the struct raft object with the given ID. */
+#define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
+
+/* Set the network latency of outgoing messages of server I. */
+#define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
+    test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
+
+/* Set the disk I/O latency of server I. */
+#define CLUSTER_SET_DISK_LATENCY(ID, MSECS) \
+    test_cluster_set_disk_latency(&f->cluster_, ID, MSECS)
+
+#define CLUSTER_SET_ELECTION_TIMEOUT(ID, TIMEOUT, DELTA) \
+    test_cluster_set_election_timeout(&f->cluster_, ID, TIMEOUT, DELTA)
 
 /* Test snapshot that is just persisted in-memory. */
 struct test_snapshot

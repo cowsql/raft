@@ -50,15 +50,12 @@ SUITE(raft_add)
 
 /* After a request to add a new non-voting server is committed, the new
  * configuration is not marked as uncommitted anymore */
-TEST_V1(raft_add, Committed, setup, tear_down, 0, NULL)
+TEST(raft_add, Committed, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft = CLUSTER_RAFT(1);
     const struct raft_server *server;
-    struct raft_configuration configuration;
-    struct raft_entry entry;
     unsigned id;
-    int rv;
 
     /* Start a cluster with 2 voters. */
     for (id = 1; id <= 2; id++) {
@@ -78,14 +75,7 @@ TEST_V1(raft_add, Committed, setup, tear_down, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 3 /* n */, 2 /* V */, 0 /* S */);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (2^2)\n");
@@ -128,7 +118,7 @@ TEST_V1(raft_add, Committed, setup, tear_down, 0, NULL)
 
 /* Trying to add a server on a node which is not the leader results in an
  * error. */
-TEST_V1(raft_add, NotLeader, setup, tear_down, 0, NULL)
+TEST(raft_add, NotLeader, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -179,7 +169,7 @@ TEST_V1(raft_add, NotLeader, setup, tear_down, 0, NULL)
 
 /* Trying to add a server while a configuration change is already in progress
  * results in an error. */
-TEST_V1(raft_add, Busy, setup, tear_down, 0, NULL)
+TEST(raft_add, Busy, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -207,14 +197,7 @@ TEST_V1(raft_add, Busy, setup, tear_down, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 3 /* n */, 2 /* V */, 0 /* S */);
 
     CLUSTER_FILL_CONFIGURATION(&configuration, 3, 2 /* V */, 1 /* S */);
     entry.type = RAFT_CHANGE;
@@ -239,7 +222,7 @@ TEST_V1(raft_add, Busy, setup, tear_down, 0, NULL)
 
 /* Trying to add a server with an ID which is already in use results in an
  * error. */
-TEST_V1(raft_add, DuplicateId, setup, tear_down, 0, NULL)
+TEST(raft_add, DuplicateId, setup, tear_down, 0, NULL)
 {
     struct raft_configuration configuration;
     int rv;
@@ -264,15 +247,12 @@ SUITE(raft_remove)
 
 /* After a request to remove server is committed, the new configuration is not
  * marked as uncommitted anymore */
-TEST_V1(raft_remove, Committed, setup, tear_down, 0, NULL)
+TEST(raft_remove, Committed, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft *raft = CLUSTER_RAFT(1);
     const struct raft_server *server;
-    struct raft_configuration configuration;
-    struct raft_entry entry;
     unsigned id;
-    int rv;
 
     /* Start a cluster with 3 voters. */
     for (id = 1; id <= 3; id++) {
@@ -299,14 +279,7 @@ TEST_V1(raft_remove, Committed, setup, tear_down, 0, NULL)
         "[ 120] 1 > recv request vote result from server 3\n"
         "           local server is leader -> ignore\n");
 
-    CLUSTER_FILL_CONFIGURATION(&configuration, 2, 2 /* V */, 0 /* S */);
-    entry.type = RAFT_CHANGE;
-    entry.term = 2;
-    rv = raft_configuration_encode(&configuration, &entry.buf);
-    munit_assert_int(rv, ==, 0);
-    raft_configuration_close(&configuration);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, CHANGE, 2 /* n */, 2 /* V */, 0 /* S */);
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (2^2)\n");
@@ -346,7 +319,7 @@ TEST_V1(raft_remove, Committed, setup, tear_down, 0, NULL)
 }
 
 /* A leader gets a request to remove itself. */
-TEST_V1(raft_remove, Self, setup, tear_down, 0, NULL)
+TEST(raft_remove, Self, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -382,7 +355,7 @@ TEST_V1(raft_remove, Self, setup, tear_down, 0, NULL)
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     CLUSTER_TRACE(
         "[ 120] 1 > submit 1 new client entry\n"
@@ -410,7 +383,7 @@ TEST_V1(raft_remove, Self, setup, tear_down, 0, NULL)
 }
 
 /* A leader gets a request to remove itself from a 3-node cluster */
-TEST_V1(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
+TEST(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;
@@ -457,7 +430,7 @@ TEST_V1(raft_remove, SelfThreeNodeCluster, setup, tear_down, 0, NULL)
     munit_assert_int(rv, ==, 0);
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     /* The removed- leader should still replicate entries.
      *
@@ -513,7 +486,7 @@ SUITE(raft_assign)
 
 /* Trying to promote a server on a raft instance which is not the leader results
  * in an error. */
-TEST_V1(raft_assign, NotLeader, setup, tear_down, 0, NULL)
+TEST(raft_assign, NotLeader, setup, tear_down, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;

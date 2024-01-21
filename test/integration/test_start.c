@@ -23,7 +23,7 @@ static void tearDown(void *data)
 SUITE(start)
 
 /* Start a server that has no persisted state whatsoever. */
-TEST_V1(start, NoState, setUp, tearDown, 0, NULL)
+TEST(start, NoState, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_START(1);
@@ -33,7 +33,7 @@ TEST_V1(start, NoState, setUp, tearDown, 0, NULL)
 }
 
 /* Start a server that has a persisted its term. */
-TEST_V1(start, PersistedTerm, setUp, tearDown, 0, NULL)
+TEST(start, PersistedTerm, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
@@ -43,7 +43,7 @@ TEST_V1(start, PersistedTerm, setUp, tearDown, 0, NULL)
 }
 
 /* Start a server that has a persisted its term and has a snapshot. */
-TEST_V1(start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
+TEST(start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 2 /* term */);
@@ -60,7 +60,7 @@ TEST_V1(start, PersistedTermAndSnapshot, setUp, tearDown, 0, NULL)
 
 /* Start a server that has a persisted its term and has the initial bootstrap
  * log entry. */
-TEST_V1(start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
+TEST(start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
@@ -72,7 +72,7 @@ TEST_V1(start, PersistedTermAndEntries, setUp, tearDown, 0, NULL)
 
 /* There are two servers. The first has a snapshot present and no other
  * entries. */
-TEST_V1(start, OneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
+TEST(start, OneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -126,7 +126,7 @@ TEST_V1(start, OneSnapshotAndNoEntries, setUp, tearDown, 0, NULL)
 
 /* There are two servers. The first has a snapshot along with some follow-up
  * entries. */
-TEST_V1(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
+TEST(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -177,10 +177,9 @@ TEST_V1(start, OneSnapshotAndSomeFollowUpEntries, setUp, tearDown, 0, NULL)
 
 /* There is a single voting server in the cluster, which immediately elects
  * itself when starting. */
-TEST_V1(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
+TEST(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    struct raft_entry entry;
 
     CLUSTER_SET_TERM(1 /* ID */, 1 /* term */);
     CLUSTER_ADD_ENTRY(1 /* ID */, RAFT_CHANGE, 1 /* servers */, 1 /* voters */);
@@ -192,13 +191,7 @@ TEST_V1(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
 
     /* The server can make progress alone. */
-    entry.term = 1;
-    entry.type = RAFT_COMMAND;
-    entry.buf.len = 8;
-    entry.buf.base = raft_malloc(entry.buf.len);
-    munit_assert_not_null(entry.buf.base);
-    entry.batch = entry.buf.base;
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 
     CLUSTER_TRACE(
         "[   0] 1 > submit 1 new client entry\n"
@@ -211,7 +204,7 @@ TEST_V1(start, SingleVotingSelfElect, setUp, tearDown, 0, NULL)
 
 /* There are two servers in the cluster, one is voting and the other is
  * not. When started, the non-voting server does not elects itself. */
-TEST_V1(start, SingleVotingNotUs, setUp, tearDown, 0, NULL)
+TEST(start, SingleVotingNotUs, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 

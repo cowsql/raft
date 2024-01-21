@@ -29,7 +29,7 @@ static void tearDown(void *data)
 SUITE(raft_transfer)
 
 /* The follower we ask to transfer leadership to is up-to-date. */
-TEST_V1(raft_transfer, UpToDate, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, UpToDate, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -77,7 +77,7 @@ TEST_V1(raft_transfer, UpToDate, setUp, tearDown, 0, NULL)
 }
 
 /* The follower we ask to transfer leadership to needs to catch up. */
-TEST_V1(raft_transfer, CatchUp, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, CatchUp, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -152,7 +152,7 @@ TEST_V1(raft_transfer, CatchUp, setUp, tearDown, 0, NULL)
 
 /* The follower we ask to transfer leadership to is down and the leadership
  * transfer does not succeed. */
-TEST_V1(raft_transfer, Expire, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, Expire, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -214,7 +214,7 @@ TEST_V1(raft_transfer, Expire, setUp, tearDown, 0, NULL)
 }
 
 /* The given ID doesn't match any server in the current configuration. */
-TEST_V1(raft_transfer, UnknownServer, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, UnknownServer, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_event event;
@@ -240,7 +240,7 @@ TEST_V1(raft_transfer, UnknownServer, setUp, tearDown, 0, NULL)
 }
 
 /* Submitting a transfer request twice is an error. */
-TEST_V1(raft_transfer, Twice, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, Twice, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_event event;
@@ -280,7 +280,7 @@ TEST_V1(raft_transfer, Twice, setUp, tearDown, 0, NULL)
 }
 
 /* If the given ID is zero, the target is selected automatically. */
-TEST_V1(raft_transfer, AutoSelect, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, AutoSelect, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -321,7 +321,7 @@ TEST_V1(raft_transfer, AutoSelect, setUp, tearDown, 0, NULL)
 
 /* If the given ID is zero, the target is selected automatically. Followers that
  * are up-to-date are preferred. */
-TEST_V1(raft_transfer, AutoSelectUpToDate, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, AutoSelectUpToDate, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -384,7 +384,7 @@ TEST_V1(raft_transfer, AutoSelectUpToDate, setUp, tearDown, 0, NULL)
 }
 
 /* It's possible to transfer leadership also when pre-vote is active */
-TEST_V1(raft_transfer, PreVote, setUp, tearDown, 0, NULL)
+TEST(raft_transfer, PreVote, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;

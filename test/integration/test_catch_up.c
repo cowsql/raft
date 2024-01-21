@@ -22,7 +22,7 @@ static void tearDown(void *data)
 SUITE(catch_up)
 
 /* Trying to catch-up an unresponsive server eventually fails. */
-TEST_V1(catch_up, Unresponsive, setUp, tearDown, 0, NULL)
+TEST(catch_up, Unresponsive, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_configuration configuration;

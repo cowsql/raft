@@ -50,7 +50,7 @@ static void tearDown(void *data)
 SUITE(election)
 
 /* Test a successful election with 2 voters. */
-TEST_V1(election, TwoVoters, setUp, tearDown, 0, NULL)
+TEST(election, TwoVoters, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -89,7 +89,7 @@ TEST_V1(election, TwoVoters, setUp, tearDown, 0, NULL)
 
 /* If we have already voted and the same candidate requests the vote again, the
  * vote is granted. */
-TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
+TEST(election, GrantAgain, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -142,7 +142,7 @@ TEST_V1(election, GrantAgain, setUp, tearDown, 0, NULL)
 }
 
 /* If the requester last log entry index is the same, the vote is granted. */
-TEST_V1(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
+TEST(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -172,7 +172,7 @@ TEST_V1(election, GrantIfLastIndexIsSame, setUp, tearDown, 0, NULL)
 }
 
 /* If the requester last log entry index is higher, the vote is granted. */
-TEST_V1(election, GrantIfRemoteLastIndexIsHigher, setUp, tearDown, 0, NULL)
+TEST(election, GrantIfRemoteLastIndexIsHigher, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -203,7 +203,7 @@ TEST_V1(election, GrantIfRemoteLastIndexIsHigher, setUp, tearDown, 0, NULL)
 }
 
 /* If the requester last log entry term is higher, the vote is granted. */
-TEST_V1(election, GrantIfRemoteLastTermIsHigher, setUp, tearDown, 0, NULL)
+TEST(election, GrantIfRemoteLastTermIsHigher, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -237,7 +237,7 @@ TEST_V1(election, GrantIfRemoteLastTermIsHigher, setUp, tearDown, 0, NULL)
 
 /* If a candidate receives a vote request response granting the vote but the
  * quorum is not reached, it stays candidate. */
-TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
+TEST(election, WaitQuorum, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -274,7 +274,7 @@ TEST_V1(election, WaitQuorum, setUp, tearDown, 0, NULL)
 }
 
 /* The vote request gets rejected if the term of the candidate is lower. */
-TEST_V1(election, RejectIfRemoteTermLower, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfRemoteTermLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
 
@@ -313,7 +313,7 @@ TEST_V1(election, RejectIfRemoteTermLower, setUp, tearDown, 0, NULL)
 
 /* If the server already has a leader, the vote is not granted (even if the
  * request has a higher term). */
-TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -370,7 +370,7 @@ TEST_V1(election, RejectIfHasLeader, setUp, tearDown, 0, NULL)
 }
 
 /* If a server has already voted, vote is not granted. */
-TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -418,7 +418,7 @@ TEST_V1(election, RejectIfAlreadyVoted, setUp, tearDown, 0, NULL)
 
 /* If the requester last log entry term is lower than ours, the vote is not
  * granted. */
-TEST_V1(election, RejectIfRemoteLastTermIsLower, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfRemoteLastTermIsLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned i;
@@ -454,7 +454,7 @@ TEST_V1(election, RejectIfRemoteLastTermIsLower, setUp, tearDown, 0, NULL)
 
 /* If the requester last log entry index is lower, the vote is not
  * granted. */
-TEST_V1(election, RejectIfRemoteLastIndexIsLower, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfRemoteLastIndexIsLower, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -489,7 +489,7 @@ TEST_V1(election, RejectIfRemoteLastIndexIsLower, setUp, tearDown, 0, NULL)
 }
 
 /* If we are not a voting server, the vote is not granted. */
-TEST_V1(election, RejectIfNotVoter, setUp, tearDown, 0, NULL)
+TEST(election, RejectIfNotVoter, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
@@ -529,7 +529,7 @@ TEST_V1(election, RejectIfNotVoter, setUp, tearDown, 0, NULL)
 }
 
 /* Non-voting servers are skipped when sending vote requests. */
-TEST_V1(election, SkipNonVoters, setUp, tearDown, 0, NULL)
+TEST(election, SkipNonVoters, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -569,7 +569,7 @@ TEST_V1(election, SkipNonVoters, setUp, tearDown, 0, NULL)
 /* If a candidate server receives a response indicating that the vote was not
  * granted, nothing happens (e.g. the server has already voted for someone
  * else). */
-TEST_V1(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
+TEST(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -626,7 +626,7 @@ TEST_V1(election, ReceiveRejectResult, setUp, tearDown, 0, NULL)
 }
 
 /* Test an election round with two voters and pre-vote. */
-TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
+TEST(election, PreVote, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -682,7 +682,7 @@ TEST_V1(election, PreVote, setUp, tearDown, 0, NULL)
 }
 
 /* A candidate receives votes then crashes. */
-TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
+TEST(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -790,7 +790,7 @@ TEST_V1(election, PreVoteWithcandidateCrash, setUp, tearDown, 0, NULL)
 
 /* Ensure delayed pre-vote responses are not counted towards the real election
  * quorum. */
-TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
+TEST(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
@@ -875,7 +875,7 @@ TEST_V1(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
  * in-memory log cache as opposed to the last persisted one two bad things would
  * happen.
  */
-TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
+TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned i;
@@ -936,7 +936,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     munit_assert_int(rv, ==, 0);
     entry.batch = entry.buf.base;
 
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
 
     CLUSTER_TRACE(
         "[ 130] 1 > submit 1 new client entry\n"
@@ -985,7 +985,7 @@ TEST_V1(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
 
-    test_cluster_submit(&f->cluster_, 1, &entry);
+    CLUSTER_SUBMIT(1 /* ID */, &entry);
     CLUSTER_TRACE(
         "[ 170] 1 > submit 1 new client entry\n"
         "           replicate 1 new configuration entry (3^2)\n"
