@@ -38,11 +38,6 @@ raft_index raft_last_index(struct raft *r)
     return TrailLastIndex(&r->trail);
 }
 
-raft_index raft_last_applied(struct raft *r)
-{
-    return r->last_applied;
-}
-
 int raft_role(struct raft *r)
 {
     const struct raft_server *local =

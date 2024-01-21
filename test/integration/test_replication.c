@@ -1871,6 +1871,66 @@ TEST(replication, PipelineStaleRejectedIndex, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* The raft_max_inflight_entries() setting controls how many un-acknowledged
+ * entries can be in-flight in pipeline mode. */
+TEST(replication, PipelineMaxInflight, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    unsigned id;
+
+    /* Set the maximum in-flight entries number to 2. */
+    raft_set_max_inflight_entries(CLUSTER_RAFT(1), 2);
+
+    /* Bootstrap and start a cluster with 2 voters. */
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 2 /* servers */, 2 /* voters */);
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader and eventually switches server 2 to pipeline
+     * mode. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 2 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "[ 170] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n");
+
+    /* Two entries are submitted and immediately sent to server 2. */
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+
+    CLUSTER_TRACE(
+        "[ 170] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "           pipeline server 2 sending 1 entry (2^2)\n"
+        "[ 170] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^2)\n"
+        "           pipeline server 2 sending 1 entry (3^2)\n");
+
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+
+    /* A third entry is submitted, but it's not replicated immediately, because
+     * the inflight limit has been reached. */
+    CLUSTER_TRACE(
+        "[ 170] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (4^2)\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n");
+
+    return MUNIT_OK;
+}
+
 /* After having sent a snapshot and waiting for a response, the leader receives
  * an AppendEntries response with a stale reject index. */
 TEST(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)

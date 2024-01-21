@@ -39,6 +39,8 @@
 #define DEFAULT_MAX_CATCH_UP_ROUNDS 10
 #define DEFAULT_MAX_CATCH_UP_ROUND_DURATION (5 * 1000)
 
+#define DEFAULT_MAX_INFLIGHT_ENTRIES 32
+
 #define infof(...) Infof(r->tracer, "> " __VA_ARGS__)
 
 int raft_version_number(void)
@@ -112,6 +114,7 @@ int raft_init(struct raft *r,
     r->now = 0;
     r->messages = NULL;
     r->n_messages_cap = 0;
+    r->max_inflight_entries = DEFAULT_MAX_INFLIGHT_ENTRIES;
     r->update = NULL;
 #if defined(RAFT__LEGACY_no)
     (void)io;
@@ -692,6 +695,11 @@ void raft_set_max_catch_up_rounds(struct raft *r, unsigned n)
 void raft_set_max_catch_up_round_duration(struct raft *r, unsigned msecs)
 {
     r->max_catch_up_round_duration = msecs;
+}
+
+void raft_set_max_inflight_entries(struct raft *r, unsigned n)
+{
+    r->max_inflight_entries = n;
 }
 
 void raft_set_pre_vote(struct raft *r, bool enabled)

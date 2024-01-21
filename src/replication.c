@@ -31,12 +31,6 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-/* Maximum number of entries that will be included in an AppendEntries
- * message.
- *
- * TODO: Make this number configurable. */
-#define MAX_APPEND_ENTRIES 32
-
 /* Send an AppendEntries message to the i'th server, including all log entries
  * from the given point onwards. */
 static int sendAppendEntries(struct raft *r,
@@ -56,22 +50,29 @@ static int sendAppendEntries(struct raft *r,
     args->prev_log_term = prev_term;
 
     if (heartbeat || !TrailHasEntry(&r->trail, next_index)) {
-        args->entries = NULL;
         args->n_entries = 0;
     } else {
         raft_index match_index = progressMatchIndex(r, i);
+        unsigned currently_inflight; /* Current N of un-acnowledged entries. */
 
         assert(TrailHasEntry(&r->trail, next_index));
         assert(match_index < next_index);
 
-        args->n_entries =
-            (unsigned)(TrailLastIndex(&r->trail) - next_index) + 1;
+        currently_inflight = (unsigned)(next_index - match_index) - 1;
 
-        /* TODO: implement a limit to the total *size* of the entries being
-         * sent, not only the number. Also, make the number and the size
-         * configurable. */
-        if (args->n_entries > MAX_APPEND_ENTRIES) {
-            args->n_entries = MAX_APPEND_ENTRIES;
+        /* If we have already reached the maximum amount of allowed inflight
+         * entries, don't send any other entry.
+         *
+         * Otherwise, send the maximum amount of entries that doesn't make us
+         * exceed the configured limit.*/
+        if (currently_inflight >= r->max_inflight_entries) {
+            args->n_entries = 0;
+        } else {
+            raft_index last_index = TrailLastIndex(&r->trail);
+            unsigned outstanding = (unsigned)(last_index - next_index) + 1;
+            unsigned max = r->max_inflight_entries - currently_inflight;
+            assert(max > 0);
+            args->n_entries = min(outstanding, max);
         }
     }
 
