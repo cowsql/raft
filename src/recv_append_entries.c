@@ -137,8 +137,19 @@ int recvAppendEntries(struct raft *r,
             result->last_log_index = result->rejected - 1;
         }
     } else {
-        /* Echo back to the leader the point that we reached. */
-        result->last_log_index = r->last_stored;
+        /* In case of synchronous success we expect to have all entries, and no
+         * new entry needs to be persisted. However we might still be persisting
+         * some of them, so we set last_log_index to the index of the last
+         * stored index that is lower or equal than the last index in this
+         * message.
+         *
+         * We use a stored index instead of an in-memory one because the leader
+         * will use it to update our match index and to check quorum. */
+        result->last_log_index = args->prev_log_index + args->n_entries;
+        assert(last_index >= result->last_log_index);
+        if (result->last_log_index > r->last_stored) {
+            result->last_log_index = r->last_stored;
+        }
     }
 
 reply:

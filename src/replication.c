@@ -59,7 +59,10 @@ static int sendAppendEntries(struct raft *r,
         args->entries = NULL;
         args->n_entries = 0;
     } else {
+        raft_index match_index = progressMatchIndex(r, i);
+
         assert(TrailHasEntry(&r->trail, next_index));
+        assert(match_index < next_index);
 
         args->n_entries =
             (unsigned)(TrailLastIndex(&r->trail) - next_index) + 1;

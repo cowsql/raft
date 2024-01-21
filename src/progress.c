@@ -310,6 +310,12 @@ bool progressMaybeDecrement(struct raft *r,
      * - The follower has an entry at #rejected, but it has a different term. In
      * - that case the follower must set #last_index to #rejected - 1. */
     assert(last_index < rejected);
+
+    /* The next index must always be non-zero, and the match index must be
+     * always strictly lower than the match index. */
+    assert(p->next_index > 0);
+    assert(p->match_index < p->next_index);
+
     if (p->state == PROGRESS__SNAPSHOT) {
         /* The rejection must be stale or spurious if the rejected index does
          * not match the last snapshot index. */
@@ -320,6 +326,7 @@ bool progressMaybeDecrement(struct raft *r,
             return false;
         }
         progressAbortSnapshot(r, i);
+        assert(p->match_index < p->next_index);
         return true;
     }
 
@@ -334,6 +341,7 @@ bool progressMaybeDecrement(struct raft *r,
         /* Directly decrease next to match + 1 */
         p->next_index = min(rejected, p->match_index + 1);
         progressToProbe(r, i);
+        assert(p->match_index < p->next_index);
         return true;
     }
 
@@ -347,6 +355,8 @@ bool progressMaybeDecrement(struct raft *r,
 
     p->next_index = min(rejected, last_index + 1);
     assert(p->next_index > 0);
+
+    assert(p->match_index < p->next_index);
 
     return true;
 }
