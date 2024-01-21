@@ -30,6 +30,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->state = PROGRESS__PROBE;
     p->catch_up = RAFT_CATCH_UP_NONE;
     p->features = 0;
+    p->flags = 0;
 }
 
 int progressBuildArray(struct raft *r)
@@ -221,6 +222,16 @@ void progressSetFeatures(struct raft *r, const unsigned i, unsigned features)
 unsigned progressGetFeatures(struct raft *r, const unsigned i)
 {
     return r->leader_state.progress[i].features;
+}
+
+void progressSetFlags(struct raft *r, const unsigned i, unsigned flags)
+{
+    r->leader_state.progress[i].flags = flags;
+}
+
+unsigned progressGetFlags(struct raft *r, const unsigned i)
+{
+    return r->leader_state.progress[i].flags;
 }
 
 raft_time progressGetLastSend(const struct raft *r, const unsigned i)

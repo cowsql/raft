@@ -71,6 +71,7 @@ int replicationUpdate(struct raft *r,
  * It must be called only by followers. */
 int replicationAppend(struct raft *r,
                       const struct raft_append_entries *args,
+                      unsigned *flags,
                       raft_index *rejected,
                       bool *async);
 

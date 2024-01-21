@@ -454,6 +454,7 @@ int replicationUpdate(struct raft *r,
     progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
+    progressSetFlags(r, i, result->flags);
 
     /* If the RPC failed because of a log mismatch, retry.
      *
@@ -776,6 +777,7 @@ static int deleteConflictingEntries(struct raft *r,
 
 int replicationAppend(struct raft *r,
                       const struct raft_append_entries *args,
+                      unsigned *flags,
                       raft_index *rejected,
                       bool *async)
 {
@@ -795,6 +797,7 @@ int replicationAppend(struct raft *r,
 
     assert(r->state == RAFT_FOLLOWER);
 
+    *flags = 0;
     *rejected = args->prev_log_index;
     *async = false;
 

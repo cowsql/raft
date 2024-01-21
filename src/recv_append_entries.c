@@ -114,7 +114,7 @@ int recvAppendEntries(struct raft *r,
         return 0;
     }
 
-    rv = replicationAppend(r, args, &result->rejected, &async);
+    rv = replicationAppend(r, args, &result->flags, &result->rejected, &async);
     if (rv != 0 && rv != RAFT_BUSY) {
         goto err;
     }
