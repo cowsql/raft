@@ -12,6 +12,9 @@ enum {
     PROGRESS__SNAPSHOT   /* Sending a snapshot */
 };
 
+/* Server status flags. */
+#define PROGRESS__SATURATED 1 << 0 /* Too many unpersisted entries */
+
 /**
  * Used by leaders to keep track of replication progress for each server.
  */
