@@ -106,6 +106,29 @@ bool progressIsUpToDate(struct raft *r, unsigned i)
     return p->next_index == last_index + 1;
 }
 
+bool progressIsOnline(struct raft *r, unsigned i)
+{
+    raft_time last_recv = r->leader_state.progress[i].last_recv;
+
+    if (last_recv == ULLONG_MAX) {
+        return false;
+    }
+
+    assert(r->now >= last_recv);
+    return r->now - last_recv < r->election_timeout;
+}
+
+bool progressHasContactedRecently(struct raft *r, unsigned i)
+{
+    raft_time last_recv = r->leader_state.progress[i].last_recv;
+
+    if (last_recv != ULLONG_MAX && last_recv >= r->election_timer_start) {
+        return true;
+    }
+
+    return false;
+}
+
 bool progressShouldReplicate(struct raft *r, unsigned i)
 {
     struct raft_progress *p = &r->leader_state.progress[i];
@@ -210,11 +233,6 @@ raft_time progressGetLastSend(const struct raft *r, const unsigned i)
         last_send = p->snapshot.last_send;
     }
     return last_send;
-}
-
-raft_time progressGetLastRecv(const struct raft *r, const unsigned i)
-{
-    return r->leader_state.progress[i].last_recv;
 }
 
 void progressToSnapshot(struct raft *r, unsigned i)

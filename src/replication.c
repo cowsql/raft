@@ -168,20 +168,11 @@ int replicationProgress(struct raft *r, unsigned i)
     raft_index prev_index;
     raft_term prev_term;
     int max = MAX_APPEND_ENTRIES;
-    raft_time last_recv = progressGetLastRecv(r, i);
-    bool is_online;
     bool needs_snapshot = false;
 
     assert(r->state == RAFT_LEADER);
     assert(server->id != r->id);
     assert(next_index >= 1);
-
-    if (last_recv == ULLONG_MAX) {
-        is_online = false;
-    } else {
-        assert(r->now >= last_recv);
-        is_online = r->now - last_recv < r->election_timeout;
-    }
 
     /* From Section 3.5:
      *
@@ -232,7 +223,7 @@ int replicationProgress(struct raft *r, unsigned i)
 
         assert(snapshot_index > 0);
 
-        if (!progress_state_is_snapshot && is_online) {
+        if (!progress_state_is_snapshot && progressIsOnline(r, i)) {
             return sendSnapshot(r, i);
         }
 
