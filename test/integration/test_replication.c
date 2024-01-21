@@ -3,35 +3,10 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
-/******************************************************************************
- *
- * Fixture
- *
- *****************************************************************************/
-
 struct fixture
 {
     FIXTURE_CLUSTER;
 };
-
-/******************************************************************************
- *
- * Helper macros
- *
- *****************************************************************************/
-
-/* Standard startup sequence, bootstrapping the cluster and electing server 0 */
-#define BOOTSTRAP_START_AND_ELECT \
-    CLUSTER_BOOTSTRAP;            \
-    CLUSTER_START();              \
-    CLUSTER_ELECT(0);             \
-    ASSERT_TIME(1045)
-
-/******************************************************************************
- *
- * Set up a cluster with a two servers.
- *
- *****************************************************************************/
 
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
@@ -46,21 +21,6 @@ static void tearDown(void *data)
     TEAR_DOWN_CLUSTER();
     free(f);
 }
-
-/******************************************************************************
- *
- * Assertions
- *
- *****************************************************************************/
-
-/* Assert that the fixture time matches the given value */
-#define ASSERT_TIME(TIME) munit_assert_int(CLUSTER_TIME, ==, TIME)
-
-/******************************************************************************
- *
- * Log replication.
- *
- *****************************************************************************/
 
 SUITE(replication)
 
