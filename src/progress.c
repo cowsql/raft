@@ -294,7 +294,27 @@ bool progressMaybeDecrement(struct raft *r,
     assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
            p->state == PROGRESS__SNAPSHOT);
 
+    /* We must be called only when receiving an AppendEntries rejection. */
     assert(rejected > 0);
+
+    /* From figure 3.1:
+     *
+     *   Reply false if log doesn't contain an entry at prevLogIndex whose term
+     *   matches prevLogTerm.
+     *
+     * This means that there are two cases for rejection:
+     *
+     * - The follower does not have an entry at #rejected at all. In that case
+     *   its #last_index is clearly lower than #rejected.
+     *
+     * - The follower has an entry at #rejected, but it has a different term. In
+     * - that case the follower must set #last_index to #rejected - 1. */
+    assert(last_index < rejected);
+
+    /* The next index must always be non-zero, and the match index must be
+     * always strictly lower than the match index. */
+    assert(p->next_index > 0);
+    assert(p->match_index < p->next_index);
 
     if (p->state == PROGRESS__SNAPSHOT) {
         /* The rejection must be stale or spurious if the rejected index does
@@ -306,6 +326,7 @@ bool progressMaybeDecrement(struct raft *r,
             return false;
         }
         progressAbortSnapshot(r, i);
+        assert(p->match_index < p->next_index);
         return true;
     }
 
@@ -320,6 +341,7 @@ bool progressMaybeDecrement(struct raft *r,
         /* Directly decrease next to match + 1 */
         p->next_index = min(rejected, p->match_index + 1);
         progressToProbe(r, i);
+        assert(p->match_index < p->next_index);
         return true;
     }
 
@@ -332,7 +354,9 @@ bool progressMaybeDecrement(struct raft *r,
     }
 
     p->next_index = min(rejected, last_index + 1);
-    p->next_index = max(p->next_index, 1);
+    assert(p->next_index > 0);
+
+    assert(p->match_index < p->next_index);
 
     return true;
 }

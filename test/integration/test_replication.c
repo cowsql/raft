@@ -3,35 +3,10 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
-/******************************************************************************
- *
- * Fixture
- *
- *****************************************************************************/
-
 struct fixture
 {
     FIXTURE_CLUSTER;
 };
-
-/******************************************************************************
- *
- * Helper macros
- *
- *****************************************************************************/
-
-/* Standard startup sequence, bootstrapping the cluster and electing server 0 */
-#define BOOTSTRAP_START_AND_ELECT \
-    CLUSTER_BOOTSTRAP;            \
-    CLUSTER_START();              \
-    CLUSTER_ELECT(0);             \
-    ASSERT_TIME(1045)
-
-/******************************************************************************
- *
- * Set up a cluster with a two servers.
- *
- *****************************************************************************/
 
 static void *setUp(const MunitParameter params[], MUNIT_UNUSED void *user_data)
 {
@@ -46,21 +21,6 @@ static void tearDown(void *data)
     TEAR_DOWN_CLUSTER();
     free(f);
 }
-
-/******************************************************************************
- *
- * Assertions
- *
- *****************************************************************************/
-
-/* Assert that the fixture time matches the given value */
-#define ASSERT_TIME(TIME) munit_assert_int(CLUSTER_TIME, ==, TIME)
-
-/******************************************************************************
- *
- * Log replication.
- *
- *****************************************************************************/
 
 SUITE(replication)
 
@@ -1992,6 +1952,86 @@ TEST(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
     CLUSTER_TRACE(
         "[  90] 1 > recv append entries result from server 2\n"
         "           stale rejected index (2 vs snapshot index 3) -> ignore\n");
+
+    return MUNIT_OK;
+}
+
+/* If a follower receives a heartbeat containing a prev_log_index which is
+ * behind its last_stored index, it sets the last_log_index to the value of
+ * prev_log_index. This prevents the follower from telling the leader that it
+ * reached a certain index without first checking the log matching property. */
+TEST(replication, LastStoredAheadOfPrevLogIndex, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct raft_configuration configuration;
+    struct raft_entry entry;
+    unsigned id;
+    int rv;
+
+    /* Bootstrap and start a cluster with 1 voters and 1 stand-by. The stand-by
+     * has an additional entry. */
+    for (id = 1; id <= 2; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+
+        CLUSTER_FILL_CONFIGURATION(&configuration, 2, 1, 1 /* stand-by */);
+        entry.type = RAFT_CHANGE;
+        entry.term = 1;
+        rv = raft_configuration_encode(&configuration, &entry.buf);
+        munit_assert_int(rv, ==, 0);
+        raft_configuration_close(&configuration);
+        test_cluster_add_entry(&f->cluster_, id, &entry);
+        raft_free(entry.buf.base);
+
+        if (id == 2) {
+            CLUSTER_ADD_ENTRY(id, RAFT_COMMAND, 2 /* term */, 0 /* payload */);
+        }
+
+        CLUSTER_START(id);
+    }
+
+    /* Start the cluster, server 1 will self elect and send an heartbeat to
+     * server 2. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "           self elect and convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[   0] 2 > term 1, 2 entries (1^1..2^2)\n");
+
+    /* Submit an entry, which won't be immediately sent to server 2, because
+     * it's still in probe mode. */
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_TRACE(
+        "[   0] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^1)\n"
+        "[  10] 1 > persisted 1 entry (2^1)\n"
+        "           commit 1 new entry (2^1)\n");
+
+    /* Server 2 receives the heartbeat from server 1. The two servers have now a
+     * conflicting entry at term 2, but since this heartbeat only contains up to
+     * entry 1, no conflict is detected yet by server 2, which sends a success
+     * result. */
+    CLUSTER_TRACE(
+        "[  10] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[  20] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending 1 entry (2^1)\n");
+
+    /* Disconnect server 2, which eventually gets back to probe mode. */
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_TRACE(
+        "[  70] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "[ 120] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
+        "           probe server 2 sending 1 entry (2^1)\n");
+
+    /* Reconnect server 2, which eventually receives the conflicting entry at
+     * index 2 and truncates its log. */
+    CLUSTER_RECONNECT(1, 2);
+    CLUSTER_TRACE(
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           log mismatch (2^2 vs 2^1) -> truncate\n"
+        "           start persisting 1 new entry (2^1)\n");
 
     return MUNIT_OK;
 }

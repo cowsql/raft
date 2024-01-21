@@ -6,6 +6,7 @@
 #include "tracing.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 int recvAppendEntriesResult(struct raft *r,
                             const raft_id id,
@@ -20,6 +21,16 @@ int recvAppendEntriesResult(struct raft *r,
     assert(id > 0);
     assert(address != NULL);
     assert(result != NULL);
+
+    /* XXX: Up to version 0.19.1 followers were erroneously setting
+     * last_log_index to whatever their last log index was, regardless or the
+     * index being rejected. If we detect such a case, we manually amend it
+     * here. This code can be dropped once sufficient time has passed that we
+     * are confident that no server is running the old buggy code. */
+    if (result->rejected > 0 && result->last_log_index >= result->rejected) {
+        ((struct raft_append_entries_result *)result)->last_log_index =
+            result->rejected - 1;
+    }
 
     if (r->state != RAFT_LEADER) {
         infof("local server is not leader -> ignore");
@@ -65,3 +76,4 @@ int recvAppendEntriesResult(struct raft *r,
 }
 
 #undef infof
+#undef tracef
