@@ -20,6 +20,7 @@ int recvAppendEntries(struct raft *r,
 {
     struct raft_message message;
     struct raft_append_entries_result *result = &message.append_entries_result;
+    raft_index last_index;
     int match;
     bool async;
     int rv;
@@ -121,8 +122,24 @@ int recvAppendEntries(struct raft *r,
         return 0;
     }
 
-    /* Echo back to the leader the point that we reached. */
-    result->last_log_index = r->last_stored;
+    /* Set the last_log_index field of the response. */
+    last_index = TrailLastIndex(&r->trail);
+    if (result->rejected > 0) {
+        /*  In case of rejection we have to cases:
+         *
+         *  1. If our log is shorter and is missing the entry at #rejected, then
+         *     we set last_log_index to our actual last log index.
+         *  2. If our log is equal or longer, but the entry at #rejected has a
+         *     different term, then we set last_log_index to #rejected - 1 and
+         *     the leader will eventually retry with that index. */
+        result->last_log_index = last_index;
+        if (result->last_log_index >= result->rejected) {
+            result->last_log_index = result->rejected - 1;
+        }
+    } else {
+        /* Echo back to the leader the point that we reached. */
+        result->last_log_index = r->last_stored;
+    }
 
 reply:
     result->term = r->current_term;

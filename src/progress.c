@@ -294,8 +294,22 @@ bool progressMaybeDecrement(struct raft *r,
     assert(p->state == PROGRESS__PROBE || p->state == PROGRESS__PIPELINE ||
            p->state == PROGRESS__SNAPSHOT);
 
+    /* We must be called only when receiving an AppendEntries rejection. */
     assert(rejected > 0);
 
+    /* From figure 3.1:
+     *
+     *   Reply false if log doesn't contain an entry at prevLogIndex whose term
+     *   matches prevLogTerm.
+     *
+     * This means that there are two cases for rejection:
+     *
+     * - The follower does not have an entry at #rejected at all. In that case
+     *   its #last_index is clearly lower than #rejected.
+     *
+     * - The follower has an entry at #rejected, but it has a different term. In
+     * - that case the follower must set #last_index to #rejected - 1. */
+    assert(last_index < rejected);
     if (p->state == PROGRESS__SNAPSHOT) {
         /* The rejection must be stale or spurious if the rejected index does
          * not match the last snapshot index. */
