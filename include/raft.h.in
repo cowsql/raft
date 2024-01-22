@@ -344,7 +344,6 @@ struct raft_append_entries_result
     raft_index rejected;       /* If non-zero, the index that was rejected. */
     raft_index last_log_index; /* Receiver's last log entry index, as hint. */
     unsigned features;         /* Feature flags (since version 1). */
-    unsigned flags;            /* Status flags (since version 1). */
 };
 #define RAFT_APPEND_ENTRIES_RESULT_VERSION 1
 
@@ -1107,9 +1106,8 @@ RAFT_API void raft_set_max_catch_up_round_duration(struct raft *r,
  * optimistically sent to peers without waiting for acknowledgment. The engine
  * will stop sending more messages if this limit is reached. The default is 32.
  *
- * This limit also applies to entries being persisted locally. A follower will
- * stop accepting new entries if it reaches this number of not-yet-written
- * entries.
+ * This limit also applies to entries being persisted locally and that haven't
+ * been acknowledged yet.
  */
 RAFT_API void raft_set_max_inflight_entries(struct raft *r, unsigned n);
 
