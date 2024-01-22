@@ -73,6 +73,8 @@ reply:
     raft_configuration_close(&args->conf);
     raft_free(args->data.base);
 
+    result->capacity = r->capacity;
+
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.server_id = id;
     message.server_address = address;

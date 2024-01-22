@@ -652,6 +652,7 @@ static int followerPersistEntriesDone(struct raft *r,
 
 respond:
     result.last_log_index = r->last_stored;
+    result.capacity = r->capacity;
     sendAppendEntriesResult(r, &result);
 
 out:
@@ -945,6 +946,7 @@ discard:
 respond:
     if (r->state == RAFT_FOLLOWER) {
         result.last_log_index = r->last_stored;
+        result.capacity = r->capacity;
         sendAppendEntriesResult(r, &result);
     }
 
