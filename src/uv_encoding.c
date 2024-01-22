@@ -238,7 +238,9 @@ int uvEncodeMessage(const struct raft_message *message,
     cursor = (uint8_t *)header.base;
 
     /* Encode the request preamble, with message type and message size. */
-    bytePut64(&cursor, message->type);
+    bytePut16(&cursor, (uint16_t)message->type);
+    bytePut16(&cursor, 0);
+    bytePut32(&cursor, 0);
     bytePut64(&cursor, header.len - RAFT_IO_UV__PREAMBLE_SIZE);
 
     /* Encode the request header. */
