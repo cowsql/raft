@@ -39,8 +39,7 @@ static size_t sizeofRequestVoteResult(void)
     return sizeofRequestVoteResultV1() + /* Size of older version 1 message */
            sizeof(uint8_t) +             /* Flags */
            sizeof(uint8_t) +             /* Unused */
-           sizeof(uint8_t) +             /* Unused */
-           sizeof(uint8_t) +             /* Unused */
+           sizeof(uint16_t) +            /* Capacity */
            sizeof(uint32_t);             /* Unused */
 }
 
@@ -127,8 +126,7 @@ static void encodeRequestVoteResult(const struct raft_request_vote_result *p,
     bytePut64(&cursor, p->vote_granted);
     bytePut8(&cursor, flags);
     bytePut8(&cursor, 0);
-    bytePut8(&cursor, 0);
-    bytePut8(&cursor, 0);
+    bytePut16(&cursor, p->capacity);
     bytePut32(&cursor, 0);
 }
 
@@ -364,9 +362,13 @@ static void decodeRequestVoteResult(const uv_buf_t *buf,
     p->vote_granted = byteGet64(&cursor);
 
     if (buf->len > sizeofRequestVoteResultV1()) {
-        p->version = 2;
         uint8_t flags = byteGet8(&cursor);
+        uint8_t unused = byteGet8(&cursor);
+        uint16_t capacity = byteGet16(&cursor);
+        p->version = 2;
         p->pre_vote = (flags & (1 << 0));
+        (void)unused;
+        p->capacity = capacity;
     }
 }
 

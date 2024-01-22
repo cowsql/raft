@@ -116,6 +116,8 @@ reply:
         result->term = args->term;
     }
 
+    result->capacity = r->capacity;
+
     message.type = RAFT_IO_REQUEST_VOTE_RESULT;
     message.server_id = id;
     message.server_address = address;
