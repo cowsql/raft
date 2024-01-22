@@ -203,6 +203,7 @@ int uvEncodeMessage(const struct raft_message *message,
 {
     uv_buf_t header;
     uint8_t *cursor;
+    int version;
 
     /* Figure out the length of the header for this request and allocate a
      * buffer for it. */
@@ -210,21 +211,27 @@ int uvEncodeMessage(const struct raft_message *message,
     switch (message->type) {
         case RAFT_IO_REQUEST_VOTE:
             header.len += sizeofRequestVote();
+            version = message->request_vote.version;
             break;
         case RAFT_IO_REQUEST_VOTE_RESULT:
             header.len += sizeofRequestVoteResult();
+            version = message->request_vote_result.version;
             break;
         case RAFT_IO_APPEND_ENTRIES:
             header.len += sizeofAppendEntries(&message->append_entries);
+            version = message->append_entries.version;
             break;
         case RAFT_IO_APPEND_ENTRIES_RESULT:
             header.len += sizeofAppendEntriesResult();
+            version = message->append_entries_result.version;
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
             header.len += sizeofInstallSnapshot(&message->install_snapshot);
+            version = message->install_snapshot.version;
             break;
         case RAFT_IO_TIMEOUT_NOW:
             header.len += sizeofTimeoutNow();
+            version = message->timeout_now.version;
             break;
         default:
             return RAFT_MALFORMED;
@@ -237,10 +244,13 @@ int uvEncodeMessage(const struct raft_message *message,
 
     cursor = (uint8_t *)header.base;
 
-    /* Encode the request preamble, with message type and message size. */
-    bytePut16(&cursor, (uint16_t)message->type);
-    bytePut16(&cursor, 0);
+    /* Encode the request preamble, with message type, version and size. */
+    bytePut8(&cursor, (uint8_t)message->type);
+    bytePut8(&cursor, 0);
+    bytePut8(&cursor, (uint8_t)version);
+    bytePut8(&cursor, 0);
     bytePut32(&cursor, 0);
+
     bytePut64(&cursor, header.len - RAFT_IO_UV__PREAMBLE_SIZE);
 
     /* Encode the request header. */
@@ -523,7 +533,8 @@ static void decodeTimeoutNow(const uv_buf_t *buf, struct raft_timeout_now *p)
     p->last_log_term = byteGet64(&cursor);
 }
 
-int uvDecodeMessage(uint16_t type,
+int uvDecodeMessage(uint8_t type,
+                    uint8_t version,
                     const uv_buf_t *header,
                     struct raft_message *message,
                     size_t *payload_len)
@@ -533,6 +544,8 @@ int uvDecodeMessage(uint16_t type,
 
     memset(message, 0, sizeof(*message));
     message->type = (unsigned short)type;
+
+    (void)version;
 
     *payload_len = 0;
 

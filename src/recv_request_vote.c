@@ -27,7 +27,7 @@ int recvRequestVote(struct raft *r,
 
     result->vote_granted = false;
     result->pre_vote = args->pre_vote;
-    result->version = RAFT_REQUEST_VOTE_RESULT_VERSION;
+    result->version = MESSAGE__REQUEST_VOTE_RESULT_VERSION;
 
     /* Reject the request if we have a leader.
      *

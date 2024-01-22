@@ -96,6 +96,7 @@ static int electionSend(struct raft *r, const struct raft_server *server)
      * invariants).
      */
     message.type = RAFT_IO_REQUEST_VOTE;
+    message.request_vote.version = MESSAGE__REQUEST_VOTE_VERSION;
     message.request_vote.term = term;
     message.request_vote.candidate_id = r->id;
     message.request_vote.last_log_index = r->last_stored;

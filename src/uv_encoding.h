@@ -14,7 +14,8 @@ int uvEncodeMessage(const struct raft_message *message,
                     uv_buf_t **bufs,
                     unsigned *n_bufs);
 
-int uvDecodeMessage(uint16_t type,
+int uvDecodeMessage(uint8_t type,
+                    uint8_t version,
                     const uv_buf_t *header,
                     struct raft_message *message,
                     size_t *payload_len);
