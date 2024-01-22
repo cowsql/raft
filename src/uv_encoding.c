@@ -37,7 +37,11 @@ static size_t sizeofRequestVoteResultV1(void)
 static size_t sizeofRequestVoteResult(void)
 {
     return sizeofRequestVoteResultV1() + /* Size of older version 1 message */
-           sizeof(uint64_t) /* Flags. */;
+           sizeof(uint8_t) +             /* Flags */
+           sizeof(uint8_t) +             /* Unused */
+           sizeof(uint8_t) +             /* Unused */
+           sizeof(uint8_t) +             /* Unused */
+           sizeof(uint32_t);             /* Unused */
 }
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
@@ -113,7 +117,7 @@ static void encodeRequestVoteResult(const struct raft_request_vote_result *p,
                                     void *buf)
 {
     uint8_t *cursor = buf;
-    uint64_t flags = 0;
+    uint8_t flags = 0;
 
     if (p->pre_vote) {
         flags |= (1 << 0);
@@ -121,7 +125,11 @@ static void encodeRequestVoteResult(const struct raft_request_vote_result *p,
 
     bytePut64(&cursor, p->term);
     bytePut64(&cursor, p->vote_granted);
-    bytePut64(&cursor, flags);
+    bytePut8(&cursor, flags);
+    bytePut8(&cursor, 0);
+    bytePut8(&cursor, 0);
+    bytePut8(&cursor, 0);
+    bytePut32(&cursor, 0);
 }
 
 static void encodeAppendEntries(const struct raft_append_entries *p, void *buf)
@@ -357,7 +365,7 @@ static void decodeRequestVoteResult(const uv_buf_t *buf,
 
     if (buf->len > sizeofRequestVoteResultV1()) {
         p->version = 2;
-        uint64_t flags = byteGet64(&cursor);
+        uint8_t flags = byteGet8(&cursor);
         p->pre_vote = (flags & (1 << 0));
     }
 }
