@@ -12,9 +12,6 @@ enum {
     PROGRESS__SNAPSHOT   /* Sending a snapshot */
 };
 
-/* Server status flags. */
-#define PROGRESS__SATURATED 1 << 0 /* Too many unpersisted entries */
-
 /**
  * Used by leaders to keep track of replication progress for each server.
  */
@@ -27,7 +24,6 @@ struct raft_progress
     raft_time last_send;     /* Timestamp of last AppendEntries RPC. */
     raft_time last_recv;     /* Timestamp of last AppendEntries result. */
     unsigned features;       /* What the server is capable of. */
-    unsigned flags;          /* Status flags */
     struct
     {
         raft_index index;    /* Last index of most recent snapshot sent. */
@@ -152,17 +148,11 @@ bool progressMaybeDecrement(struct raft *r,
 /* Return true if match_index is equal or higher than the snapshot_index. */
 bool progressSnapshotDone(struct raft *r, unsigned i);
 
-/* Sets the features of a node. */
+/* Sets the feature flags of a node. */
 void progressSetFeatures(struct raft *r, unsigned i, unsigned features);
 
-/* Gets the features of a node. */
+/* Gets the feature flags of a node. */
 unsigned progressGetFeatures(struct raft *r, unsigned i);
-
-/* Sets the status flags of a node. */
-void progressSetFlags(struct raft *r, unsigned i, unsigned flags);
-
-/* Gets the status flags of a node. */
-unsigned progressGetFlags(struct raft *r, unsigned i);
 
 /* Start catching up a server. */
 void progressCatchUpStart(struct raft *r, unsigned i);

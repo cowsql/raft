@@ -240,14 +240,6 @@ int replicationProgress(struct raft *r, unsigned i)
         heartbeat = true;
     }
 
-    /* If this follower has reported to be saturated, don't send any further
-     * entry, but just a heartbeat. If the follower eventually manages to clear
-     * its backlog, we'll eventually unset the saturated flag and send other
-     * entries. */
-    if (progressGetFlags(r, i) & PROGRESS__SATURATED) {
-        heartbeat = true;
-    }
-
     return sendAppendEntries(r, i, prev_index, prev_term, heartbeat);
 }
 
@@ -462,7 +454,6 @@ int replicationUpdate(struct raft *r,
     progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
-    progressSetFlags(r, i, result->flags);
 
     /* If the RPC failed because of a log mismatch, retry.
      *
@@ -491,12 +482,6 @@ int replicationUpdate(struct raft *r,
     last_index = result->last_log_index;
     if (last_index > TrailLastIndex(&r->trail)) {
         last_index = TrailLastIndex(&r->trail);
-    }
-
-    /* If the follower reports to be saturated, go back to probe mode. */
-    if (result->flags & PROGRESS__SATURATED) {
-        infof("follower is saturated");
-        progressToProbe(r, i);
     }
 
     /* If the RPC succeeded, update our counters for this server.
@@ -627,7 +612,6 @@ static int followerPersistEntriesDone(struct raft *r,
     result.term = r->current_term;
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result.features = 0;
-    result.flags = 0;
     if (status != 0) {
         result.rejected = first_index;
         goto respond;
@@ -792,14 +776,12 @@ static int deleteConflictingEntries(struct raft *r,
 
 int replicationAppend(struct raft *r,
                       const struct raft_append_entries *args,
-                      unsigned *flags,
                       raft_index *rejected,
                       bool *async)
 {
     raft_index index;
     struct raft_entry *entries;
     unsigned n_entries;
-    unsigned inflight = (unsigned)(TrailLastIndex(&r->trail) - r->last_stored);
     int match;
     size_t n;
     size_t i;
@@ -813,7 +795,6 @@ int replicationAppend(struct raft *r,
 
     assert(r->state == RAFT_FOLLOWER);
 
-    *flags = 0;
     *rejected = args->prev_log_index;
     *async = false;
 
@@ -823,8 +804,6 @@ int replicationAppend(struct raft *r,
         assert(match == 1 || match == -1);
         return match == 1 ? 0 : RAFT_SHUTDOWN;
     }
-
-    *rejected = 0;
 
     /* Delete conflicting entries. */
     rv = deleteConflictingEntries(r, args, &i);
@@ -837,15 +816,6 @@ int replicationAppend(struct raft *r,
     /* Index of first new entry */
     index = args->prev_log_index + 1 + i;
 
-    /* If we have too many pending writes, don't start persisting any new entry
-     * and set the relevant flag in the response. */
-    if (inflight >= r->max_inflight_entries) {
-        infof("already persisting %u entries -> ignore %zu new entries",
-              inflight, n);
-        *flags |= PROGRESS__SATURATED;
-        return 0;
-    }
-
     /* Update our in-memory log to reflect that we received these entries. We'll
      * notify the leader of a successful append once the write entries request
      * that we issue below actually completes.  */
@@ -856,6 +826,8 @@ int replicationAppend(struct raft *r,
             goto err;
         }
     }
+
+    *rejected = 0;
 
     /* From Figure 3.1:
      *
@@ -938,7 +910,6 @@ int replicationPersistSnapshotDone(struct raft *r,
     result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result.features = 0;
     result.rejected = 0;
-    result.flags = 0;
 
     /* If we are shutting down, let's discard the result. */
     if (r->state == RAFT_UNAVAILABLE) {

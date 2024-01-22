@@ -5,7 +5,6 @@
 #include "entry.h"
 #include "heap.h"
 #include "message.h"
-#include "progress.h"
 #include "recv.h"
 #include "replication.h"
 #include "tracing.h"
@@ -35,7 +34,6 @@ int recvAppendEntries(struct raft *r,
     result->last_log_index = TrailLastIndex(&r->trail);
     result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
-    result->flags = 0;
 
     recvEnsureMatchingTerms(r, args->term, &match);
 
@@ -115,7 +113,7 @@ int recvAppendEntries(struct raft *r,
         return 0;
     }
 
-    rv = replicationAppend(r, args, &result->flags, &result->rejected, &async);
+    rv = replicationAppend(r, args, &result->rejected, &async);
     if (rv != 0 && rv != RAFT_BUSY) {
         goto err;
     }
@@ -148,18 +146,7 @@ int recvAppendEntries(struct raft *r,
          * We use a stored index instead of an in-memory one because the leader
          * will use it to update our match index and to check quorum. */
         result->last_log_index = args->prev_log_index + args->n_entries;
-
-        /* If we are saturated the stored index must be lagging behind our last
-         * index.
-         *
-         * Otherwise, our in-memory log must now contain all entries in this
-         * request. */
-        if (result->flags & PROGRESS__SATURATED) {
-            assert(r->last_stored < last_index);
-        } else {
-            assert(last_index >= result->last_log_index);
-        }
-
+        assert(last_index >= result->last_log_index);
         if (result->last_log_index > r->last_stored) {
             result->last_log_index = r->last_stored;
         }

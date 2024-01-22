@@ -37,8 +37,7 @@ static size_t sizeofRequestVoteResultV1(void)
 static size_t sizeofRequestVoteResult(void)
 {
     return sizeofRequestVoteResultV1() + /* Size of older version 1 message */
-           sizeof(uint32_t) +            /* Features */
-           sizeof(uint32_t);             /* Flags */
+           sizeof(uint64_t) /* Flags. */;
 }
 
 static size_t sizeofAppendEntries(const struct raft_append_entries *p)
@@ -152,7 +151,7 @@ static void encodeAppendEntriesResult(
     bytePut64(&cursor, p->rejected);
     bytePut64(&cursor, p->last_log_index);
     bytePut32(&cursor, p->features);
-    bytePut32(&cursor, p->flags);
+    bytePut32(&cursor, 0 /* Unused */);
 }
 
 static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
@@ -455,7 +454,6 @@ static void decodeAppendEntriesResult(const uv_buf_t *buf,
     if (buf->len > sizeofAppendEntriesResultV0()) {
         p->version = 1;
         p->features = byteGet32(&cursor);
-        p->flags = byteGet32(&cursor);
     }
 }
 
