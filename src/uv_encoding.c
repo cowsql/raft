@@ -379,12 +379,14 @@ static void decodeRequestVote(int version,
     }
 }
 
-static void decodeRequestVoteResult(const uv_buf_t *buf,
+static void decodeRequestVoteResult(int version,
+                                    const uv_buf_t *buf,
                                     struct raft_request_vote_result *p)
 {
     const uint8_t *cursor;
 
     cursor = (void *)buf->base;
+    (void)version;
 
     p->version = 1;
     p->term = byteGet64(&cursor);
@@ -564,7 +566,8 @@ int uvDecodeMessage(uint8_t type,
             decodeRequestVote(version, header, &message->request_vote);
             break;
         case RAFT_IO_REQUEST_VOTE_RESULT:
-            decodeRequestVoteResult(header, &message->request_vote_result);
+            decodeRequestVoteResult(version, header,
+                                    &message->request_vote_result);
             break;
         case RAFT_IO_APPEND_ENTRIES:
             rv = decodeAppendEntries(header, &message->append_entries);
