@@ -313,6 +313,7 @@ struct raft_request_vote_result
     raft_term term;    /* Receiver's current term (candidate updates itself). */
     bool vote_granted; /* True means candidate received vote. */
     bool pre_vote;     /* The response to a pre-vote RequestVote or not. */
+    unsigned short features; /* Server capabilities */
     unsigned short capacity; /* Disk capacity reserved to store entries. */
 };
 #define RAFT_REQUEST_VOTE_RESULT_VERSION 2
