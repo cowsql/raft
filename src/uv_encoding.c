@@ -344,24 +344,35 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
     }
 }
 
-static void decodeRequestVote(const uv_buf_t *buf, struct raft_request_vote *p)
+static void decodeRequestVote(int version,
+                              const uv_buf_t *buf,
+                              struct raft_request_vote *p)
 {
     const uint8_t *cursor;
 
     cursor = (void *)buf->base;
 
-    p->version = 1;
+    /* If the version is 0 the message was sent by a server that
+     * does not encodes the version byte in the preamble. */
+    if (version == 0) {
+        if (buf->len == sizeofRequestVoteV1()) {
+            version = 1;
+        } else {
+            version = 2;
+        }
+    }
+
+    p->version = version;
     p->term = byteGet64(&cursor);
     p->candidate_id = byteGet64(&cursor);
     p->last_log_index = byteGet64(&cursor);
     p->last_log_term = byteGet64(&cursor);
 
     /* Support for legacy request vote that doesn't have disrupt_leader. */
-    if (buf->len == sizeofRequestVoteV1()) {
+    if (p->version == 1) {
         p->disrupt_leader = false;
         p->pre_vote = false;
     } else {
-        p->version = 2;
         uint64_t flags = byteGet64(&cursor);
         p->disrupt_leader = (bool)(flags & 1 << 0);
         p->pre_vote = (bool)(flags & 1 << 1);
@@ -545,14 +556,12 @@ int uvDecodeMessage(uint8_t type,
     memset(message, 0, sizeof(*message));
     message->type = (unsigned short)type;
 
-    (void)version;
-
     *payload_len = 0;
 
     /* Decode the header. */
     switch (type) {
         case RAFT_IO_REQUEST_VOTE:
-            decodeRequestVote(header, &message->request_vote);
+            decodeRequestVote(version, header, &message->request_vote);
             break;
         case RAFT_IO_REQUEST_VOTE_RESULT:
             decodeRequestVoteResult(header, &message->request_vote_result);
