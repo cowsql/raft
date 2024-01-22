@@ -730,9 +730,12 @@ struct raft
      * Cache of the server's persistent state, updated on stable storage before
      * responding to RPCs (Figure 3.1).
      */
-    raft_term current_term;  /* Latest term server has seen. */
-    raft_id voted_for;       /* Candidate that received vote in current term. */
-    struct raft_log *unused; /* XXX: Legacy field. */
+    raft_term current_term; /* Latest term server has seen. */
+    raft_id voted_for;      /* Candidate that received vote in current term. */
+    union {
+        struct raft_log *unused; /* XXX: Legacy field. */
+        unsigned short capacity; /* Guaranteed disk capacity on this server */
+    };
 
     /*
      * Current membership configuration (Chapter 4).
