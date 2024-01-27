@@ -614,7 +614,8 @@ static int followerPersistEntriesDone(struct raft *r,
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
-    result.features = 0;
+    result.features = MESSAGE__FEATURE_CAPACITY;
+
     if (status != 0) {
         result.rejected = first_index;
         goto respond;
@@ -912,7 +913,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
-    result.features = 0;
+    result.features = MESSAGE__FEATURE_CAPACITY;
     result.rejected = 0;
 
     /* If we are shutting down, let's discard the result. */

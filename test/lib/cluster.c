@@ -392,6 +392,8 @@ static void serverInit(struct test_server *s,
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
+    raft_set_capacity_threshold(&s->raft, 64);
+
     s->log.start = 1;
     s->log.entries = munit_malloc(MAX_LOG_ENTRIES * sizeof *s->log.entries);
     s->log.n = 0;
