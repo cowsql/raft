@@ -483,6 +483,7 @@ int raft_step(struct raft *r,
     r->update->messages.n = 0;
 
     r->now = event->time;
+    r->capacity = event->capacity;
 
     switch (event->type) {
         case RAFT_START:
