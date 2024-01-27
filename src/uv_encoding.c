@@ -513,7 +513,7 @@ static void decodeAppendEntriesResult(int version,
     p->rejected = byteGet64(&cursor);
     p->last_log_index = byteGet64(&cursor);
     p->features = 0;
-    p->capacity = USHRT_MAX;
+    p->capacity = 0;
     if (p->version >= 1) {
         p->features = byteGet16(&cursor);
     }
