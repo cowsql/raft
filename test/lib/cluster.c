@@ -523,16 +523,7 @@ static void serverCancelPending(struct test_server *s)
 
 static void serverStop(struct test_server *s)
 {
-    struct raft_event event;
-    struct raft_update update;
     unsigned i;
-    int rv;
-
-    event.time = s->cluster->time;
-    event.type = RAFT_STOP;
-
-    rv = raft_step(&s->raft, &event, &update);
-    munit_assert_int(rv, ==, 0);
 
     s->running = false;
 

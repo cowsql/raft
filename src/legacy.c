@@ -950,7 +950,7 @@ static void legacyPersistedEntriesFailure(struct raft *r,
     }
 }
 
-static void legacyLeadershipTransferClose(struct raft *r)
+void LegacyLeadershipTransferClose(struct raft *r)
 {
     struct raft_transfer *req = r->transfer;
     assert(raft_transferee(r) == 0);
@@ -983,7 +983,7 @@ static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
 
     if (raft_state(r) == RAFT_UNAVAILABLE) {
         if (r->transfer != NULL) {
-            legacyLeadershipTransferClose(r);
+            LegacyLeadershipTransferClose(r);
         }
         LegacyFailPendingRequests(r);
         LegacyFireCompletedRequests(r);
@@ -1138,13 +1138,13 @@ static int legacyHandleEvent(struct raft *r,
         /* If we are leader it means that the request was aborted. If we are
          * follower we wait until we find a new leader. */
         if (raft_state(r) == RAFT_LEADER) {
-            legacyLeadershipTransferClose(r);
+            LegacyLeadershipTransferClose(r);
         } else if (raft_state(r) == RAFT_FOLLOWER) {
             raft_id leader_id;
             const char *leader_address;
             raft_leader(r, &leader_id, &leader_address);
             if (leader_id != 0) {
-                legacyLeadershipTransferClose(r);
+                LegacyLeadershipTransferClose(r);
             }
         }
     }
