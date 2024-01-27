@@ -785,6 +785,8 @@ static void serverStep(struct test_server *s, struct raft_event *event)
     struct raft_update update;
     int rv;
 
+    event->capacity = diskCapacity(&s->disk);
+
     munit_assert_true(s->running);
 
     rv = raft_step(r, event, &update);
