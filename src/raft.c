@@ -117,6 +117,7 @@ int raft_init(struct raft *r,
     r->max_inflight_entries = DEFAULT_MAX_INFLIGHT_ENTRIES;
     r->update = NULL;
     r->capacity = 0;
+    r->capacity_threshold = 0;
 #if defined(RAFT__LEGACY_no)
     (void)io;
     (void)fsm;
@@ -678,6 +679,11 @@ void raft_set_install_snapshot_timeout(struct raft *r, const unsigned msecs)
     r->install_snapshot_timeout = msecs;
 }
 
+void raft_set_pre_vote(struct raft *r, bool enabled)
+{
+    r->pre_vote = enabled;
+}
+
 void raft_set_snapshot_threshold(struct raft *r, unsigned n)
 {
     r->snapshot.threshold = n;
@@ -703,9 +709,9 @@ void raft_set_max_inflight_entries(struct raft *r, unsigned n)
     r->max_inflight_entries = n;
 }
 
-void raft_set_pre_vote(struct raft *r, bool enabled)
+void raft_set_capacity_threshold(struct raft *r, unsigned short min)
 {
-    r->pre_vote = enabled;
+    r->capacity_threshold = min;
 }
 
 const char *raft_errmsg(struct raft *r)
