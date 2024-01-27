@@ -211,6 +211,7 @@ struct test_disk
     raft_index start_index;
     struct raft_entry *entries;
     unsigned n_entries;
+    unsigned short size; /* Disk size in bytes */
 };
 
 /* Wrap a @raft instance and maintain disk and network state. */

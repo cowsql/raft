@@ -9,6 +9,7 @@
 #define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
+#define DEFAULT_DISK_SIZE 256 /* In bytes */
 
 /* Maximum number of log entries. */
 #define MAX_LOG_ENTRIES 15
@@ -38,6 +39,7 @@ static void diskInit(struct test_disk *d)
     d->start_index = 1;
     d->entries = NULL;
     d->n_entries = 0;
+    d->size = DEFAULT_DISK_SIZE;
 }
 
 /* Release all memory used by the disk snapshot, if present. */
@@ -76,10 +78,38 @@ static void diskSetVote(struct test_disk *d, raft_id vote)
     d->voted_for = vote;
 }
 
+/* Return the remaining disk capacity. */
+static unsigned short diskCapacity(struct test_disk *d)
+{
+    unsigned short capacity = d->size;
+    unsigned i;
+
+    if (d->snapshot != NULL) {
+        munit_assert_ullong(d->snapshot->data.len, >, 0);
+        munit_assert_ullong(capacity, >=, d->snapshot->data.len);
+        capacity -= d->snapshot->data.len;
+    }
+
+    for (i = 0; i < d->n_entries; i++) {
+        struct raft_entry *entry = &d->entries[i];
+        munit_assert_ullong(entry->buf.len, >, 0);
+        munit_assert_ullong(capacity, >=, entry->buf.len);
+        capacity -= entry->buf.len;
+    }
+
+    return capacity;
+}
+
 /* Set the persisted snapshot. */
 static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
 {
     diskDestroySnapshotIfPresent(d);
+
+    munit_assert_ptr_not_null(snapshot->data.base);
+    munit_assert_ullong(snapshot->data.len, >, 0);
+
+    munit_assert_ullong(diskCapacity(d), >=, snapshot->data.len);
+
     d->snapshot = snapshot;
 
     /* If there are no entries, set the start index to the snapshot's last
@@ -102,6 +132,7 @@ static void entryCopy(const struct raft_entry *src, struct raft_entry *dst)
 /* Append a new entry to the log. */
 static void diskAddEntry(struct test_disk *d, const struct raft_entry *entry)
 {
+    munit_assert_ullong(diskCapacity(d), >=, entry->buf.len);
     d->n_entries++;
     d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
     munit_assert_ptr_not_null(d->entries);
@@ -366,8 +397,8 @@ static void serverInit(struct test_server *s,
     s->log.n = 0;
 
     s->last_applied = 0;
-    s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;
+    s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
 }
