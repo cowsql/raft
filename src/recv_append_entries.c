@@ -32,7 +32,7 @@ int recvAppendEntries(struct raft *r,
 
     result->rejected = args->prev_log_index;
     result->last_log_index = TrailLastIndex(&r->trail);
-    result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
+    result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
 
     recvEnsureMatchingTerms(r, args->term, &match);
@@ -160,6 +160,8 @@ reply:
         assert(args->entries[0].batch != NULL);
         raft_free(args->entries[0].batch);
     }
+
+    result->capacity = r->capacity;
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.server_id = id;

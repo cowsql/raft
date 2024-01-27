@@ -116,6 +116,7 @@ int raft_init(struct raft *r,
     r->n_messages_cap = 0;
     r->max_inflight_entries = DEFAULT_MAX_INFLIGHT_ENTRIES;
     r->update = NULL;
+    r->capacity = 0;
 #if defined(RAFT__LEGACY_no)
     (void)io;
     (void)fsm;

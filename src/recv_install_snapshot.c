@@ -25,7 +25,7 @@ int recvInstallSnapshot(struct raft *r,
 
     result->rejected = args->last_index;
     result->last_log_index = TrailLastIndex(&r->trail);
-    result->version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
+    result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = 0;
 
     recvEnsureMatchingTerms(r, args->term, &match);
@@ -72,6 +72,8 @@ reply:
     /* Free the snapshot data. */
     raft_configuration_close(&args->conf);
     raft_free(args->data.base);
+
+    result->capacity = r->capacity;
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.server_id = id;

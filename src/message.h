@@ -5,6 +5,13 @@
 
 #include "../include/raft.h"
 
+#define MESSAGE__REQUEST_VOTE_VERSION 2
+#define MESSAGE__REQUEST_VOTE_RESULT_VERSION 2
+#define MESSAGE__APPEND_ENTRIES_VERSION 0
+#define MESSAGE__APPEND_ENTRIES_RESULT_VERSION 2
+#define MESSAGE__INSTALL_SNAPSHOT_VERSION 0
+#define MESSAGE__TIMEOUT_NOW_VERSION 0
+
 /* Add the given message to the array of messages attached to the struct
  * raft_update to be returned.
  *

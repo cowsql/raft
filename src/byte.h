@@ -26,6 +26,26 @@
 #define RAFT__BIG_ENDIAN
 #endif
 
+/* Flip a 16-bit number to network byte order (little endian) */
+BYTE__INLINE uint16_t byteFlip16(uint16_t v)
+{
+#if defined(BYTE__LITTLE_ENDIAN)
+    return v;
+#elif defined(RAFT__BIG_ENDIAN)
+    return __builtin_bswap16(v);
+#else /* Unknown endianess */
+    union {
+        uint16_t u;
+        uint8_t v[2];
+    } s;
+
+    s.v[0] = (uint8_t)v;
+    s.v[1] = (uint8_t)(v >> 8);
+
+    return s.u;
+#endif
+}
+
 /* Flip a 32-bit number to network byte order (little endian) */
 BYTE__INLINE uint32_t byteFlip32(uint32_t v)
 {
@@ -80,6 +100,15 @@ BYTE__INLINE void bytePut8(uint8_t **cursor, uint8_t value)
     *cursor += 1;
 }
 
+BYTE__INLINE void bytePut16(uint8_t **cursor, uint16_t value)
+{
+    unsigned i;
+    uint16_t flipped = byteFlip16(value);
+    for (i = 0; i < sizeof(uint16_t); i++) {
+        bytePut8(cursor, ((uint8_t *)(&flipped))[i]);
+    }
+}
+
 BYTE__INLINE void bytePut32(uint8_t **cursor, uint32_t value)
 {
     unsigned i;
@@ -110,6 +139,16 @@ BYTE__INLINE uint8_t byteGet8(const uint8_t **cursor)
     uint8_t value = **cursor;
     *cursor += 1;
     return value;
+}
+
+BYTE__INLINE uint16_t byteGet16(const uint8_t **cursor)
+{
+    uint16_t value = 0;
+    unsigned i;
+    for (i = 0; i < sizeof(uint16_t); i++) {
+        ((uint8_t *)(&value))[i] = byteGet8(cursor);
+    }
+    return byteFlip16(value);
 }
 
 BYTE__INLINE uint32_t byteGet32(const uint8_t **cursor)

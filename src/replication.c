@@ -101,6 +101,8 @@ static int sendAppendEntries(struct raft *r,
               TrailTermOf(&r->trail, next_index + args->n_entries - 1));
     }
 
+    args->version = MESSAGE__APPEND_ENTRIES_VERSION;
+
     message.type = RAFT_IO_APPEND_ENTRIES;
     message.server_id = server->id;
     message.server_address = server->address;
@@ -140,6 +142,7 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     message.server_id = server->id;
     message.server_address = server->address;
 
+    args->version = MESSAGE__INSTALL_SNAPSHOT_VERSION;
     args->term = r->current_term;
     args->last_index = TrailSnapshotIndex(&r->trail);
     args->last_term = TrailTermOf(&r->trail, args->last_index);
@@ -610,7 +613,7 @@ static int followerPersistEntriesDone(struct raft *r,
     assert(n > 0);
 
     result.term = r->current_term;
-    result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
+    result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result.features = 0;
     if (status != 0) {
         result.rejected = first_index;
@@ -652,6 +655,7 @@ static int followerPersistEntriesDone(struct raft *r,
 
 respond:
     result.last_log_index = r->last_stored;
+    result.capacity = r->capacity;
     sendAppendEntriesResult(r, &result);
 
 out:
@@ -907,7 +911,7 @@ int replicationPersistSnapshotDone(struct raft *r,
     r->snapshot.persisting = false;
 
     result.term = r->current_term;
-    result.version = RAFT_APPEND_ENTRIES_RESULT_VERSION;
+    result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result.features = 0;
     result.rejected = 0;
 
@@ -945,6 +949,7 @@ discard:
 respond:
     if (r->state == RAFT_FOLLOWER) {
         result.last_log_index = r->last_stored;
+        result.capacity = r->capacity;
         sendAppendEntriesResult(r, &result);
     }
 

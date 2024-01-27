@@ -46,6 +46,18 @@ TEST(byteCrc32, invalid, NULL, NULL, 0, NULL)
 
 SUITE(byteFlip)
 
+/* Convert a 16-bit number. */
+TEST(byteFlip, 16, NULL, NULL, 0, NULL)
+{
+    uint16_t value;
+    unsigned i;
+    value = byteFlip16(0x0100);
+    for (i = 0; i < 2; i++) {
+        munit_assert_int(*((uint8_t *)&value + i), ==, i);
+    }
+    return MUNIT_OK;
+}
+
 /* Convert a 32-bit number. */
 TEST(byteFlip, 32, NULL, NULL, 0, NULL)
 {

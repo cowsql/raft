@@ -302,7 +302,6 @@ struct raft_request_vote
     bool disrupt_leader;       /* True if current leader should be discarded. */
     bool pre_vote;             /* True if this is a pre-vote request. */
 };
-#define RAFT_REQUEST_VOTE_VERSION 2
 
 /**
  * Hold the result of a RequestVote RPC.
@@ -313,8 +312,9 @@ struct raft_request_vote_result
     raft_term term;    /* Receiver's current term (candidate updates itself). */
     bool vote_granted; /* True means candidate received vote. */
     bool pre_vote;     /* The response to a pre-vote RequestVote or not. */
+    unsigned short features; /* Server capabilities */
+    unsigned short capacity; /* Disk capacity reserved to store entries. */
 };
-#define RAFT_REQUEST_VOTE_RESULT_VERSION 2
 
 /**
  * Hold the arguments of an AppendEntries RPC.
@@ -332,7 +332,6 @@ struct raft_append_entries
     struct raft_entry *entries; /* Log entries to append. */
     unsigned n_entries;         /* Size of the log entries array. */
 };
-#define RAFT_APPEND_ENTRIES_VERSION 0
 
 /**
  * Hold the result of an AppendEntries RPC (figure 3.1).
@@ -343,9 +342,9 @@ struct raft_append_entries_result
     raft_term term;            /* Receiver's current_term. */
     raft_index rejected;       /* If non-zero, the index that was rejected. */
     raft_index last_log_index; /* Receiver's last log entry index, as hint. */
-    unsigned features;         /* Feature flags (since version 1). */
+    unsigned short features;   /* Feature flags (since version 1). */
+    unsigned short capacity;   /* Reserved disk capacity for log entries. */
 };
-#define RAFT_APPEND_ENTRIES_RESULT_VERSION 1
 
 /**
  * Hold the arguments of an InstallSnapshot RPC (figure 5.3).
@@ -360,7 +359,6 @@ struct raft_install_snapshot
     raft_index conf_index;          /* Commit index of conf. */
     struct raft_buffer data;        /* Raw snapshot data. */
 };
-#define RAFT_INSTALL_SNAPSHOT_VERSION 0
 
 /**
  * Hold the arguments of a TimeoutNow RPC.
@@ -375,7 +373,6 @@ struct raft_timeout_now
     raft_index last_log_index; /* Index of leader's last log entry. */
     raft_index last_log_term;  /* Term of log entry at last_log_index. */
 };
-#define RAFT_TIMEOUT_NOW_VERSION 0
 
 /**
  * Type codes for RPC messages.
@@ -730,9 +727,12 @@ struct raft
      * Cache of the server's persistent state, updated on stable storage before
      * responding to RPCs (Figure 3.1).
      */
-    raft_term current_term;  /* Latest term server has seen. */
-    raft_id voted_for;       /* Candidate that received vote in current term. */
-    struct raft_log *unused; /* XXX: Legacy field. */
+    raft_term current_term; /* Latest term server has seen. */
+    raft_id voted_for;      /* Candidate that received vote in current term. */
+    union {
+        struct raft_log *unused; /* XXX: Legacy field. */
+        unsigned short capacity; /* Guaranteed disk capacity on this server */
+    };
 
     /*
      * Current membership configuration (Chapter 4).
