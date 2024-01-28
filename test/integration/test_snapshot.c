@@ -397,7 +397,7 @@ TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
         "[ 200] 3 > recv install snapshot from server 1\n"
         "           start persisting snapshot (3^2)\n");
 
-    /* Apply a new entry, server 0 won't send it to server 2 since it is
+    /* Apply a new entry, server 1 won't send it to server 3 since it is
      * waiting for it to complete installing the snapshot. */
     CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
 

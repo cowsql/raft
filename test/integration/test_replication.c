@@ -1,4 +1,3 @@
-#include "../../src/configuration.h"
 #include "../../src/progress.h"
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
