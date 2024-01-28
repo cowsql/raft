@@ -213,14 +213,28 @@ void progressUpdateLastRecv(struct raft *r, unsigned i)
     r->leader_state.progress[i].last_recv = r->now;
 }
 
-void progressSetFeatures(struct raft *r, const unsigned i, unsigned features)
+void progressSetFeatures(struct raft *r,
+                         const unsigned i,
+                         unsigned short features)
 {
     r->leader_state.progress[i].features = features;
 }
 
-unsigned progressGetFeatures(struct raft *r, const unsigned i)
+unsigned short progressGetFeatures(const struct raft *r, const unsigned i)
 {
     return r->leader_state.progress[i].features;
+}
+
+void progressSetCapacity(struct raft *r,
+                         const unsigned i,
+                         unsigned short capacity)
+{
+    r->leader_state.progress[i].capacity = capacity;
+}
+
+unsigned short progressGetCapacity(const struct raft *r, const unsigned i)
+{
+    return r->leader_state.progress[i].capacity;
 }
 
 raft_time progressGetLastSend(const struct raft *r, const unsigned i)

@@ -19,11 +19,12 @@ struct raft_progress
 {
     unsigned short state;    /* Probe, pipeline or snapshot. */
     unsigned short catch_up; /* None, running, aborted, finished. */
+    unsigned short features; /* What the server is capable of. */
+    unsigned short capacity; /* Guaranteed capacity. */
     raft_index next_index;   /* Next entry to send. */
     raft_index match_index;  /* Highest index reported as replicated. */
     raft_time last_send;     /* Timestamp of last AppendEntries RPC. */
     raft_time last_recv;     /* Timestamp of last AppendEntries result. */
-    unsigned features;       /* What the server is capable of. */
     struct
     {
         raft_index index;    /* Last index of most recent snapshot sent. */
@@ -148,11 +149,17 @@ bool progressMaybeDecrement(struct raft *r,
 /* Return true if match_index is equal or higher than the snapshot_index. */
 bool progressSnapshotDone(struct raft *r, unsigned i);
 
-/* Sets the feature flags of a node. */
-void progressSetFeatures(struct raft *r, unsigned i, unsigned features);
+/* Sets the feature flags of a server. */
+void progressSetFeatures(struct raft *r, unsigned i, unsigned short features);
 
-/* Gets the feature flags of a node. */
-unsigned progressGetFeatures(struct raft *r, unsigned i);
+/* Gets the feature flags of a server. */
+unsigned short progressGetFeatures(const struct raft *r, unsigned i);
+
+/* Sets the capacity of a server. */
+void progressSetCapacity(struct raft *r, unsigned i, unsigned short features);
+
+/* Gets the feature flags of a server. */
+unsigned short progressGetCapacity(const struct raft *r, unsigned i);
 
 /* Start catching up a server. */
 void progressCatchUpStart(struct raft *r, unsigned i);
