@@ -81,8 +81,12 @@
         CLUSTER_SUBMIT__RAW(ID, &entry_);                  \
     } while (0)
 
-#define CLUSTER_SUBMIT__RAW(ID, ENTRY) \
-    test_cluster_submit(&f->cluster_, ID, ENTRY)
+#define CLUSTER_SUBMIT__RAW(ID, ENTRY)                       \
+    do {                                                     \
+        int rv__;                                            \
+        rv__ = test_cluster_submit(&f->cluster_, ID, ENTRY); \
+        munit_assert_int(rv__, ==, 0);                       \
+    } while (0)
 
 /* Set the persisted vote of the server with the given ID. Must me called before
  * starting the server. */
@@ -317,9 +321,9 @@ void test_cluster_start(struct test_cluster *c, raft_id id);
 void test_cluster_stop(struct test_cluster *c, raft_id id);
 
 /* Submit a new entry. */
-void test_cluster_submit(struct test_cluster *c,
-                         raft_id id,
-                         struct raft_entry *entry);
+int test_cluster_submit(struct test_cluster *c,
+                        raft_id id,
+                        struct raft_entry *entry);
 
 /* Start to catch-up a server. */
 void test_cluster_catch_up(struct test_cluster *c,
