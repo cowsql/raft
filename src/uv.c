@@ -128,6 +128,10 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
     assert(rv == 0);
     uv->check.data = uv;
 
+    rv = uv_timer_init(uv->loop, &uv->prepare_retry);
+    assert(rv == 0); /* This should never fail */
+    uv->prepare_retry.data = uv;
+
     return 0;
 }
 
@@ -203,6 +207,9 @@ void uvMaybeFireCloseCb(struct uv *uv)
     if (uv->check.data != NULL) {
         return;
     }
+    if (uv->prepare_retry.data != NULL) {
+        return;
+    }
     if (!QUEUE_IS_EMPTY(&uv->append_segments)) {
         return;
     }
@@ -270,6 +277,14 @@ static void uvCheckCloseCb(uv_handle_t *handle)
     uvMaybeFireCloseCb(uv);
 }
 
+static void uvPrepareRetryCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->prepare_retry.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
 /* Implementation of raft_io->close. */
 static void uvClose(struct raft_io *io, raft_io_close_cb cb)
 {
@@ -293,6 +308,11 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
     }
     if (uv->check.data != NULL) {
         uv_close((uv_handle_t *)&uv->check, uvCheckCloseCb);
+    }
+    if (uv->prepare_retry.data != NULL) {
+        uv_timer_stop(&uv->prepare_retry);
+        uv->prepare_retry.data = uv;
+        uv_close((uv_handle_t *)&uv->prepare_retry, uvPrepareRetryCloseCb);
     }
     uvMaybeFireCloseCb(uv);
 }
