@@ -13,6 +13,7 @@
 #include "err.h"
 #include "heap.h"
 #include "membership.h"
+#include "message.h"
 #include "progress.h"
 #include "queue.h"
 #include "random.h"
@@ -484,6 +485,15 @@ int raft_step(struct raft *r,
 
     r->now = event->time;
     r->capacity = event->capacity;
+
+    /* Possibly update this server's capacity in the progress array. */
+    if (r->state == RAFT_LEADER) {
+        unsigned i = configurationIndexOf(&r->configuration, r->id);
+        if (i < r->configuration.n) {
+            progressSetFeatures(r, i, MESSAGE__FEATURE_CAPACITY);
+            progressSetCapacity(r, i, r->capacity);
+        }
+    }
 
     switch (event->type) {
         case RAFT_START:

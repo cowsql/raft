@@ -457,6 +457,7 @@ int replicationUpdate(struct raft *r,
     progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
+    progressSetCapacity(r, i, result->capacity);
 
     /* If the RPC failed because of a log mismatch, retry.
      *
