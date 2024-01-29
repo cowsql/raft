@@ -185,6 +185,9 @@ static int uvStart(struct raft_io *io,
     assert(rv == 0);
     rv = uv_check_start(&uv->check, uvCheckLoopCb);
     assert(rv == 0);
+
+    UvPrepareStart(uv);
+
     return 0;
 }
 

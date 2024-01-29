@@ -339,6 +339,29 @@ err:
     return rv;
 }
 
+void UvPrepareStart(struct uv *uv)
+{
+    unsigned i;
+
+    for (i = 0; i < UV__TARGET_POOL_SIZE; i++) {
+        struct uvIdleSegment *segment = uvIdleSegmentCreate(uv);
+        int rv;
+
+        if (segment == NULL) {
+            break;
+        }
+
+        rv = uvPrepareCreateSegment(segment);
+        if (rv != 0) {
+            RaftHeapFree(segment);
+            break;
+        }
+
+        uv->prepare_next_counter++;
+        QUEUE_PUSH(&uv->prepare_pool, &segment->queue);
+    }
+}
+
 void UvPrepareClose(struct uv *uv)
 {
     assert(uv->closing);
