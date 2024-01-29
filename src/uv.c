@@ -310,8 +310,11 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
         uv_close((uv_handle_t *)&uv->check, uvCheckCloseCb);
     }
     if (uv->prepare_retry.data != NULL) {
+        if (uv->prepare_retry.data != uv) {
+            RaftHeapFree(uv->prepare_retry.data);
+            uv->prepare_retry.data = uv;
+        }
         uv_timer_stop(&uv->prepare_retry);
-        uv->prepare_retry.data = uv;
         uv_close((uv_handle_t *)&uv->prepare_retry, uvPrepareRetryCloseCb);
     }
     uvMaybeFireCloseCb(uv);
@@ -760,6 +763,7 @@ int raft_uv_init(struct raft_io *io,
     uv->direct_io = false;
     uv->async_io = false;
     uv->segment_size = UV__MAX_SEGMENT_SIZE;
+    uv->segment_retry = UV__SEGMENT_RETRY_RATE;
     uv->block_size = 0;
     QUEUE_INIT(&uv->clients);
     QUEUE_INIT(&uv->servers);
@@ -831,6 +835,13 @@ void raft_uv_set_segment_size(struct raft_io *io, size_t size)
     struct uv *uv;
     uv = io->impl;
     uv->segment_size = size;
+}
+
+void raft_uv_set_segment_retry(struct raft_io *io, unsigned msecs)
+{
+    struct uv *uv;
+    uv = io->impl;
+    uv->segment_retry = msecs;
 }
 
 void raft_uv_set_block_size(struct raft_io *io, size_t size)

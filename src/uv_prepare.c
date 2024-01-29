@@ -186,6 +186,21 @@ err:
     return rv;
 }
 
+/* Retry segment creation. */
+static void uvPrepareRetryTimerCb(uv_timer_t *timer)
+{
+    struct uvIdleSegment *segment = timer->data;
+    struct uv *uv = segment->uv;
+    int rv;
+
+    uv->prepare_retry.data = uv;
+    tracef("retry creating segment %s", segment->filename);
+    rv = uv_queue_work(uv->loop, &segment->work, uvPrepareWorkCb,
+                       uvPrepareAfterWorkCb);
+    assert(rv == 0);
+    uv->prepare_inflight = segment;
+}
+
 static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 {
     struct uvIdleSegment *segment = work->data;
@@ -211,19 +226,12 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
         return;
     }
 
-    /* If the request has failed, mark all pending requests as failed and don't
-     * try to create any further segment.
-     *
-     * Note that if there's no pending request, we don't set the error message,
-     * to avoid overwriting previous errors. */
+    /* If the request has failed, retry again after a while. */
     if (segment->status != 0) {
-        if (!QUEUE_IS_EMPTY(&uv->prepare_reqs)) {
-            ErrMsgTransferf(segment->errmsg, uv->io->errmsg,
-                            "create segment %s", segment->filename);
-            uvPrepareFinishAllRequests(uv, segment->status);
-        }
-        uv->errored = true;
-        RaftHeapFree(segment);
+        assert(uv->prepare_retry.data == uv);
+        uv->prepare_retry.data = segment;
+        rv = uv_timer_start(&uv->prepare_retry, uvPrepareRetryTimerCb, 10, 0);
+        assert(rv == 0);
         return;
     }
 
