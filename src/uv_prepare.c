@@ -47,9 +47,8 @@ struct uvIdleSegment
     queue queue;                       /* Pool */
 };
 
-static void uvPrepareWorkCb(uv_work_t *work)
+static int uvPrepareCreateSegment(struct uvIdleSegment *segment)
 {
-    struct uvIdleSegment *segment = work->data;
     struct uv *uv = segment->uv;
     int rv;
 
@@ -64,15 +63,20 @@ static void uvPrepareWorkCb(uv_work_t *work)
         goto err_after_allocate;
     }
 
-    segment->status = 0;
-    return;
+    return 0;
 
 err_after_allocate:
     UvOsClose(segment->fd);
 err:
     assert(rv != 0);
-    segment->status = rv;
-    return;
+
+    return rv;
+}
+
+static void uvPrepareWorkCb(uv_work_t *work)
+{
+    struct uvIdleSegment *segment = work->data;
+    segment->status = uvPrepareCreateSegment(segment);
 }
 
 /* Flush all pending requests, invoking their callbacks with the given
