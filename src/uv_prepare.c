@@ -41,7 +41,7 @@ struct uvIdleSegment
     struct uv_work_s work;             /* To execute logic in the threadpool */
     int status;                        /* Result of threadpool callback */
     char errmsg[RAFT_ERRMSG_BUF_SIZE]; /* Error of threadpool callback */
-    unsigned long long counter;        /* Segment counter */
+    uvCounter counter;                 /* Segment counter */
     char filename[UV__FILENAME_LEN];   /* Filename of the segment */
     uv_file fd;                        /* File descriptor of prepared file */
     queue queue;                       /* Pool */
@@ -144,6 +144,26 @@ static unsigned uvPrepareCount(struct uv *uv)
 
 static void uvPrepareAfterWorkCb(uv_work_t *work, int status);
 
+static struct uvIdleSegment *uvIdleSegmentCreate(struct uv *uv)
+{
+    struct uvIdleSegment *s;
+
+    s = RaftHeapMalloc(sizeof *s);
+    if (s == NULL) {
+        return NULL;
+    }
+
+    memset(s, 0, sizeof *s);
+    s->uv = uv;
+    s->counter = uv->prepare_next_counter;
+    s->work.data = s;
+    s->fd = -1;
+    s->size = uv->block_size * uvSegmentBlocks(uv);
+    sprintf(s->filename, UV__OPEN_TEMPLATE, s->counter);
+
+    return s;
+}
+
 /* Start creating a new segment file. */
 static int uvPrepareStart(struct uv *uv)
 {
@@ -153,19 +173,11 @@ static int uvPrepareStart(struct uv *uv)
     assert(uv->prepare_inflight == NULL);
     assert(uvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
 
-    segment = RaftHeapMalloc(sizeof *segment);
+    segment = uvIdleSegmentCreate(uv);
     if (segment == NULL) {
         rv = RAFT_NOMEM;
         goto err;
     }
-
-    memset(segment, 0, sizeof *segment);
-    segment->uv = uv;
-    segment->counter = uv->prepare_next_counter;
-    segment->work.data = segment;
-    segment->fd = -1;
-    segment->size = uv->block_size * uvSegmentBlocks(uv);
-    sprintf(segment->filename, UV__OPEN_TEMPLATE, segment->counter);
 
     tracef("create open segment %s", segment->filename);
     rv = uv_queue_work(uv->loop, &segment->work, uvPrepareWorkCb,
