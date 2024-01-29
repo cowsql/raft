@@ -1280,7 +1280,8 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  */
 struct raft_io
 {
-    int version; /* 1 or 2 */
+    short version;           /* 1 or 2 */
+    unsigned short capacity; /* Reserved disk capacity */
     void *data;
     void *impl;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];

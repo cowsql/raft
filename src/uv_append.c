@@ -1004,3 +1004,29 @@ void uvAppendClose(struct uv *uv)
         uvAliveSegmentFinalize(segment);
     }
 }
+
+size_t UvAppendCapacity(struct uv *uv)
+{
+    size_t capacity = 0;
+    queue *head;
+
+    QUEUE_FOREACH (head, &uv->append_segments) {
+        struct uvAliveSegment *segment;
+        size_t written;
+        segment = QUEUE_DATA(head, struct uvAliveSegment, queue);
+
+        /* Skip segments that were not assigned a prepared segment yet. */
+        if (segment->counter == 0) {
+            continue;
+        }
+
+        written = segment->written;
+        if (written > uv->segment_size) {
+            written = uv->segment_size;
+        }
+
+        capacity += uv->segment_size - written;
+    }
+
+    return capacity;
+}

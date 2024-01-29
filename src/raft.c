@@ -156,6 +156,7 @@ int raft_init(struct raft *r,
         if (r->legacy.log == NULL) {
             goto err_after_address_alloc;
         }
+        r->capacity_threshold = 4 * 1024; /* 4 megabytes, i.e. 1 open segment */
     }
 #endif
     return 0;

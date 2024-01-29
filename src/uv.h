@@ -315,6 +315,12 @@ int UvPrepare(struct uv *uv,
               struct uvPrepare *req,
               uvPrepareCb cb);
 
+/* Try to allocate open segments at startup. */
+void UvPrepareStart(struct uv *uv);
+
+/* Return the number of ready prepared open segments in the pool. */
+unsigned UvPrepareCount(struct uv *uv);
+
 /* Cancel all pending prepare requests and start removing all unused prepared
  * open segments. If a segment currently being created, wait for it to complete
  * and then remove it immediately. */
@@ -328,6 +334,9 @@ int UvAppend(struct raft_io *io,
              const struct raft_entry entries[],
              unsigned n,
              raft_io_append_cb cb);
+
+/* Return the remaining capacity of segments currently being written. */
+size_t UvAppendCapacity(struct uv *uv);
 
 /* Pause request object and callback. */
 struct UvBarrierReq;

@@ -7,6 +7,7 @@
 #include "uv_os.h"
 
 #define tracef(...) Tracef(uv->tracer, __VA_ARGS__)
+#define trace(TYPE, INFO) Trace(uv->tracer, TYPE, INFO)
 
 /* The happy path for UvPrepare is:
  *
@@ -130,8 +131,7 @@ static void uvPrepareFinishOldestRequest(struct uv *uv)
     req->cb(req, 0);
 }
 
-/* Return the number of ready prepared open segments in the pool. */
-static unsigned uvPrepareCount(struct uv *uv)
+unsigned UvPrepareCount(struct uv *uv)
 {
     queue *head;
     unsigned n;
@@ -171,7 +171,7 @@ static int uvPrepareStart(struct uv *uv)
     int rv;
 
     assert(uv->prepare_inflight == NULL);
-    assert(uvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
+    assert(UvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
 
     segment = uvIdleSegmentCreate(uv);
     if (segment == NULL) {
@@ -209,12 +209,13 @@ static void uvPrepareRetryTimerCb(uv_timer_t *timer)
     struct uv *uv = segment->uv;
     int rv;
 
+    assert(uv->prepare_inflight == segment);
+
     uv->prepare_retry.data = uv;
     tracef("retry creating segment %s", segment->filename);
     rv = uv_queue_work(uv->loop, &segment->work, uvPrepareWorkCb,
                        uvPrepareAfterWorkCb);
     assert(rv == 0);
-    uv->prepare_inflight = segment;
 }
 
 static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
@@ -224,11 +225,10 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
     int rv;
     assert(status == 0);
 
-    uv->prepare_inflight = NULL; /* Reset the creation in-progress marker. */
-
     /* If we are closing, let's discard the segment. All pending requests have
      * already being fired with RAFT_CANCELED. */
     if (uv->closing) {
+        uv->prepare_inflight = NULL;
         assert(QUEUE_IS_EMPTY(&uv->prepare_pool));
         assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
         if (segment->status == 0) {
@@ -251,6 +251,8 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
         return;
     }
 
+    uv->prepare_inflight = NULL; /* Reset the creation in-progress marker. */
+
     assert(segment->fd >= 0);
 
     tracef("completed creation of %s", segment->filename);
@@ -270,7 +272,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
      * be any outstanding prepare requests, since if the request queue was not
      * empty, we would have called uvPrepareFinishOldestRequest() above, thus
      * reducing the pool size and making it smaller than the target size. */
-    if (uvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
+    if (UvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
         assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
         return;
     }
@@ -357,6 +359,8 @@ void UvPrepareStart(struct uv *uv)
             break;
         }
 
+        uv->io->capacity += (unsigned short)(segment->size / 1024);
+
         uv->prepare_next_counter++;
         QUEUE_PUSH(&uv->prepare_pool, &segment->queue);
     }
@@ -382,3 +386,4 @@ void UvPrepareClose(struct uv *uv)
 }
 
 #undef tracef
+#undef trace

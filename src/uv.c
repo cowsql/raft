@@ -145,10 +145,18 @@ static void uvTickTimerCb(uv_timer_t *timer)
     }
 }
 
+static void uvUpdateCapacity(struct uv *uv)
+{
+    size_t bytes = UvPrepareCount(uv) * uv->segment_size;
+    bytes += UvAppendCapacity(uv);
+    uv->io->capacity = (unsigned short)(bytes / 1024);
+}
+
 static void uvPrepareLoopCb(struct uv_prepare_s *prepare)
 {
     struct uv *uv;
     uv = prepare->data;
+    uvUpdateCapacity(uv);
     if (uv->io->data != NULL && uv->io->version != 0) {
         LegacyFireCompletedRequests(uv->io->data);
     }
@@ -158,6 +166,7 @@ static void uvCheckLoopCb(struct uv_check_s *check)
 {
     struct uv *uv;
     uv = check->data;
+    uvUpdateCapacity(uv);
     if (uv->io->data != NULL && uv->io->version != 0) {
         LegacyFireCompletedRequests(uv->io->data);
     }
@@ -314,7 +323,9 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
     }
     if (uv->prepare_retry.data != NULL) {
         if (uv->prepare_retry.data != uv) {
+            assert(uv->prepare_inflight == uv->prepare_retry.data);
             RaftHeapFree(uv->prepare_retry.data);
+            uv->prepare_inflight = NULL;
             uv->prepare_retry.data = uv;
         }
         uv_timer_stop(&uv->prepare_retry);
@@ -798,6 +809,7 @@ int raft_uv_init(struct raft_io *io,
 
     /* Set the raft_io implementation. */
     io->version = 2; /* future-proof'ing */
+    io->capacity = 0;
     io->impl = uv;
     io->init = uvInit;
     io->close = uvClose;

@@ -1063,6 +1063,7 @@ static int legacyHandleEvent(struct raft *r,
 
     event = &(*events)[i];
     event->time = r->io->time(r->io);
+    event->capacity = r->io->capacity;
 
     rv = raft_step(r, event, &update);
     if (rv != 0) {
