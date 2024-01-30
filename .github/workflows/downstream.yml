@@ -241,7 +241,7 @@ jobs:
 
       - name: Run Incus build
         run: |
-          make
+          make CC=gcc
 
       - name: "Run system tests"
         run: |
