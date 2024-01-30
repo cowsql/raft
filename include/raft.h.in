@@ -612,6 +612,7 @@ struct raft; /* Forward declaration. */
         void *requests[2];              /* Completed client requests */      \
         void (*step_cb)(struct raft *); /* Invoked after raft_step() */      \
         unsigned short prev_state;      /* Used to detect lost leadership */ \
+        bool closing;                   /* True when shutting down */        \
         void *pending[2];               /* Pending client requests */        \
         struct raft_change *change;     /* Pending membership change */      \
         raft_index snapshot_index;      /* Last persisted snapshot */        \

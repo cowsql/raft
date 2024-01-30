@@ -146,6 +146,7 @@ int raft_init(struct raft *r,
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
         r->legacy.prev_state = r->state;
+        r->legacy.closing = false;
         QUEUE_INIT(&r->legacy.pending);
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
@@ -210,6 +211,8 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
     finalClose(r);
 #else
     if (r->io != NULL) {
+        assert(!r->legacy.closing);
+        r->legacy.closing = true;
         if (r->transfer != NULL) {
             LegacyLeadershipTransferClose(r);
         }
