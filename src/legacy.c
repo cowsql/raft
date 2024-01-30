@@ -1660,7 +1660,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     int rv;
 
     r->now = r->io->time(r->io);
-    if (r->state == RAFT_UNAVAILABLE) {
+    if (r->legacy.closing) {
         switch (message->type) {
             case RAFT_IO_APPEND_ENTRIES:
                 entryBatchesDestroy(message->append_entries.entries,
