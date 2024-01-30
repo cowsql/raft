@@ -981,7 +981,7 @@ static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
         assert(r->legacy.change == NULL);
     }
 
-    if (raft_state(r) == RAFT_UNAVAILABLE) {
+    if (r->legacy.closing) {
         if (r->transfer != NULL) {
             LegacyLeadershipTransferClose(r);
         }
