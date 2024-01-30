@@ -2034,10 +2034,4 @@ unsigned raft_fixture_n_recv(struct raft_fixture *f, unsigned i, int type)
     return io->n_recv[type];
 }
 
-void raft_fixture_make_unavailable(struct raft_fixture *f, unsigned i)
-{
-    struct raft *r = &f->servers[i]->raft;
-    convertToUnavailable(r);
-}
-
 #undef tracef
