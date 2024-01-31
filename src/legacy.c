@@ -1644,14 +1644,7 @@ static void tickCb(struct raft_io *io)
     event.time = r->io->time(io);
 
     rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
-    }
-
-    return;
-
-err:
-    convertToUnavailable(r);
+    assert(rv == 0); /* TODO: just log warning? */
 }
 
 static void recvCb(struct raft_io *io, struct raft_message *message)
@@ -1692,9 +1685,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
             break;
     }
 
-    if (rv != 0) {
-        convertToUnavailable(r);
-    }
+    assert(rv == 0); /* TODO: just log warning? */
 }
 
 int raft_start(struct raft *r)
