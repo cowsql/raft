@@ -1704,7 +1704,6 @@ int raft_start(struct raft *r)
     int rv;
 
     assert(r != NULL);
-    assert(r->state == RAFT_UNAVAILABLE);
     assert(r->heartbeat_timeout != 0);
     assert(r->heartbeat_timeout < r->election_timeout);
     assert(r->install_snapshot_timeout != 0);

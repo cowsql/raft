@@ -103,7 +103,7 @@ int raft_init(struct raft *r,
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
     r->commit_index = 0;
     r->last_stored = 0;
-    r->state = RAFT_UNAVAILABLE;
+    r->state = RAFT_FOLLOWER;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
@@ -370,7 +370,11 @@ static int stepStart(struct raft *r,
     stepStartEmitMessage(r);
 
     /* By default we start as followers. */
-    convertToFollower(r);
+    assert(r->state == RAFT_FOLLOWER);
+    electionResetTimer(r);
+
+    r->follower_state.current_leader.id = 0;
+    r->follower_state.current_leader.address = NULL;
 
     /* If there's only one voting server, and that is us, it's safe to convert
      * to leader right away. If that is not us, we're either joining the cluster
