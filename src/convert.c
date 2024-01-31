@@ -71,8 +71,7 @@ static void convertClearLeader(struct raft *r)
     }
 }
 
-/* Clear the current state */
-static void convertClear(struct raft *r)
+void convertClear(struct raft *r)
 {
     assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
            r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
