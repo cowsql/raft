@@ -24,21 +24,11 @@ static void convertSetState(struct raft *r, unsigned short new_state)
      * respect to the paper we have an additional "unavailable" state, which is
      * the initial or final state. */
     assert(r->state != new_state);
-    assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
+    assert((r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
            (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
            (r->state == RAFT_CANDIDATE && new_state == RAFT_LEADER) ||
-           (r->state == RAFT_LEADER && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_FOLLOWER && new_state == RAFT_UNAVAILABLE) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_UNAVAILABLE) ||
-           (r->state == RAFT_LEADER && new_state == RAFT_UNAVAILABLE));
+           (r->state == RAFT_LEADER && new_state == RAFT_FOLLOWER));
     r->state = new_state;
-
-    /* XXX: convertToUnavailable() is currently called in raft_close(), outside
-     * raft_step().*/
-    if (r->update == NULL && r->state == RAFT_UNAVAILABLE) {
-        return;
-    }
 
     r->update->flags |= RAFT_UPDATE_STATE;
 }
@@ -73,8 +63,8 @@ static void convertClearLeader(struct raft *r)
 
 void convertClear(struct raft *r)
 {
-    assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
-           r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
+    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE ||
+           r->state == RAFT_LEADER);
     switch (r->state) {
         case RAFT_FOLLOWER:
             convertClearFollower(r);
@@ -233,12 +223,6 @@ int convertToLeader(struct raft *r)
 err:
     assert(rv == RAFT_NOMEM);
     return rv;
-}
-
-void convertToUnavailable(struct raft *r)
-{
-    convertClear(r);
-    convertSetState(r, RAFT_UNAVAILABLE);
 }
 
 #undef infof
