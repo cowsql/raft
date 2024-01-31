@@ -202,9 +202,7 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->update == NULL);
 
-    if (r->state != RAFT_UNAVAILABLE) {
-        convertToUnavailable(r);
-    }
+    convertClear(r);
 
 #if defined(RAFT__LEGACY_no)
     (void)cb;

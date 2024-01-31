@@ -953,7 +953,13 @@ static void legacyPersistedEntriesFailure(struct raft *r,
 void LegacyLeadershipTransferClose(struct raft *r)
 {
     struct raft_transfer *req = r->transfer;
-    assert(raft_transferee(r) == 0);
+
+    /* Only assert raft_trasferee() if we're not closing, because the result is
+     * effectively undefined in that case. */
+    if (!r->legacy.closing) {
+        assert(raft_transferee(r) == 0);
+    }
+
     r->transfer = NULL;
     if (req->cb != NULL) {
         req->type = RAFT_TRANSFER_;
