@@ -794,9 +794,6 @@ const char *raft_state_name(int state)
 {
     const char *name;
     switch (state) {
-        case RAFT_UNAVAILABLE:
-            name = "unavailable";
-            break;
         case RAFT_FOLLOWER:
             name = "follower";
             break;

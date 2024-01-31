@@ -235,13 +235,8 @@ int Tick(struct raft *r)
 {
     int rv = -1;
 
-    assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
-           r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
-
-    /* If we are not available, let's do nothing. */
-    if (r->state == RAFT_UNAVAILABLE) {
-        return 0;
-    }
+    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE ||
+           r->state == RAFT_LEADER);
 
     switch (r->state) {
         case RAFT_FOLLOWER:
