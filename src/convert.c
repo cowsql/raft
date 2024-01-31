@@ -20,16 +20,7 @@
  * is valid. */
 static void convertSetState(struct raft *r, unsigned short new_state)
 {
-    /* Check that the transition is legal, see Figure 3.3. Note that with
-     * respect to the paper we have an additional "unavailable" state, which is
-     * the initial or final state. */
-    assert(r->state != new_state);
-    assert((r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_LEADER) ||
-           (r->state == RAFT_LEADER && new_state == RAFT_FOLLOWER));
     r->state = new_state;
-
     r->update->flags |= RAFT_UPDATE_STATE;
 }
 
@@ -80,7 +71,15 @@ void convertClear(struct raft *r)
 
 void convertToFollower(struct raft *r)
 {
-    convertClear(r);
+    assert(r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
+    switch (r->state) {
+        case RAFT_CANDIDATE:
+            convertClearCandidate(r);
+            break;
+        case RAFT_LEADER:
+            convertClearLeader(r);
+            break;
+    }
     convertSetState(r, RAFT_FOLLOWER);
 
     /* Reset election timer. */
@@ -95,6 +94,8 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     const struct raft_server *server;
     size_t n_voters = configurationVoterCount(&r->configuration);
 
+    assert(r->state == RAFT_FOLLOWER);
+
     (void)server; /* Only used for assertions. */
 
     /* Check that we're a voter in the current configuration. */
@@ -102,7 +103,7 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     assert(server != NULL);
     assert(server->role == RAFT_VOTER);
 
-    convertClear(r);
+    convertClearFollower(r);
     convertSetState(r, RAFT_CANDIDATE);
 
     /* Allocate the votes array. */
@@ -143,7 +144,9 @@ int convertToLeader(struct raft *r)
     size_t n_voters;
     int rv;
 
-    convertClear(r);
+    assert(r->state == RAFT_CANDIDATE);
+
+    convertClearCandidate(r);
     convertSetState(r, RAFT_LEADER);
 
     /* Reset timers */
