@@ -1180,6 +1180,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     n_events = 1;
 
     for (i = 0; i < n_events; i++) {
+        if (r->legacy.closing) {
+            break;
+        }
         rv = legacyHandleEvent(r, &entry, &events, &n_events, i);
         if (rv != 0) {
             break;
