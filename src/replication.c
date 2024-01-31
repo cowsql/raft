@@ -843,7 +843,9 @@ int replicationAppend(struct raft *r,
      */
     if (args->leader_commit > r->commit_index &&
         r->last_stored >= r->commit_index) {
-        r->commit_index = min(args->leader_commit, r->last_stored);
+        raft_index last_index =
+            min(r->last_stored, args->prev_log_index + args->n_entries);
+        r->commit_index = min(args->leader_commit, last_index);
         r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
