@@ -181,6 +181,43 @@ TEST(trail, Truncate, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* Truncate a trail that was wrapped. */
+TEST(trail, TruncateWrapped, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+
+    TrailAppend(&f->trail, 1); /* index 1, term 1 */
+    TrailAppend(&f->trail, 1); /* index 2, term 1 */
+    TrailAppend(&f->trail, 2); /* index 3, term 2 */
+    TrailAppend(&f->trail, 3); /* index 4, term 3 */
+    TrailAppend(&f->trail, 3); /* index 5, term 3 */
+    TrailAppend(&f->trail, 4); /* index 6, term 4 */
+    TrailAppend(&f->trail, 4); /* index 7, term 4 */
+    TrailAppend(&f->trail, 5); /* index 8, term 5 */
+    TrailAppend(&f->trail, 5); /* index 9, term 5 */
+
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 9);
+
+    TrailSnapshot(&f->trail, 7 /* snapshot index */, 0 /* trailing */);
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 2);
+
+    TrailAppend(&f->trail, 6); /* index 10, term 6 */
+    TrailAppend(&f->trail, 6); /* index 11, term 6 */
+    TrailAppend(&f->trail, 7); /* index 12, term 7 */
+    TrailAppend(&f->trail, 8); /* index 13, term 8 */
+    TrailAppend(&f->trail, 8); /* index 14, term 8 */
+    TrailAppend(&f->trail, 8); /* index 15, term 8 */
+    TrailAppend(&f->trail, 9); /* index 16, term 9 */
+
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 9);
+
+    TrailTruncate(&f->trail, 8);
+
+    munit_assert_uint(TrailNumEntries(&f->trail), ==, 0);
+
+    return MUNIT_OK;
+}
+
 /* Remove a prefix of the log. */
 TEST(trail, Snapshot, setUp, tearDown, 0, NULL)
 {
