@@ -32,14 +32,14 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->features = 0;
 }
 
-int progressBuildArray(struct raft *r)
+struct raft_progress *progressBuildArray(struct raft *r)
 {
     struct raft_progress *progress;
     unsigned i;
     raft_index last_index = TrailLastIndex(&r->trail);
     progress = raft_malloc(r->configuration.n * sizeof *progress);
     if (progress == NULL) {
-        return RAFT_NOMEM;
+        return NULL;
     }
     for (i = 0; i < r->configuration.n; i++) {
         initProgress(&progress[i], last_index);
@@ -47,8 +47,7 @@ int progressBuildArray(struct raft *r)
             progress[i].match_index = r->last_stored;
         }
     }
-    r->leader_state.progress = progress;
-    return 0;
+    return progress;
 }
 
 int progressRebuildArray(struct raft *r,

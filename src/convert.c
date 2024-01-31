@@ -141,24 +141,27 @@ static bool isDqliteUnitTest(void)
 
 int convertToLeader(struct raft *r)
 {
+    struct raft_progress *progress;
     size_t n_voters;
     int rv;
 
     assert(r->state == RAFT_CANDIDATE);
 
+    /* Allocate and initialize the progress array. */
+    progress = progressBuildArray(r);
+    if (progress == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
     convertClearCandidate(r);
     convertSetState(r, RAFT_LEADER);
+
+    r->leader_state.progress = progress;
 
     /* Reset timers */
     r->election_timer_start = r->now;
     r->update->flags |= RAFT_UPDATE_TIMEOUT;
-
-    /* Allocate and initialize the progress array. */
-    rv = progressBuildArray(r);
-    if (rv != 0) {
-        assert(rv == RAFT_NOMEM);
-        goto err;
-    }
 
     /* Reset promotion state. */
     r->leader_state.promotee_id = 0;

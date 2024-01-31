@@ -36,12 +36,9 @@ struct raft_progress
  * track followers. The match index will be set to zero, and the next index to
  * the current last index plus 1.
  *
- * Errors:
- *
- * RAFT_NOMEM
- *     Memory for the progress array could not be allocated.
+ * Return NULL if memory for the progress array could not be allocated.
  */
-int progressBuildArray(struct raft *r);
+struct raft_progress *progressBuildArray(struct raft *r);
 
 /* Re-build the progress array against a new configuration.
  *
