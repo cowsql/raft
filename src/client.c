@@ -1,8 +1,10 @@
 #include "../include/raft.h"
+
 #include "assert.h"
 #include "configuration.h"
 #include "err.h"
 #include "membership.h"
+#include "message.h"
 #include "progress.h"
 #include "queue.h"
 #include "replication.h"
@@ -53,6 +55,47 @@ err:
     return rv;
 }
 
+/* Return true if the capacity of the majority of voter servers is within the
+ * configured threshold. */
+static bool clientCapacityIsWithinThreshold(const struct raft *r)
+{
+    unsigned reporting = 0; /* N. of voters reporting capacity. */
+    unsigned healthy = 0;   /* N. of voters with capacity above threshold. */
+    unsigned i;
+
+    /* If a capacity threshold is not set, don't perform any check. */
+    if (r->capacity_threshold == 0) {
+        return true;
+    }
+
+    for (i = 0; i < r->configuration.n; i++) {
+        struct raft_server *server = &r->configuration.servers[i];
+        unsigned features = progressGetFeatures(r, i);
+
+        if (server->role != RAFT_VOTER) {
+            continue;
+        }
+
+        if (!(features & MESSAGE__FEATURE_CAPACITY)) {
+            continue;
+        }
+
+        reporting += 1;
+
+        if (progressGetCapacity(r, i) >= r->capacity_threshold) {
+            healthy += 1;
+        }
+    }
+
+    /* If not enough nodes are actually reporting capacity, don't draw any bad
+     * conclusion. */
+    if (reporting <= configurationVoterCount(&r->configuration) / 2) {
+        return true;
+    }
+
+    return healthy > configurationVoterCount(&r->configuration) / 2;
+}
+
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
     raft_index index;
@@ -66,6 +109,12 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 
     if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
+        ErrMsgFromCode(r->errmsg, rv);
+        goto err;
+    }
+
+    if (!clientCapacityIsWithinThreshold(r)) {
+        rv = RAFT_NOSPACE;
         ErrMsgFromCode(r->errmsg, rv);
         goto err;
     }
@@ -131,7 +180,8 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 err_after_trail_append:
     TrailTruncate(&r->trail, index);
 err:
-    assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM);
+    assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM ||
+           rv == RAFT_NOSPACE);
     return rv;
 }
 

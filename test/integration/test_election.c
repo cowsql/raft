@@ -2,12 +2,6 @@
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
 
-/******************************************************************************
- *
- * Fixture
- *
- *****************************************************************************/
-
 struct fixture
 {
     FIXTURE_CLUSTER;
@@ -26,26 +20,6 @@ static void tearDown(void *data)
     TEAR_DOWN_CLUSTER();
     free(f);
 }
-
-/******************************************************************************
- *
- * Assertions
- *
- *****************************************************************************/
-
-/* Assert that the I'th server is in candidate state. */
-#define ASSERT_CANDIDATE(I) \
-    munit_assert_int(CLUSTER_STATE(I), ==, RAFT_CANDIDATE)
-
-/* Assert that the I'th server is unavailable. */
-#define ASSERT_UNAVAILABLE(I) \
-    munit_assert_int(CLUSTER_STATE(I), ==, RAFT_UNAVAILABLE)
-
-/******************************************************************************
- *
- * Successful election round
- *
- *****************************************************************************/
 
 SUITE(election)
 

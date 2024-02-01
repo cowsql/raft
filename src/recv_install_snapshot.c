@@ -26,7 +26,7 @@ int recvInstallSnapshot(struct raft *r,
     result->rejected = args->last_index;
     result->last_log_index = TrailLastIndex(&r->trail);
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
-    result->features = 0;
+    result->features = MESSAGE__FEATURE_CAPACITY;
 
     recvEnsureMatchingTerms(r, args->term, &match);
 

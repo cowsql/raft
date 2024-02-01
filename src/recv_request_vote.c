@@ -116,7 +116,7 @@ reply:
         result->term = args->term;
     }
 
-    result->features = 0;
+    result->features = MESSAGE__FEATURE_CAPACITY;
     result->capacity = r->capacity;
 
     message.type = RAFT_IO_REQUEST_VOTE_RESULT;

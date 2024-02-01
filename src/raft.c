@@ -13,6 +13,7 @@
 #include "err.h"
 #include "heap.h"
 #include "membership.h"
+#include "message.h"
 #include "progress.h"
 #include "queue.h"
 #include "random.h"
@@ -102,7 +103,7 @@ int raft_init(struct raft *r,
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
     r->commit_index = 0;
     r->last_stored = 0;
-    r->state = RAFT_UNAVAILABLE;
+    r->state = RAFT_FOLLOWER;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.taking = false;
@@ -117,6 +118,7 @@ int raft_init(struct raft *r,
     r->max_inflight_entries = DEFAULT_MAX_INFLIGHT_ENTRIES;
     r->update = NULL;
     r->capacity = 0;
+    r->capacity_threshold = 0;
 #if defined(RAFT__LEGACY_no)
     (void)io;
     (void)fsm;
@@ -144,6 +146,7 @@ int raft_init(struct raft *r,
         r->now = r->io->time(r->io);
         raft_seed(r, (unsigned)r->io->random(r->io, 0, INT_MAX));
         r->legacy.prev_state = r->state;
+        r->legacy.closing = false;
         QUEUE_INIT(&r->legacy.pending);
         QUEUE_INIT(&r->legacy.requests);
         r->legacy.step_cb = NULL;
@@ -154,6 +157,7 @@ int raft_init(struct raft *r,
         if (r->legacy.log == NULL) {
             goto err_after_address_alloc;
         }
+        r->capacity_threshold = 4 * 1024; /* 4 megabytes, i.e. 1 open segment */
     }
 #endif
     return 0;
@@ -198,17 +202,20 @@ void raft_close(struct raft *r, void (*cb)(struct raft *r))
 {
     assert(r->update == NULL);
 
+    convertClear(r);
+
 #if defined(RAFT__LEGACY_no)
     (void)cb;
     finalClose(r);
 #else
     if (r->io != NULL) {
-        struct raft_event event;
-        assert(r->close_cb == NULL);
-        event.time = r->io->time(r->io);
-        event.type = RAFT_STOP;
-
-        LegacyForwardToRaftIo(r, &event);
+        assert(!r->legacy.closing);
+        r->legacy.closing = true;
+        if (r->transfer != NULL) {
+            LegacyLeadershipTransferClose(r);
+        }
+        LegacyFailPendingRequests(r);
+        LegacyFireCompletedRequests(r);
         r->close_cb = cb;
 
         r->io->close(r->io, ioCloseCb);
@@ -361,7 +368,11 @@ static int stepStart(struct raft *r,
     stepStartEmitMessage(r);
 
     /* By default we start as followers. */
-    convertToFollower(r);
+    assert(r->state == RAFT_FOLLOWER);
+    electionResetTimer(r);
+
+    r->follower_state.current_leader.id = 0;
+    r->follower_state.current_leader.address = NULL;
 
     /* If there's only one voting server, and that is us, it's safe to convert
      * to leader right away. If that is not us, we're either joining the cluster
@@ -479,18 +490,22 @@ int raft_step(struct raft *r,
     r->update->messages.n = 0;
 
     r->now = event->time;
+    r->capacity = event->capacity;
+
+    /* Possibly update this server's capacity in the progress array. */
+    if (r->state == RAFT_LEADER) {
+        unsigned i = configurationIndexOf(&r->configuration, r->id);
+        if (i < r->configuration.n) {
+            progressSetFeatures(r, i, MESSAGE__FEATURE_CAPACITY);
+            progressSetCapacity(r, i, r->capacity);
+        }
+    }
 
     switch (event->type) {
         case RAFT_START:
             rv = stepStart(r, event->start.term, event->start.voted_for,
                            event->start.metadata, event->start.start_index,
                            event->start.entries, event->start.n_entries);
-            break;
-        case RAFT_STOP:
-            if (r->state != RAFT_UNAVAILABLE) {
-                convertToUnavailable(r);
-            }
-            rv = 0;
             break;
         case RAFT_PERSISTED_ENTRIES:
             rv = stepPersistedEntries(r, event->persisted_entries.index,
@@ -678,6 +693,11 @@ void raft_set_install_snapshot_timeout(struct raft *r, const unsigned msecs)
     r->install_snapshot_timeout = msecs;
 }
 
+void raft_set_pre_vote(struct raft *r, bool enabled)
+{
+    r->pre_vote = enabled;
+}
+
 void raft_set_snapshot_threshold(struct raft *r, unsigned n)
 {
     r->snapshot.threshold = n;
@@ -703,9 +723,9 @@ void raft_set_max_inflight_entries(struct raft *r, unsigned n)
     r->max_inflight_entries = n;
 }
 
-void raft_set_pre_vote(struct raft *r, bool enabled)
+void raft_set_capacity_threshold(struct raft *r, unsigned short min)
 {
-    r->pre_vote = enabled;
+    r->capacity_threshold = min;
 }
 
 const char *raft_errmsg(struct raft *r)
@@ -774,9 +794,6 @@ const char *raft_state_name(int state)
 {
     const char *name;
     switch (state) {
-        case RAFT_UNAVAILABLE:
-            name = "unavailable";
-            break;
         case RAFT_FOLLOWER:
             name = "follower";
             break;

@@ -448,7 +448,6 @@ struct raft_snapshot_metadata
  */
 enum {
     RAFT_START = 1, /* Initial event starting the engine with persisted data. */
-    RAFT_STOP,
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
     RAFT_RECEIVE,            /* A message has been received. */
@@ -468,7 +467,9 @@ struct raft_event
 {
     raft_time time;
     unsigned char type;
-    unsigned char reserved[7];
+    unsigned char unused;
+    unsigned short capacity;
+    unsigned char reserved[4];
     union {
         struct
         {
@@ -611,6 +612,7 @@ struct raft; /* Forward declaration. */
         void *requests[2];              /* Completed client requests */      \
         void (*step_cb)(struct raft *); /* Invoked after raft_step() */      \
         unsigned short prev_state;      /* Used to detect lost leadership */ \
+        bool closing;                   /* True when shutting down */        \
         void *pending[2];               /* Pending client requests */        \
         struct raft_change *change;     /* Pending membership change */      \
         raft_index snapshot_index;      /* Last persisted snapshot */        \
@@ -731,7 +733,11 @@ struct raft
     raft_id voted_for;      /* Candidate that received vote in current term. */
     union {
         struct raft_log *unused; /* XXX: Legacy field. */
-        unsigned short capacity; /* Guaranteed disk capacity on this server */
+        struct
+        {
+            unsigned short capacity; /* Guaranteed disk capacity */
+            unsigned short capacity_threshold;
+        };
     };
 
     /*
@@ -861,9 +867,14 @@ struct raft
         struct
         {
             unsigned randomized_election_timeout; /* Timer expiration. */
-            bool *votes;                          /* Vote results. */
-            bool disrupt_leader;                  /* For leadership transfer */
-            bool in_pre_vote;                     /* True in pre-vote phase. */
+            struct
+            {
+                bool grant;              /* True if the server voted for us */
+                unsigned short features; /* What the server is capable of. */
+                unsigned short capacity; /* Guaranteed capacity. */
+            } *votes;                    /* Vote results. */
+            bool disrupt_leader;         /* For leadership transfer */
+            bool in_pre_vote;            /* True in pre-vote phase. */
 #if !defined(RAFT__LEGACY_no)
             uint64_t reserved[8]; /* Future use */
 #endif
@@ -1070,15 +1081,15 @@ RAFT_API void raft_set_heartbeat_timeout(struct raft *r, unsigned msecs);
 RAFT_API void raft_set_install_snapshot_timeout(struct raft *r, unsigned msecs);
 
 /**
+ * Enable or disable pre-vote support. Pre-vote is turned off by default.
+ */
+RAFT_API void raft_set_pre_vote(struct raft *r, bool enabled);
+
+/**
  * Number of outstanding log entries before starting a new snapshot. The default
  * is 1024.
  */
 RAFT_API void raft_set_snapshot_threshold(struct raft *r, unsigned n);
-
-/**
- * Enable or disable pre-vote support. Pre-vote is turned off by default.
- */
-RAFT_API void raft_set_pre_vote(struct raft *r, bool enabled);
 
 /**
  * Number of outstanding log entries to keep in the log after a snapshot has
@@ -1110,6 +1121,18 @@ RAFT_API void raft_set_max_catch_up_round_duration(struct raft *r,
  * been acknowledged yet.
  */
 RAFT_API void raft_set_max_inflight_entries(struct raft *r, unsigned n);
+
+/**
+ * If a non-zero capacity threshold is set using this function, then the
+ * #capacity field of struct raft_event must be always set when calling
+ * raft_step(), and its value should contain the current amount of disk space
+ * that the server is guaranteed to have and can use when storing new entries.
+ *
+ * If the leader notices that a majority of voting server have their capacity
+ * below #min, then it will refuse to accept new entries. Calling raft_step()
+ * with a #RAFT_SUBMIT event will return #RAFT_NOSPACE.
+ */
+RAFT_API void raft_set_capacity_threshold(struct raft *r, unsigned short min);
 
 /**
  * Return a human-readable description of the last error occurred.
@@ -1263,7 +1286,8 @@ typedef void (*raft_io_close_cb)(struct raft_io *io);
  */
 struct raft_io
 {
-    int version; /* 1 or 2 */
+    short version;           /* 1 or 2 */
+    unsigned short capacity; /* Reserved disk capacity */
     void *data;
     void *impl;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];

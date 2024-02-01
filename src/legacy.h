@@ -21,4 +21,6 @@ void LegacyLeadershipTransferInit(struct raft *r,
                                   raft_id id,
                                   raft_transfer_cb cb);
 
+void LegacyLeadershipTransferClose(struct raft *r);
+
 #endif /* RAFT_LEGACY_H_ */

@@ -23,6 +23,9 @@
 /* Enough to hold a segment filename (either open or closed) */
 #define UV__SEGMENT_FILENAME_BUF_SIZE 34
 
+/* Retry failed segment creation every 5 seconds by default. */
+#define UV__SEGMENT_RETRY_RATE 1000 * 5
+
 /* Template string for snapshot filenames: snapshot term, snapshot index,
  * creation timestamp (milliseconds since epoch). */
 #define UV__SNAPSHOT_TEMPLATE "snapshot-%llu-%llu-%llu"
@@ -66,6 +69,7 @@ struct uv
     bool direct_io;                      /* Whether direct I/O is supported */
     bool async_io;                       /* Whether async I/O is supported */
     size_t segment_size;                 /* Initial size of open segments. */
+    unsigned segment_retry;              /* Segment creation retry rate */
     size_t block_size;                   /* Block size of the data dir */
     queue clients;                       /* Outbound connections */
     queue servers;                       /* Inbound connections */
@@ -73,6 +77,7 @@ struct uv
     void *prepare_inflight;              /* Segment being prepared */
     queue prepare_reqs;                  /* Pending prepare requests. */
     queue prepare_pool;                  /* Prepared open segments */
+    struct uv_timer_s prepare_retry;     /* Timer prepare retries */
     uvCounter prepare_next_counter;      /* Counter of next open segment */
     raft_index append_next_index;        /* Index of next entry to append */
     queue append_segments;               /* Open segments in use. */
@@ -310,6 +315,12 @@ int UvPrepare(struct uv *uv,
               struct uvPrepare *req,
               uvPrepareCb cb);
 
+/* Try to allocate open segments at startup. */
+void UvPrepareStart(struct uv *uv);
+
+/* Return the number of ready prepared open segments in the pool. */
+unsigned UvPrepareCount(struct uv *uv);
+
 /* Cancel all pending prepare requests and start removing all unused prepared
  * open segments. If a segment currently being created, wait for it to complete
  * and then remove it immediately. */
@@ -323,6 +334,9 @@ int UvAppend(struct raft_io *io,
              const struct raft_entry entries[],
              unsigned n,
              raft_io_append_cb cb);
+
+/* Return the remaining capacity of segments currently being written. */
+size_t UvAppendCapacity(struct uv *uv);
 
 /* Pause request object and callback. */
 struct UvBarrierReq;

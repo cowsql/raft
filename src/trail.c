@@ -302,8 +302,11 @@ void TrailTruncate(struct raft_trail *t, const raft_index index)
         if (last - 1 == t->records[j].index) {
             t->records[i].index = 0;
             t->records[i].term = 0;
-            t->back -= 1;
-            t->back = t->back % t->size;
+            if (t->back == 0) {
+                t->back = t->size - 1;
+            } else {
+                t->back -= 1;
+            }
             continue;
         }
 

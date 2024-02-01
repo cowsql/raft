@@ -20,18 +20,6 @@
  * is valid. */
 static void convertSetState(struct raft *r, unsigned short new_state)
 {
-    /* Check that the transition is legal, see Figure 3.3. Note that with
-     * respect to the paper we have an additional "unavailable" state, which is
-     * the initial or final state. */
-    assert(r->state != new_state);
-    assert((r->state == RAFT_UNAVAILABLE && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_FOLLOWER && new_state == RAFT_CANDIDATE) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_LEADER) ||
-           (r->state == RAFT_LEADER && new_state == RAFT_FOLLOWER) ||
-           (r->state == RAFT_FOLLOWER && new_state == RAFT_UNAVAILABLE) ||
-           (r->state == RAFT_CANDIDATE && new_state == RAFT_UNAVAILABLE) ||
-           (r->state == RAFT_LEADER && new_state == RAFT_UNAVAILABLE));
     r->state = new_state;
     r->update->flags |= RAFT_UPDATE_STATE;
 }
@@ -64,11 +52,10 @@ static void convertClearLeader(struct raft *r)
     }
 }
 
-/* Clear the current state */
-static void convertClear(struct raft *r)
+void convertClear(struct raft *r)
 {
-    assert(r->state == RAFT_UNAVAILABLE || r->state == RAFT_FOLLOWER ||
-           r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
+    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_CANDIDATE ||
+           r->state == RAFT_LEADER);
     switch (r->state) {
         case RAFT_FOLLOWER:
             convertClearFollower(r);
@@ -84,7 +71,15 @@ static void convertClear(struct raft *r)
 
 void convertToFollower(struct raft *r)
 {
-    convertClear(r);
+    assert(r->state == RAFT_CANDIDATE || r->state == RAFT_LEADER);
+    switch (r->state) {
+        case RAFT_CANDIDATE:
+            convertClearCandidate(r);
+            break;
+        case RAFT_LEADER:
+            convertClearLeader(r);
+            break;
+    }
     convertSetState(r, RAFT_FOLLOWER);
 
     /* Reset election timer. */
@@ -99,6 +94,8 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     const struct raft_server *server;
     size_t n_voters = configurationVoterCount(&r->configuration);
 
+    assert(r->state == RAFT_FOLLOWER);
+
     (void)server; /* Only used for assertions. */
 
     /* Check that we're a voter in the current configuration. */
@@ -106,11 +103,12 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     assert(server != NULL);
     assert(server->role == RAFT_VOTER);
 
-    convertClear(r);
+    convertClearFollower(r);
     convertSetState(r, RAFT_CANDIDATE);
 
     /* Allocate the votes array. */
-    r->candidate_state.votes = raft_malloc(n_voters * sizeof(bool));
+    r->candidate_state.votes =
+        raft_calloc(n_voters, sizeof *r->candidate_state.votes);
     if (r->candidate_state.votes == NULL) {
         return RAFT_NOMEM;
     }
@@ -144,22 +142,39 @@ static bool isDqliteUnitTest(void)
 
 int convertToLeader(struct raft *r)
 {
+    struct raft_progress *progress;
     size_t n_voters;
+    unsigned i;
     int rv;
 
-    convertClear(r);
+    assert(r->state == RAFT_CANDIDATE);
+
+    /* Allocate and initialize the progress array. */
+    progress = progressBuildArray(r);
+    if (progress == NULL) {
+        rv = RAFT_NOMEM;
+        goto err;
+    }
+
+    n_voters = configurationVoterCount(&r->configuration);
+    assert(n_voters > 0);
+
+    /* Copy features and capacity information. */
+    for (i = 0; i < n_voters; i++) {
+        unsigned j;
+        j = configurationActualIndexOfVoter(&r->configuration, i);
+        progress[j].features = r->candidate_state.votes[i].features;
+        progress[j].capacity = r->candidate_state.votes[i].capacity;
+    }
+
+    convertClearCandidate(r);
     convertSetState(r, RAFT_LEADER);
+
+    r->leader_state.progress = progress;
 
     /* Reset timers */
     r->election_timer_start = r->now;
     r->update->flags |= RAFT_UPDATE_TIMEOUT;
-
-    /* Allocate and initialize the progress array. */
-    rv = progressBuildArray(r);
-    if (rv != 0) {
-        assert(rv == RAFT_NOMEM);
-        goto err;
-    }
 
     /* Reset promotion state. */
     r->leader_state.promotee_id = 0;
@@ -170,9 +185,6 @@ int convertToLeader(struct raft *r)
     /* Reset leadership transfer. */
     r->leader_state.transferee = 0;
     r->leader_state.transferring = false;
-
-    n_voters = configurationVoterCount(&r->configuration);
-    assert(n_voters > 0);
 
     /* If there is only one voter, by definition all entries until the
      * last_stored can be considered committed (and the voter must be us, since
@@ -227,12 +239,6 @@ int convertToLeader(struct raft *r)
 err:
     assert(rv == RAFT_NOMEM);
     return rv;
-}
-
-void convertToUnavailable(struct raft *r)
-{
-    convertClear(r);
-    convertSetState(r, RAFT_UNAVAILABLE);
 }
 
 #undef infof

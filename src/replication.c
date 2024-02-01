@@ -457,6 +457,7 @@ int replicationUpdate(struct raft *r,
     progressUpdateLastRecv(r, i);
 
     progressSetFeatures(r, i, result->features);
+    progressSetCapacity(r, i, result->capacity);
 
     /* If the RPC failed because of a log mismatch, retry.
      *
@@ -614,7 +615,8 @@ static int followerPersistEntriesDone(struct raft *r,
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
-    result.features = 0;
+    result.features = MESSAGE__FEATURE_CAPACITY;
+
     if (status != 0) {
         result.rejected = first_index;
         goto respond;
@@ -841,7 +843,9 @@ int replicationAppend(struct raft *r,
      */
     if (args->leader_commit > r->commit_index &&
         r->last_stored >= r->commit_index) {
-        r->commit_index = min(args->leader_commit, r->last_stored);
+        raft_index last_index =
+            min(r->last_stored, args->prev_log_index + args->n_entries);
+        r->commit_index = min(args->leader_commit, last_index);
         r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
@@ -906,19 +910,14 @@ int replicationPersistSnapshotDone(struct raft *r,
     (void)chunk;
 
     /* We avoid converting to candidate state while installing a snapshot. */
-    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_UNAVAILABLE);
+    assert(r->state == RAFT_FOLLOWER);
 
     r->snapshot.persisting = false;
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
-    result.features = 0;
+    result.features = MESSAGE__FEATURE_CAPACITY;
     result.rejected = 0;
-
-    /* If we are shutting down, let's discard the result. */
-    if (r->state == RAFT_UNAVAILABLE) {
-        goto discard;
-    }
 
     if (status != 0) {
         infof("failed to persist snapshot %llu^%llu: %s", metadata->index,

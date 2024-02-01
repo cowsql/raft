@@ -451,20 +451,24 @@ TEST(append, cancel, setUp, tearDownDeps, 0, NULL)
     return MUNIT_OK;
 }
 
-/* The creation of the current open segment fails because there's no space. */
-TEST(append, noSpaceUponPrepareCurrent, setUp, tearDown, 0, DirTmpfsParams)
+/* If creation of the current open segment fails because there's no space, it
+ * will be retried at regular intervals. */
+TEST(append, noSpaceUponPrepareCurrent, setUp, tearDownDeps, 0, DirTmpfsParams)
 {
     struct fixture *f = data;
     SKIP_IF_NO_FIXTURE;
     raft_uv_set_segment_size(&f->io, SEGMENT_BLOCK_SIZE * 32768);
-    APPEND_FAILURE(
-        1, 64, RAFT_NOSPACE,
-        "create segment open-1: not enough space to allocate 134217728 bytes");
+    raft_uv_set_segment_retry(&f->io, 10);
+    APPEND_SUBMIT(0, 1, 64);
+    LOOP_RUN(5);
+    APPEND_EXPECT(0, RAFT_CANCELED);
+    TEAR_DOWN_UV;
     return MUNIT_OK;
 }
 
-/* The creation of a spare open segment fails because there's no space. */
-TEST(append, noSpaceUponPrepareSpare, setUp, tearDown, 0, DirTmpfsParams)
+/* If creation of a spare open segment fails because there's no space, it
+ * will be retried at regular intervals. */
+TEST(append, noSpaceUponPrepareSpare, setUp, tearDownDeps, 0, DirTmpfsParams)
 {
     struct fixture *f = data;
     SKIP_IF_NO_FIXTURE;
@@ -473,11 +477,13 @@ TEST(append, noSpaceUponPrepareSpare, setUp, tearDown, 0, DirTmpfsParams)
     return MUNIT_SKIP;
 #endif
     raft_uv_set_segment_size(&f->io, SEGMENT_BLOCK_SIZE * 2);
+    raft_uv_set_segment_retry(&f->io, 10);
     DirFill(f->dir, SEGMENT_BLOCK_SIZE * 3);
     APPEND(1, SEGMENT_BLOCK_SIZE);
     APPEND_SUBMIT(0, 1, SEGMENT_BLOCK_SIZE);
-    APPEND_EXPECT(0, RAFT_NOSPACE);
-    APPEND_WAIT(0);
+    LOOP_RUN(5);
+    APPEND_EXPECT(0, RAFT_CANCELED);
+    TEAR_DOWN_UV;
     return MUNIT_OK;
 }
 
@@ -501,7 +507,7 @@ TEST(append, noSpaceUponWrite, setUp, tearDownDeps, 0, DirTmpfsParams)
     return MUNIT_OK;
 }
 
-/* A few requests fail because not enough disk space is available. Eventually
+/* A request gets delayed because not enough disk space is available. Eventually
  * the space is released and the request succeeds. */
 TEST(append, noSpaceResolved, setUp, tearDownDeps, 0, DirTmpfsParams)
 {
@@ -513,15 +519,10 @@ TEST(append, noSpaceResolved, setUp, tearDownDeps, 0, DirTmpfsParams)
     return MUNIT_SKIP;
 #endif
     DirFill(f->dir, SEGMENT_BLOCK_SIZE);
-    APPEND_FAILURE(
-        1, 64, RAFT_NOSPACE,
-        "create segment open-1: not enough space to allocate 16384 bytes");
-    APPEND_FAILURE(
-        1, 64, RAFT_NOSPACE,
-        "create segment open-2: not enough space to allocate 16384 bytes");
+    APPEND_SUBMIT(0, 1, 64);
+    LOOP_RUN(5);
     DirRemoveFile(f->dir, ".fill");
-    f->count = 0; /* Reset the data counter */
-    APPEND(1, 64);
+    APPEND_WAIT(0);
     ASSERT_ENTRIES(1, 64);
     return MUNIT_OK;
 }

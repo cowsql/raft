@@ -12,7 +12,6 @@ int raft_state(struct raft *r)
 void raft_leader(struct raft *r, raft_id *id, const char **address)
 {
     switch (r->state) {
-        case RAFT_UNAVAILABLE:
         case RAFT_CANDIDATE:
             *id = 0;
             *address = NULL;

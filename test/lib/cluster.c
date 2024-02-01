@@ -9,6 +9,7 @@
 #define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
 #define DEFAULT_DISK_LATENCY 10
+#define DEFAULT_DISK_SIZE 256 /* In bytes */
 
 /* Maximum number of log entries. */
 #define MAX_LOG_ENTRIES 15
@@ -38,6 +39,7 @@ static void diskInit(struct test_disk *d)
     d->start_index = 1;
     d->entries = NULL;
     d->n_entries = 0;
+    d->size = DEFAULT_DISK_SIZE;
 }
 
 /* Release all memory used by the disk snapshot, if present. */
@@ -76,10 +78,38 @@ static void diskSetVote(struct test_disk *d, raft_id vote)
     d->voted_for = vote;
 }
 
+/* Return the remaining disk capacity. */
+static unsigned short diskCapacity(struct test_disk *d)
+{
+    unsigned short capacity = d->size;
+    unsigned i;
+
+    if (d->snapshot != NULL) {
+        munit_assert_ullong(d->snapshot->data.len, >, 0);
+        munit_assert_ullong(capacity, >=, d->snapshot->data.len);
+        capacity -= d->snapshot->data.len;
+    }
+
+    for (i = 0; i < d->n_entries; i++) {
+        struct raft_entry *entry = &d->entries[i];
+        munit_assert_ullong(entry->buf.len, >, 0);
+        munit_assert_ullong(capacity, >=, entry->buf.len);
+        capacity -= entry->buf.len;
+    }
+
+    return capacity;
+}
+
 /* Set the persisted snapshot. */
 static void diskSetSnapshot(struct test_disk *d, struct test_snapshot *snapshot)
 {
     diskDestroySnapshotIfPresent(d);
+
+    munit_assert_ptr_not_null(snapshot->data.base);
+    munit_assert_ullong(snapshot->data.len, >, 0);
+
+    munit_assert_ullong(diskCapacity(d), >=, snapshot->data.len);
+
     d->snapshot = snapshot;
 
     /* If there are no entries, set the start index to the snapshot's last
@@ -102,6 +132,7 @@ static void entryCopy(const struct raft_entry *src, struct raft_entry *dst)
 /* Append a new entry to the log. */
 static void diskAddEntry(struct test_disk *d, const struct raft_entry *entry)
 {
+    munit_assert_ullong(diskCapacity(d), >=, entry->buf.len);
     d->n_entries++;
     d->entries = realloc(d->entries, d->n_entries * sizeof *d->entries);
     munit_assert_ptr_not_null(d->entries);
@@ -361,28 +392,32 @@ static void serverInit(struct test_server *s,
     raft_set_heartbeat_timeout(&s->raft, DEFAULT_HEARTBEAT_TIMEOUT);
     raft_set_install_snapshot_timeout(&s->raft, 50);
 
+    raft_set_capacity_threshold(&s->raft, 64);
+
     s->log.start = 1;
     s->log.entries = munit_malloc(MAX_LOG_ENTRIES * sizeof *s->log.entries);
     s->log.n = 0;
 
     s->last_applied = 0;
-    s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->cluster = cluster;
+    s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
     s->running = false;
 }
 
-static void serverStep(struct test_server *s, struct raft_event *event);
+static int serverStep(struct test_server *s, struct raft_event *event);
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
     unsigned n = event->persisted_entries.n;
+    int rv;
 
     event->time = s->cluster->time;
     event->persisted_entries.status = RAFT_CANCELED;
 
-    serverStep(s, &step->event);
+    rv = serverStep(s, &step->event);
+    munit_assert_int(rv, ==, 0);
 
     if (n > 0) {
         raft_free(event->persisted_entries.batch[0].batch);
@@ -393,6 +428,7 @@ static void serverCancelEntries(struct test_server *s, struct step *step)
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    int rv;
 
     event->time = s->cluster->time;
     event->persisted_snapshot.status = RAFT_CANCELED;
@@ -400,7 +436,8 @@ static void serverCancelSnapshot(struct test_server *s, struct step *step)
     /* XXX: this should probably be done by raft core */
     raft_free(event->persisted_snapshot.chunk.base);
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
 }
 
 /* Release the memory used by a RAFT_RECEIVE event. */
@@ -492,16 +529,7 @@ static void serverCancelPending(struct test_server *s)
 
 static void serverStop(struct test_server *s)
 {
-    struct raft_event event;
-    struct raft_update update;
     unsigned i;
-    int rv;
-
-    event.time = s->cluster->time;
-    event.type = RAFT_STOP;
-
-    rv = raft_step(&s->raft, &event, &update);
-    munit_assert_int(rv, ==, 0);
 
     s->running = false;
 
@@ -757,16 +785,20 @@ static void serverProcessCommitIndex(struct test_server *s)
 
 /* Fire the given event using raft_step() and process the resulting struct
  * raft_update object. */
-static void serverStep(struct test_server *s, struct raft_event *event)
+static int serverStep(struct test_server *s, struct raft_event *event)
 {
     struct raft *r = &s->raft;
     struct raft_update update;
     int rv;
 
+    event->capacity = diskCapacity(&s->disk);
+
     munit_assert_true(s->running);
 
     rv = raft_step(r, event, &update);
-    munit_assert_int(rv, ==, 0);
+    if (rv != 0) {
+        return rv;
+    }
 
     if (update.flags & RAFT_UPDATE_CURRENT_TERM) {
         diskSetTerm(&s->disk, raft_current_term(r));
@@ -798,6 +830,8 @@ static void serverStep(struct test_server *s, struct raft_event *event)
     if (update.flags & RAFT_UPDATE_COMMIT_INDEX) {
         serverProcessCommitIndex(s);
     }
+
+    return 0;
 }
 
 /* Start the server by passing to raft_step() a RAFT_START event with the
@@ -806,6 +840,7 @@ static void serverStart(struct test_server *s)
 {
     struct raft_event event;
     unsigned i;
+    int rv;
 
     s->running = true;
 
@@ -825,7 +860,8 @@ static void serverStart(struct test_server *s)
         entryCopy(&event.start.entries[i], &s->log.entries[i]);
     }
 
-    serverStep(s, &event);
+    rv = serverStep(s, &event);
+    munit_assert_int(rv, ==, 0);
 
     if (event.start.metadata != NULL) {
         free(event.start.metadata);
@@ -841,13 +877,15 @@ static void serverStart(struct test_server *s)
 static void serverTimeout(struct test_server *s)
 {
     struct raft_event event;
+    int rv;
 
     s->cluster->time = s->timeout;
 
     event.time = s->cluster->time;
     event.type = RAFT_TIMEOUT;
 
-    serverStep(s, &event);
+    rv = serverStep(s, &event);
+    munit_assert_int(rv, ==, 0);
 }
 
 /* Create a single batch of entries containing a copy of the given entries,
@@ -931,6 +969,7 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     raft_index index = event->persisted_entries.index;
     unsigned n = event->persisted_entries.n;
     unsigned i;
+    int rv;
 
     /* Possibly truncate stale entries. */
     diskTruncateEntries(&s->disk, index);
@@ -939,7 +978,8 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
         diskAddEntry(&s->disk, &entries[i]);
     }
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
 
     if (n > 0) {
         raft_free(event->persisted_entries.batch[0].batch);
@@ -951,6 +991,7 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
 {
     struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
     struct raft_event *event = &step->event;
+    int rv;
 
     snapshot->metadata.index = event->persisted_snapshot.metadata.index;
     snapshot->metadata.term = event->persisted_snapshot.metadata.term;
@@ -963,7 +1004,8 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
 
     diskSetSnapshot(&s->disk, snapshot);
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
 }
 
 /* Return true if the server with id1 is connected with the server with id2 */
@@ -989,6 +1031,7 @@ static bool clusterAreConnected(struct test_cluster *c,
 static void serverCompleteReceive(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
+    int rv;
 
     if (!s->running) {
         dropReceiveEvent(step);
@@ -1003,10 +1046,13 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
         return;
     }
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
+
     if (event->receive.message->type == RAFT_IO_APPEND_ENTRIES) {
         raft_free(event->receive.message->append_entries.entries);
     }
+
     free(event->receive.message);
 }
 
@@ -1016,8 +1062,10 @@ static void serverCompleteConfiguration(struct test_server *s,
     struct raft *r = &s->raft;
     struct raft_event *event = &step->event;
     raft_index commit_index = raft_commit_index(r);
+    int rv;
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
 
     /* The last call to raft_step() did not change the commit index. */
     munit_assert_ullong(raft_commit_index(r), ==, commit_index);
@@ -1027,6 +1075,7 @@ static void serverCompleteTakeSnapshot(struct test_server *s, struct step *step)
 {
     struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
     struct raft_event *event = &step->event;
+    int rv;
 
     /* XXX: this assumes that the current term is the term of the last committed
      * entry. */
@@ -1041,7 +1090,8 @@ static void serverCompleteTakeSnapshot(struct test_server *s, struct step *step)
 
     diskSetSnapshot(&s->disk, snapshot);
 
-    serverStep(s, event);
+    rv = serverStep(s, event);
+    munit_assert_int(rv, ==, 0);
 }
 
 /* Complete some event involving I/O or user actions. */
@@ -1205,9 +1255,9 @@ void test_cluster_stop(struct test_cluster *c, raft_id id)
     serverStop(server);
 }
 
-void test_cluster_submit(struct test_cluster *c,
-                         raft_id id,
-                         struct raft_entry *entry)
+int test_cluster_submit(struct test_cluster *c,
+                        raft_id id,
+                        struct raft_entry *entry)
 {
     struct test_server *server = clusterGetServer(c, id);
     struct raft_event event;
@@ -1217,7 +1267,7 @@ void test_cluster_submit(struct test_cluster *c,
     event.submit.n = 1;
     event.submit.entries = entry;
 
-    serverStep(server, &event);
+    return serverStep(server, &event);
 }
 
 void test_cluster_catch_up(struct test_cluster *c,
@@ -1226,12 +1276,14 @@ void test_cluster_catch_up(struct test_cluster *c,
 {
     struct test_server *server = clusterGetServer(c, id);
     struct raft_event event;
+    int rv;
 
     event.time = c->time;
     event.type = RAFT_CATCH_UP;
     event.catch_up.server_id = catch_up_id;
 
-    serverStep(server, &event);
+    rv = serverStep(server, &event);
+    munit_assert_int(rv, ==, 0);
 }
 
 void test_cluster_transfer(struct test_cluster *c,
@@ -1240,12 +1292,14 @@ void test_cluster_transfer(struct test_cluster *c,
 {
     struct test_server *server = clusterGetServer(c, id);
     struct raft_event event;
+    int rv;
 
     event.time = c->time;
     event.type = RAFT_TRANSFER;
     event.transfer.server_id = transferee;
 
-    serverStep(server, &event);
+    rv = serverStep(server, &event);
+    munit_assert_int(rv, ==, 0);
 }
 
 /* Update the PNRG seed of each server, to match the expected randomized

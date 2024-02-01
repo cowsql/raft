@@ -430,13 +430,13 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
-    /* We might have converted to RAFT_UNAVAILBLE if we are shutting down.
+    /* If we are shutting down, cancel the snapshot.
      *
      * Or the snapshot's index might not be in the log anymore because the
      * associated entry failed to be persisted and got truncated (TODO: we
      * should retry instead of truncating). */
     assert(metadata.term != 0);
-    if (r->state == RAFT_UNAVAILABLE ||
+    if (r->legacy.closing ||
         logTermOf(r->legacy.log, metadata.index) != metadata.term) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
@@ -484,7 +484,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
     }
 
     /* If we are shutting down, let's not do anything. */
-    if (r->state == RAFT_UNAVAILABLE) {
+    if (r->legacy.closing) {
         return false;
     }
 
@@ -950,10 +950,16 @@ static void legacyPersistedEntriesFailure(struct raft *r,
     }
 }
 
-static void legacyLeadershipTransferClose(struct raft *r)
+void LegacyLeadershipTransferClose(struct raft *r)
 {
     struct raft_transfer *req = r->transfer;
-    assert(raft_transferee(r) == 0);
+
+    /* Only assert raft_trasferee() if we're not closing, because the result is
+     * effectively undefined in that case. */
+    if (!r->legacy.closing) {
+        assert(raft_transferee(r) == 0);
+    }
+
     r->transfer = NULL;
     if (req->cb != NULL) {
         req->type = RAFT_TRANSFER_;
@@ -981,9 +987,9 @@ static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
         assert(r->legacy.change == NULL);
     }
 
-    if (raft_state(r) == RAFT_UNAVAILABLE) {
+    if (r->legacy.closing) {
         if (r->transfer != NULL) {
-            legacyLeadershipTransferClose(r);
+            LegacyLeadershipTransferClose(r);
         }
         LegacyFailPendingRequests(r);
         LegacyFireCompletedRequests(r);
@@ -1063,6 +1069,7 @@ static int legacyHandleEvent(struct raft *r,
 
     event = &(*events)[i];
     event->time = r->io->time(r->io);
+    event->capacity = r->io->capacity;
 
     rv = raft_step(r, event, &update);
     if (rv != 0) {
@@ -1138,13 +1145,13 @@ static int legacyHandleEvent(struct raft *r,
         /* If we are leader it means that the request was aborted. If we are
          * follower we wait until we find a new leader. */
         if (raft_state(r) == RAFT_LEADER) {
-            legacyLeadershipTransferClose(r);
+            LegacyLeadershipTransferClose(r);
         } else if (raft_state(r) == RAFT_FOLLOWER) {
             raft_id leader_id;
             const char *leader_address;
             raft_leader(r, &leader_id, &leader_address);
             if (leader_id != 0) {
-                legacyLeadershipTransferClose(r);
+                LegacyLeadershipTransferClose(r);
             }
         }
     }
@@ -1173,6 +1180,9 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     n_events = 1;
 
     for (i = 0; i < n_events; i++) {
+        if (r->legacy.closing) {
+            break;
+        }
         rv = legacyHandleEvent(r, &entry, &events, &n_events, i);
         if (rv != 0) {
             break;
@@ -1602,10 +1612,6 @@ int raft_bootstrap(struct raft *r, const struct raft_configuration *conf)
 {
     int rv;
 
-    if (r->state != RAFT_UNAVAILABLE) {
-        return RAFT_BUSY;
-    }
-
     rv = r->io->bootstrap(r->io, conf);
     if (rv != 0) {
         return rv;
@@ -1617,10 +1623,6 @@ int raft_bootstrap(struct raft *r, const struct raft_configuration *conf)
 int raft_recover(struct raft *r, const struct raft_configuration *conf)
 {
     int rv;
-
-    if (r->state != RAFT_UNAVAILABLE) {
-        return RAFT_BUSY;
-    }
 
     rv = r->io->recover(r->io, conf);
     if (rv != 0) {
@@ -1642,14 +1644,7 @@ static void tickCb(struct raft_io *io)
     event.time = r->io->time(io);
 
     rv = LegacyForwardToRaftIo(r, &event);
-    if (rv != 0) {
-        goto err;
-    }
-
-    return;
-
-err:
-    convertToUnavailable(r);
+    assert(rv == 0); /* TODO: just log warning? */
 }
 
 static void recvCb(struct raft_io *io, struct raft_message *message)
@@ -1659,7 +1654,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     int rv;
 
     r->now = r->io->time(r->io);
-    if (r->state == RAFT_UNAVAILABLE) {
+    if (r->legacy.closing) {
         switch (message->type) {
             case RAFT_IO_APPEND_ENTRIES:
                 entryBatchesDestroy(message->append_entries.entries,
@@ -1690,9 +1685,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
             break;
     }
 
-    if (rv != 0) {
-        convertToUnavailable(r);
-    }
+    assert(rv == 0); /* TODO: just log warning? */
 }
 
 int raft_start(struct raft *r)
@@ -1711,7 +1704,6 @@ int raft_start(struct raft *r)
     int rv;
 
     assert(r != NULL);
-    assert(r->state == RAFT_UNAVAILABLE);
     assert(r->heartbeat_timeout != 0);
     assert(r->heartbeat_timeout < r->election_timeout);
     assert(r->install_snapshot_timeout != 0);

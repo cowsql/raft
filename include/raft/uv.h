@@ -113,6 +113,14 @@ RAFT_API void raft_uv_set_block_size(struct raft_io *io, size_t size);
 RAFT_API void raft_uv_set_segment_size(struct raft_io *io, size_t size);
 
 /**
+ * Set the retry frequency for failed segment allocations.
+ *
+ * When a segment fails to be allocated due to insufficient disk space, the
+ * implementation will keep retrying every @msecs milliseconds.
+ */
+RAFT_API void raft_uv_set_segment_retry(struct raft_io *io, unsigned msecs);
+
+/**
  * DEPRECATED: This API is a no-op and is provided only for backoward ABI
  * compatibility.
  */

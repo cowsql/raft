@@ -61,6 +61,25 @@ unsigned configurationIndexOfVoter(const struct raft_configuration *c,
     return c->n;
 }
 
+unsigned configurationActualIndexOfVoter(const struct raft_configuration *c,
+                                         unsigned i)
+{
+    unsigned j;
+    unsigned k = 0;
+    assert(c != NULL);
+
+    for (j = 0; j < c->n; j++) {
+        if (c->servers[j].role == RAFT_VOTER) {
+            if (k == i) {
+                return j;
+            }
+            k++;
+        }
+    }
+
+    return c->n;
+}
+
 const struct raft_server *configurationGet(const struct raft_configuration *c,
                                            const raft_id id)
 {

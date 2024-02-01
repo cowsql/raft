@@ -367,12 +367,10 @@ static void decodeRequestVote(int version,
     p->candidate_id = byteGet64(&cursor);
     p->last_log_index = byteGet64(&cursor);
     p->last_log_term = byteGet64(&cursor);
+    p->disrupt_leader = false;
+    p->pre_vote = false;
 
-    /* Support for legacy request vote that doesn't have disrupt_leader. */
-    if (p->version == 1) {
-        p->disrupt_leader = false;
-        p->pre_vote = false;
-    } else {
+    if (p->version >= 1) {
         uint64_t flags = byteGet64(&cursor);
         p->disrupt_leader = (bool)(flags & 1 << 0);
         p->pre_vote = (bool)(flags & 1 << 1);
@@ -386,15 +384,24 @@ static void decodeRequestVoteResult(int version,
     const uint8_t *cursor;
 
     cursor = (void *)buf->base;
-    (void)version;
 
-    p->version = 1;
+    /* If the version is 0 the message was sent by a server that
+     * does not encodes the version byte in the preamble. */
+    if (version == 0) {
+        if (buf->len == sizeofRequestVoteResultV1()) {
+            version = 1;
+        } else {
+            version = 2;
+        }
+    }
+
+    p->version = version;
     p->term = byteGet64(&cursor);
     p->vote_granted = byteGet64(&cursor);
     p->features = 0;
     p->capacity = 0;
 
-    if (buf->len > sizeofRequestVoteResultV1()) {
+    if (p->version >= 2) {
         uint8_t flags = byteGet8(&cursor);
         uint8_t unused = byteGet8(&cursor);
         uint16_t features = byteGet16(&cursor);
@@ -459,7 +466,8 @@ err:
     return rv;
 }
 
-static int decodeAppendEntries(const uv_buf_t *buf,
+static int decodeAppendEntries(int version,
+                               const uv_buf_t *buf,
                                struct raft_append_entries *args)
 {
     const uint8_t *cursor;
@@ -470,7 +478,7 @@ static int decodeAppendEntries(const uv_buf_t *buf,
 
     cursor = (void *)buf->base;
 
-    args->version = 0;
+    args->version = version;
     args->term = byteGet64(&cursor);
     args->prev_log_index = byteGet64(&cursor);
     args->prev_log_term = byteGet64(&cursor);
@@ -505,7 +513,7 @@ static void decodeAppendEntriesResult(int version,
     p->rejected = byteGet64(&cursor);
     p->last_log_index = byteGet64(&cursor);
     p->features = 0;
-    p->capacity = USHRT_MAX;
+    p->capacity = 0;
     if (p->version >= 1) {
         p->features = byteGet16(&cursor);
     }
@@ -514,7 +522,8 @@ static void decodeAppendEntriesResult(int version,
     }
 }
 
-static int decodeInstallSnapshot(const uv_buf_t *buf,
+static int decodeInstallSnapshot(int version,
+                                 const uv_buf_t *buf,
                                  struct raft_install_snapshot *args)
 {
     const uint8_t *cursor;
@@ -526,7 +535,7 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
 
     cursor = (void *)buf->base;
 
-    args->version = 0;
+    args->version = version;
     args->term = byteGet64(&cursor);
     args->last_index = byteGet64(&cursor);
     args->last_term = byteGet64(&cursor);
@@ -580,7 +589,7 @@ int uvDecodeMessage(uint8_t type,
                                     &message->request_vote_result);
             break;
         case RAFT_IO_APPEND_ENTRIES:
-            rv = decodeAppendEntries(header, &message->append_entries);
+            rv = decodeAppendEntries(version, header, &message->append_entries);
             for (i = 0; i < message->append_entries.n_entries; i++) {
                 *payload_len += message->append_entries.entries[i].buf.len;
             }
@@ -590,7 +599,8 @@ int uvDecodeMessage(uint8_t type,
                                       &message->append_entries_result);
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
-            rv = decodeInstallSnapshot(header, &message->install_snapshot);
+            rv = decodeInstallSnapshot(version, header,
+                                       &message->install_snapshot);
             *payload_len += message->install_snapshot.data.len;
             break;
         case RAFT_IO_TIMEOUT_NOW:

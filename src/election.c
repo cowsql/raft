@@ -158,9 +158,13 @@ void electionStart(struct raft *r)
     /* Initialize the votes array and send vote requests. */
     for (i = 0; i < n_voters; i++) {
         if (i == voting_index) {
-            r->candidate_state.votes[i] = true; /* We vote for ourselves */
+            r->candidate_state.votes[i].grant = true; /* Vote for self */
+            r->candidate_state.votes[i].features = MESSAGE__FEATURE_CAPACITY;
+            r->candidate_state.votes[i].capacity = r->capacity;
         } else {
-            r->candidate_state.votes[i] = false;
+            r->candidate_state.votes[i].grant = false;
+            r->candidate_state.votes[i].features = 0;
+            r->candidate_state.votes[i].capacity = 0;
         }
     }
     for (i = 0; i < r->configuration.n; i++) {
@@ -316,10 +320,10 @@ bool electionTally(struct raft *r,
     assert(r->state == RAFT_CANDIDATE);
     assert(r->candidate_state.votes != NULL);
 
-    r->candidate_state.votes[voter_index] = true;
+    r->candidate_state.votes[voter_index].grant = true;
 
     for (i = 0; i < *n_voters; i++) {
-        if (r->candidate_state.votes[i]) {
+        if (r->candidate_state.votes[i].grant) {
             *votes += 1;
         }
     }

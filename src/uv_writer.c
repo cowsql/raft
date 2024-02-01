@@ -540,3 +540,5 @@ err:
     assert(rv != 0);
     return rv;
 }
+
+#undef trace

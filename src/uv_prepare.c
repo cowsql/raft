@@ -7,6 +7,7 @@
 #include "uv_os.h"
 
 #define tracef(...) Tracef(uv->tracer, __VA_ARGS__)
+#define trace(TYPE, INFO) Trace(uv->tracer, TYPE, INFO)
 
 /* The happy path for UvPrepare is:
  *
@@ -41,15 +42,14 @@ struct uvIdleSegment
     struct uv_work_s work;             /* To execute logic in the threadpool */
     int status;                        /* Result of threadpool callback */
     char errmsg[RAFT_ERRMSG_BUF_SIZE]; /* Error of threadpool callback */
-    unsigned long long counter;        /* Segment counter */
+    uvCounter counter;                 /* Segment counter */
     char filename[UV__FILENAME_LEN];   /* Filename of the segment */
     uv_file fd;                        /* File descriptor of prepared file */
     queue queue;                       /* Pool */
 };
 
-static void uvPrepareWorkCb(uv_work_t *work)
+static int uvPrepareCreateSegment(struct uvIdleSegment *segment)
 {
-    struct uvIdleSegment *segment = work->data;
     struct uv *uv = segment->uv;
     int rv;
 
@@ -64,15 +64,20 @@ static void uvPrepareWorkCb(uv_work_t *work)
         goto err_after_allocate;
     }
 
-    segment->status = 0;
-    return;
+    return 0;
 
 err_after_allocate:
     UvOsClose(segment->fd);
 err:
     assert(rv != 0);
-    segment->status = rv;
-    return;
+
+    return rv;
+}
+
+static void uvPrepareWorkCb(uv_work_t *work)
+{
+    struct uvIdleSegment *segment = work->data;
+    segment->status = uvPrepareCreateSegment(segment);
 }
 
 /* Flush all pending requests, invoking their callbacks with the given
@@ -126,8 +131,7 @@ static void uvPrepareFinishOldestRequest(struct uv *uv)
     req->cb(req, 0);
 }
 
-/* Return the number of ready prepared open segments in the pool. */
-static unsigned uvPrepareCount(struct uv *uv)
+unsigned UvPrepareCount(struct uv *uv)
 {
     queue *head;
     unsigned n;
@@ -140,6 +144,26 @@ static unsigned uvPrepareCount(struct uv *uv)
 
 static void uvPrepareAfterWorkCb(uv_work_t *work, int status);
 
+static struct uvIdleSegment *uvIdleSegmentCreate(struct uv *uv)
+{
+    struct uvIdleSegment *s;
+
+    s = RaftHeapMalloc(sizeof *s);
+    if (s == NULL) {
+        return NULL;
+    }
+
+    memset(s, 0, sizeof *s);
+    s->uv = uv;
+    s->counter = uv->prepare_next_counter;
+    s->work.data = s;
+    s->fd = -1;
+    s->size = uv->block_size * uvSegmentBlocks(uv);
+    sprintf(s->filename, UV__OPEN_TEMPLATE, s->counter);
+
+    return s;
+}
+
 /* Start creating a new segment file. */
 static int uvPrepareStart(struct uv *uv)
 {
@@ -147,21 +171,13 @@ static int uvPrepareStart(struct uv *uv)
     int rv;
 
     assert(uv->prepare_inflight == NULL);
-    assert(uvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
+    assert(UvPrepareCount(uv) < UV__TARGET_POOL_SIZE);
 
-    segment = RaftHeapMalloc(sizeof *segment);
+    segment = uvIdleSegmentCreate(uv);
     if (segment == NULL) {
         rv = RAFT_NOMEM;
         goto err;
     }
-
-    memset(segment, 0, sizeof *segment);
-    segment->uv = uv;
-    segment->counter = uv->prepare_next_counter;
-    segment->work.data = segment;
-    segment->fd = -1;
-    segment->size = uv->block_size * uvSegmentBlocks(uv);
-    sprintf(segment->filename, UV__OPEN_TEMPLATE, segment->counter);
 
     tracef("create open segment %s", segment->filename);
     rv = uv_queue_work(uv->loop, &segment->work, uvPrepareWorkCb,
@@ -186,6 +202,22 @@ err:
     return rv;
 }
 
+/* Retry segment creation. */
+static void uvPrepareRetryTimerCb(uv_timer_t *timer)
+{
+    struct uvIdleSegment *segment = timer->data;
+    struct uv *uv = segment->uv;
+    int rv;
+
+    assert(uv->prepare_inflight == segment);
+
+    uv->prepare_retry.data = uv;
+    tracef("retry creating segment %s", segment->filename);
+    rv = uv_queue_work(uv->loop, &segment->work, uvPrepareWorkCb,
+                       uvPrepareAfterWorkCb);
+    assert(rv == 0);
+}
+
 static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
 {
     struct uvIdleSegment *segment = work->data;
@@ -193,11 +225,10 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
     int rv;
     assert(status == 0);
 
-    uv->prepare_inflight = NULL; /* Reset the creation in-progress marker. */
-
     /* If we are closing, let's discard the segment. All pending requests have
      * already being fired with RAFT_CANCELED. */
     if (uv->closing) {
+        uv->prepare_inflight = NULL;
         assert(QUEUE_IS_EMPTY(&uv->prepare_pool));
         assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
         if (segment->status == 0) {
@@ -211,21 +242,16 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
         return;
     }
 
-    /* If the request has failed, mark all pending requests as failed and don't
-     * try to create any further segment.
-     *
-     * Note that if there's no pending request, we don't set the error message,
-     * to avoid overwriting previous errors. */
+    /* If the request has failed, retry again after a while. */
     if (segment->status != 0) {
-        if (!QUEUE_IS_EMPTY(&uv->prepare_reqs)) {
-            ErrMsgTransferf(segment->errmsg, uv->io->errmsg,
-                            "create segment %s", segment->filename);
-            uvPrepareFinishAllRequests(uv, segment->status);
-        }
-        uv->errored = true;
-        RaftHeapFree(segment);
+        assert(uv->prepare_retry.data == uv);
+        uv->prepare_retry.data = segment;
+        rv = uv_timer_start(&uv->prepare_retry, uvPrepareRetryTimerCb, 10, 0);
+        assert(rv == 0);
         return;
     }
+
+    uv->prepare_inflight = NULL; /* Reset the creation in-progress marker. */
 
     assert(segment->fd >= 0);
 
@@ -246,7 +272,7 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
      * be any outstanding prepare requests, since if the request queue was not
      * empty, we would have called uvPrepareFinishOldestRequest() above, thus
      * reducing the pool size and making it smaller than the target size. */
-    if (uvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
+    if (UvPrepareCount(uv) >= UV__TARGET_POOL_SIZE) {
         assert(QUEUE_IS_EMPTY(&uv->prepare_reqs));
         return;
     }
@@ -315,6 +341,31 @@ err:
     return rv;
 }
 
+void UvPrepareStart(struct uv *uv)
+{
+    unsigned i;
+
+    for (i = 0; i < UV__TARGET_POOL_SIZE; i++) {
+        struct uvIdleSegment *segment = uvIdleSegmentCreate(uv);
+        int rv;
+
+        if (segment == NULL) {
+            break;
+        }
+
+        rv = uvPrepareCreateSegment(segment);
+        if (rv != 0) {
+            RaftHeapFree(segment);
+            break;
+        }
+
+        uv->io->capacity += (unsigned short)(segment->size / 1024);
+
+        uv->prepare_next_counter++;
+        QUEUE_PUSH(&uv->prepare_pool, &segment->queue);
+    }
+}
+
 void UvPrepareClose(struct uv *uv)
 {
     assert(uv->closing);
@@ -335,3 +386,4 @@ void UvPrepareClose(struct uv *uv)
 }
 
 #undef tracef
+#undef trace

@@ -59,6 +59,7 @@ int convertToCandidate(struct raft *r, bool disrupt_leader);
  */
 int convertToLeader(struct raft *r);
 
-void convertToUnavailable(struct raft *r);
+/* Clear the current state */
+void convertClear(struct raft *r);
 
 #endif /* CONVERT_H_ */

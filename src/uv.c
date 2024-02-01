@@ -128,6 +128,10 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
     assert(rv == 0);
     uv->check.data = uv;
 
+    rv = uv_timer_init(uv->loop, &uv->prepare_retry);
+    assert(rv == 0); /* This should never fail */
+    uv->prepare_retry.data = uv;
+
     return 0;
 }
 
@@ -141,10 +145,18 @@ static void uvTickTimerCb(uv_timer_t *timer)
     }
 }
 
+static void uvUpdateCapacity(struct uv *uv)
+{
+    size_t bytes = UvPrepareCount(uv) * uv->segment_size;
+    bytes += UvAppendCapacity(uv);
+    uv->io->capacity = (unsigned short)(bytes / 1024);
+}
+
 static void uvPrepareLoopCb(struct uv_prepare_s *prepare)
 {
     struct uv *uv;
     uv = prepare->data;
+    uvUpdateCapacity(uv);
     if (uv->io->data != NULL && uv->io->version != 0) {
         LegacyFireCompletedRequests(uv->io->data);
     }
@@ -154,6 +166,7 @@ static void uvCheckLoopCb(struct uv_check_s *check)
 {
     struct uv *uv;
     uv = check->data;
+    uvUpdateCapacity(uv);
     if (uv->io->data != NULL && uv->io->version != 0) {
         LegacyFireCompletedRequests(uv->io->data);
     }
@@ -181,6 +194,9 @@ static int uvStart(struct raft_io *io,
     assert(rv == 0);
     rv = uv_check_start(&uv->check, uvCheckLoopCb);
     assert(rv == 0);
+
+    UvPrepareStart(uv);
+
     return 0;
 }
 
@@ -201,6 +217,9 @@ void uvMaybeFireCloseCb(struct uv *uv)
         return;
     }
     if (uv->check.data != NULL) {
+        return;
+    }
+    if (uv->prepare_retry.data != NULL) {
         return;
     }
     if (!QUEUE_IS_EMPTY(&uv->append_segments)) {
@@ -270,6 +289,14 @@ static void uvCheckCloseCb(uv_handle_t *handle)
     uvMaybeFireCloseCb(uv);
 }
 
+static void uvPrepareRetryCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->prepare_retry.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
 /* Implementation of raft_io->close. */
 static void uvClose(struct raft_io *io, raft_io_close_cb cb)
 {
@@ -293,6 +320,16 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
     }
     if (uv->check.data != NULL) {
         uv_close((uv_handle_t *)&uv->check, uvCheckCloseCb);
+    }
+    if (uv->prepare_retry.data != NULL) {
+        if (uv->prepare_retry.data != uv) {
+            assert(uv->prepare_inflight == uv->prepare_retry.data);
+            RaftHeapFree(uv->prepare_retry.data);
+            uv->prepare_inflight = NULL;
+            uv->prepare_retry.data = uv;
+        }
+        uv_timer_stop(&uv->prepare_retry);
+        uv_close((uv_handle_t *)&uv->prepare_retry, uvPrepareRetryCloseCb);
     }
     uvMaybeFireCloseCb(uv);
 }
@@ -740,6 +777,7 @@ int raft_uv_init(struct raft_io *io,
     uv->direct_io = false;
     uv->async_io = false;
     uv->segment_size = UV__MAX_SEGMENT_SIZE;
+    uv->segment_retry = UV__SEGMENT_RETRY_RATE;
     uv->block_size = 0;
     QUEUE_INIT(&uv->clients);
     QUEUE_INIT(&uv->servers);
@@ -771,6 +809,7 @@ int raft_uv_init(struct raft_io *io,
 
     /* Set the raft_io implementation. */
     io->version = 2; /* future-proof'ing */
+    io->capacity = 0;
     io->impl = uv;
     io->init = uvInit;
     io->close = uvClose;
@@ -811,6 +850,13 @@ void raft_uv_set_segment_size(struct raft_io *io, size_t size)
     struct uv *uv;
     uv = io->impl;
     uv->segment_size = size;
+}
+
+void raft_uv_set_segment_retry(struct raft_io *io, unsigned msecs)
+{
+    struct uv *uv;
+    uv = io->impl;
+    uv->segment_retry = msecs;
 }
 
 void raft_uv_set_block_size(struct raft_io *io, size_t size)

@@ -1,4 +1,3 @@
-#include "../../src/configuration.h"
 #include "../../src/progress.h"
 #include "../lib/cluster.h"
 #include "../lib/runner.h"
@@ -106,8 +105,8 @@ TEST(replication, InitialBarrier, setUp, tearDown, 0, NULL)
 TEST(replication, FeatureFlags, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    unsigned id;
     struct raft *raft;
+    unsigned id;
 
     /* Bootstrap and start a cluster with 2 voters. */
     for (id = 1; id <= 2; id++) {
@@ -129,9 +128,9 @@ TEST(replication, FeatureFlags, setUp, tearDown, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    /* Flags is empty */
+    /* Features were already populated via RequestVote result. */
     raft = CLUSTER_RAFT(1);
-    munit_assert_ullong(raft->leader_state.progress[1].features, ==, 0);
+    munit_assert_uint(raft->leader_state.progress[1].features, ==, 1);
 
     /* Server 2 receives the heartbeat and replies. When server 1 receives the
      * response, the feature flags are set. */
@@ -140,7 +139,7 @@ TEST(replication, FeatureFlags, setUp, tearDown, 0, NULL)
         "           no new entries to persist\n"
         "[ 140] 1 > recv append entries result from server 2\n");
 
-    munit_assert_ullong(raft->leader_state.progress[1].features, ==, 0);
+    munit_assert_uint(raft->leader_state.progress[1].features, ==, 1);
 
     return MUNIT_OK;
 }
