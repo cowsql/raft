@@ -51,6 +51,11 @@ unsigned configurationIndexOf(const struct raft_configuration *c, raft_id id);
 unsigned configurationIndexOfVoter(const struct raft_configuration *c,
                                    raft_id id);
 
+/* Return the actual index of the RAFT_VOTER server having the relative index
+ * with respect to the sub array of c->servers that has only voting servers. */
+unsigned configurationActualIndexOfVoter(const struct raft_configuration *c,
+                                         unsigned i);
+
 /* Get the server with the given ID, or #NULL if no matching server is found. */
 const struct raft_server *configurationGet(const struct raft_configuration *c,
                                            raft_id id);
