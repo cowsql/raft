@@ -159,8 +159,12 @@ void electionStart(struct raft *r)
     for (i = 0; i < n_voters; i++) {
         if (i == voting_index) {
             r->candidate_state.votes[i].grant = true; /* Vote for self */
+            r->candidate_state.votes[i].features = MESSAGE__FEATURE_CAPACITY;
+            r->candidate_state.votes[i].capacity = r->capacity;
         } else {
             r->candidate_state.votes[i].grant = false;
+            r->candidate_state.votes[i].features = 0;
+            r->candidate_state.votes[i].capacity = 0;
         }
     }
     for (i = 0; i < r->configuration.n; i++) {

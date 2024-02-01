@@ -75,9 +75,9 @@ int recvRequestVoteResult(struct raft *r,
     }
 
     /* If we're in the pre-vote phase, check that the peer's is at most one term
-     * ahead (possibly stepping down). If we're the actual voting phase, we
-     * expect our term must to be the same as the response term (otherwise we
-     * would have either ignored the result bumped our term). */
+     * ahead (possibly stepping down). If in we're the actual voting phase, we
+     * expect our term to be the same as the response term (otherwise we would
+     * have either ignored the result bumped our term). */
     if (r->candidate_state.in_pre_vote) {
         if (match > 0) {
             if (result->term > r->current_term + 1) {
@@ -89,6 +89,10 @@ int recvRequestVoteResult(struct raft *r,
     } else {
         assert(result->term == r->current_term);
     }
+
+    /* Updates features and capacity */
+    r->candidate_state.votes[votes_index].features = result->features;
+    r->candidate_state.votes[votes_index].capacity = result->capacity;
 
     /* If the vote was granted and we reached quorum, convert to leader.
      *
