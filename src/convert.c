@@ -108,7 +108,7 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
 
     /* Allocate the votes array. */
     r->candidate_state.votes =
-        raft_malloc(n_voters * sizeof *r->candidate_state.votes);
+        raft_calloc(n_voters, sizeof *r->candidate_state.votes);
     if (r->candidate_state.votes == NULL) {
         return RAFT_NOMEM;
     }
@@ -144,6 +144,7 @@ int convertToLeader(struct raft *r)
 {
     struct raft_progress *progress;
     size_t n_voters;
+    unsigned i;
     int rv;
 
     assert(r->state == RAFT_CANDIDATE);
@@ -153,6 +154,17 @@ int convertToLeader(struct raft *r)
     if (progress == NULL) {
         rv = RAFT_NOMEM;
         goto err;
+    }
+
+    n_voters = configurationVoterCount(&r->configuration);
+    assert(n_voters > 0);
+
+    /* Copy features and capacity information. */
+    for (i = 0; i < n_voters; i++) {
+        unsigned j;
+        j = configurationActualIndexOfVoter(&r->configuration, i);
+        progress[j].features = r->candidate_state.votes[i].features;
+        progress[j].capacity = r->candidate_state.votes[i].capacity;
     }
 
     convertClearCandidate(r);
@@ -173,9 +185,6 @@ int convertToLeader(struct raft *r)
     /* Reset leadership transfer. */
     r->leader_state.transferee = 0;
     r->leader_state.transferring = false;
-
-    n_voters = configurationVoterCount(&r->configuration);
-    assert(n_voters > 0);
 
     /* If there is only one voter, by definition all entries until the
      * last_stored can be considered committed (and the voter must be us, since

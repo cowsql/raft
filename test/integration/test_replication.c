@@ -128,9 +128,9 @@ TEST(replication, FeatureFlags, setUp, tearDown, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    /* Flags is empty */
+    /* Features were already populated via RequestVote result. */
     raft = CLUSTER_RAFT(1);
-    munit_assert_uint(raft->leader_state.progress[1].features, ==, 0);
+    munit_assert_uint(raft->leader_state.progress[1].features, ==, 1);
 
     /* Server 2 receives the heartbeat and replies. When server 1 receives the
      * response, the feature flags are set. */

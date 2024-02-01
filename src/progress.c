@@ -30,6 +30,7 @@ static void initProgress(struct raft_progress *p, raft_index last_index)
     p->state = PROGRESS__PROBE;
     p->catch_up = RAFT_CATCH_UP_NONE;
     p->features = 0;
+    p->capacity = 0;
 }
 
 struct raft_progress *progressBuildArray(struct raft *r)

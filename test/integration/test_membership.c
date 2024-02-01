@@ -174,8 +174,6 @@ TEST(raft_add, Busy, setup, tear_down, 0, NULL)
     struct fixture *f = data;
     struct raft_configuration configuration;
     struct raft_entry entry;
-    struct raft_event event;
-    struct raft_update update;
     unsigned id;
     int rv;
 
@@ -207,12 +205,7 @@ TEST(raft_add, Busy, setup, tear_down, 0, NULL)
     raft_configuration_close(&configuration);
     entry.batch = entry.buf.base;
 
-    event.time = f->cluster_.time;
-    event.type = RAFT_SUBMIT;
-    event.submit.n = 1;
-    event.submit.entries = &entry;
-
-    rv = raft_step(CLUSTER_RAFT(1), &event, &update);
+    rv = test_cluster_submit(&f->cluster_, 1 /* ID */, &entry);
     munit_assert_int(rv, ==, RAFT_CANTCHANGE);
 
     raft_free(entry.buf.base);

@@ -28,6 +28,9 @@ TEST(submit, CapacityBelowThreshold, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned id;
+    struct raft_entry entry;
+    char buf[8];
+    int rv;
 
     /* Set a capacity threshold close to the disk capacity. */
     raft_set_capacity_threshold(CLUSTER_RAFT(1), 240);
@@ -52,19 +55,9 @@ TEST(submit, CapacityBelowThreshold, setUp, tearDown, 0, NULL)
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n");
 
-    /* After a first round of heartbeat, the capacity will be up-to-date.
-     *
-     * XXX: this should not be necessary once we account also for the capacity
-     * reported in RequestVote results */
-    CLUSTER_TRACE(
-        "[ 130] 2 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 140] 1 > recv append entries result from server 2\n");
+    raft_set_capacity_threshold(CLUSTER_RAFT(1), 240);
 
     /* Submitting an entry fails because there's not enough capacity. */
-    struct raft_entry entry;
-    char buf[8];
-    int rv;
     entry.type = RAFT_COMMAND;
     entry.term = raft_current_term(CLUSTER_RAFT(1));
     entry.buf.len = 8;
@@ -72,7 +65,18 @@ TEST(submit, CapacityBelowThreshold, setUp, tearDown, 0, NULL)
     munit_assert_not_null(entry.buf.base);
     entry.batch = entry.buf.base;
 
-    raft_set_capacity_threshold(CLUSTER_RAFT(1), 240);
+    rv = test_cluster_submit(&f->cluster_, 1 /* ID */, &entry);
+    munit_assert_int(rv, ==, RAFT_NOSPACE);
+
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n");
+
+    /* Trying to submit again after the first round of heartbeat still fails,
+     * because the follower is still reporting the same capacity in the
+     * AppendEntries result. */
     rv = test_cluster_submit(&f->cluster_, 1 /* ID */, &entry);
     munit_assert_int(rv, ==, RAFT_NOSPACE);
 
