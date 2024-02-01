@@ -867,9 +867,14 @@ struct raft
         struct
         {
             unsigned randomized_election_timeout; /* Timer expiration. */
-            bool *votes;                          /* Vote results. */
-            bool disrupt_leader;                  /* For leadership transfer */
-            bool in_pre_vote;                     /* True in pre-vote phase. */
+            struct
+            {
+                bool grant;              /* True if the server voted for us */
+                unsigned short features; /* What the server is capable of. */
+                unsigned short capacity; /* Guaranteed capacity. */
+            } *votes;                    /* Vote results. */
+            bool disrupt_leader;         /* For leadership transfer */
+            bool in_pre_vote;            /* True in pre-vote phase. */
 #if !defined(RAFT__LEGACY_no)
             uint64_t reserved[8]; /* Future use */
 #endif

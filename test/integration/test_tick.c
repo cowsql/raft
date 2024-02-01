@@ -74,10 +74,10 @@ TEST(tick, ConvertToCandidate, setUp, tearDown, 0, NULL)
     /* We are candidate */
     munit_assert_int(raft_state(raft), ==, RAFT_CANDIDATE);
 
-    /* The votes array is initialized */
+    /* The vote results array is initialized */
     munit_assert_ptr_not_null(raft->candidate_state.votes);
-    munit_assert_false(raft->candidate_state.votes[0]);
-    munit_assert_true(raft->candidate_state.votes[1]);
+    munit_assert_false(raft->candidate_state.votes[0].grant);
+    munit_assert_true(raft->candidate_state.votes[1].grant);
 
     return MUNIT_OK;
 }

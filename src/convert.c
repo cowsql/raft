@@ -107,7 +107,8 @@ int convertToCandidate(struct raft *r, const bool disrupt_leader)
     convertSetState(r, RAFT_CANDIDATE);
 
     /* Allocate the votes array. */
-    r->candidate_state.votes = raft_malloc(n_voters * sizeof(bool));
+    r->candidate_state.votes =
+        raft_malloc(n_voters * sizeof *r->candidate_state.votes);
     if (r->candidate_state.votes == NULL) {
         return RAFT_NOMEM;
     }
