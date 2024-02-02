@@ -132,8 +132,10 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     struct raft_event event;
 
     if (status != 0) {
+        assert(r->legacy.closing);
+        assert(status == RAFT_CANCELED);
         if (req->index <= logLastIndex(r->legacy.log)) {
-            logTruncate(r->legacy.log, req->index);
+            goto out;
         }
     }
 
@@ -141,12 +143,12 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
     event.persisted_entries.n = req->n;
-    event.persisted_entries.status = status;
-
-    raft_free(req);
+    event.persisted_entries.status = 0;
 
     LegacyForwardToRaftIo(r, &event);
 
+out:
+    raft_free(req);
     logRelease(r->legacy.log, event.persisted_entries.index,
                event.persisted_entries.batch, event.persisted_entries.n);
 }
