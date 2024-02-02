@@ -183,7 +183,29 @@ static int uvAliveSegmentEncodeEntriesToWriteBuf(struct uvAliveSegment *segment,
     return 0;
 }
 
+static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status);
+
+static void uvAppendRetryTimerCb(uv_timer_t *timer)
+{
+    struct uvAliveSegment *s = timer->data;
+    struct uv *uv = s->uv;
+    int rv;
+
+    uv->append_retry.data = uv;
+
+    rv = UvWriterSubmit(&s->writer, &s->write, &s->buf, 1,
+                        s->next_block * s->uv->block_size,
+                        uvAliveSegmentWriteCb);
+    if (rv != 0) {
+        uv->append_retry.data = s;
+        rv = uv_timer_start(&uv->prepare_retry, uvAppendRetryTimerCb,
+                            uv->disk_retry, 0);
+        assert(rv == 0);
+    }
+}
+
 static int uvAppendMaybeStart(struct uv *uv);
+
 static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status)
 {
     struct uvAliveSegment *s = write->data;
@@ -196,11 +218,14 @@ static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status)
     assert(s->buf.len % uv->block_size == 0);
     assert(s->buf.len >= uv->block_size);
 
-    /* Check if the write was successful. */
+    /* If the write was unsuccessful, retry it after a delay. */
     if (status != 0) {
-        Tracef(uv->tracer, "write: %s", uv->io->errmsg);
-        uv->errored = true;
-        goto out;
+        Tracef(uv->tracer, "retry failed write (%s)", uv->io->errmsg);
+        uv->append_retry.data = s;
+        rv = uv_timer_start(&uv->prepare_retry, uvAppendRetryTimerCb,
+                            uv->disk_retry, 0);
+        assert(rv == 0);
+        return;
     }
 
     s->written = s->next_block * uv->block_size + s->pending.n;
@@ -254,7 +279,6 @@ static void uvAliveSegmentWriteCb(struct UvWriterReq *write, const int status)
         }
     }
 
-out:
     /* Fire the callbacks of all requests that were fulfilled with this
      * write. */
     uvAppendFinishWritingRequests(uv, status);
@@ -1000,6 +1024,14 @@ void uvAppendClose(struct uv *uv)
     uvFinalizeCurrentAliveSegmentOnceIdle(uv);
 
     if (uv->append_retry.data != NULL) {
+        /* If the timer data is not uv, then it's set to an alive segment, and
+         * we're currently waiting to retry a failed disk write. In that case,
+         * cancel all inflight requests. */
+        if (uv->append_retry.data != uv) {
+            uvAppendFinishWritingRequests(uv, RAFT_CANCELED);
+            uvAliveSegmentFinalize(uv->append_retry.data);
+            uv->append_retry.data = uv;
+        }
         uv_timer_stop(&uv->append_retry);
         uv_close((uv_handle_t *)&uv->append_retry, uvAppendRetryCloseCb);
     }

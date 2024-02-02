@@ -487,7 +487,8 @@ TEST(append, noSpaceUponPrepareSpare, setUp, tearDownDeps, 0, DirTmpfsParams)
     return MUNIT_OK;
 }
 
-/* The write request fails because there's not enough space. */
+/* If write request fails because there's not enough space, it will be retried
+ * at regular intervals. */
 TEST(append, noSpaceUponWrite, setUp, tearDownDeps, 0, DirTmpfsParams)
 {
     struct fixture *f = data;
@@ -498,12 +499,12 @@ TEST(append, noSpaceUponWrite, setUp, tearDownDeps, 0, DirTmpfsParams)
     return MUNIT_SKIP;
 #endif
     raft_uv_set_segment_size(&f->io, SEGMENT_BLOCK_SIZE);
-    DirFill(f->dir, SEGMENT_BLOCK_SIZE * 2);
-    APPEND(1, 64);
-    APPEND_FAILURE(1, (SEGMENT_BLOCK_SIZE + 128), RAFT_NOSPACE,
-                   "short write: 4096 bytes instead of 8192");
-    DirRemoveFile(f->dir, ".fill");
-    ASSERT_ENTRIES(1, 64);
+    raft_uv_set_disk_retry(&f->io, 10);
+    DirFill(f->dir, SEGMENT_BLOCK_SIZE);
+    APPEND_SUBMIT(0, 1, SEGMENT_BLOCK_SIZE * 2);
+    LOOP_RUN(5);
+    APPEND_EXPECT(0, RAFT_CANCELED);
+    TEAR_DOWN_UV;
     return MUNIT_OK;
 }
 
@@ -518,6 +519,7 @@ TEST(append, noSpaceResolved, setUp, tearDownDeps, 0, DirTmpfsParams)
     TEAR_DOWN_UV;
     return MUNIT_SKIP;
 #endif
+    raft_uv_set_disk_retry(&f->io, 10);
     DirFill(f->dir, SEGMENT_BLOCK_SIZE);
     APPEND_SUBMIT(0, 1, 64);
     LOOP_RUN(5);
