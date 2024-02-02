@@ -86,8 +86,7 @@ bool replicationInstallSnapshotBusy(struct raft *r);
 int replicationPersistEntriesDone(struct raft *r,
                                   raft_index index,
                                   struct raft_entry *entries,
-                                  unsigned n,
-                                  int status);
+                                  unsigned n);
 
 /* Called when handling RAFT_PERSISTED_SNAPSHOT event. */
 int replicationPersistSnapshotDone(struct raft *r,

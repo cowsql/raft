@@ -197,37 +197,6 @@ TEST(replication,
     CLUSTER_ELECT(0);             \
     ASSERT_TIME(1045)
 
-static void applyAssertStatusCb(struct raft_apply *req,
-                                int status,
-                                void *result)
-{
-    (void)result;
-    int status_expected = (int)(intptr_t)(req->data);
-    munit_assert_int(status_expected, ==, status);
-}
-
-/* When the leader fails to write some new entries to disk, it steps down. */
-TEST(replication,
-     diskWriteFailure,
-     setUpReplication,
-     tearDownReplication,
-     0,
-     NULL)
-{
-    struct fixture *f = data;
-    struct raft_apply *req = munit_malloc(sizeof(*req));
-    req->data = (void *)(intptr_t)RAFT_IOERR;
-    BOOTSTRAP_START_AND_ELECT;
-
-    CLUSTER_IO_FAULT(0, 1, 1);
-    CLUSTER_APPLY_ADD_X(0, req, 1, applyAssertStatusCb);
-    /* The leader steps down when its disk write fails. */
-    CLUSTER_STEP_UNTIL_STATE_IS(0, RAFT_FOLLOWER, 2000);
-    free(req);
-
-    return MUNIT_OK;
-}
-
 /* A leader with slow disk commits an entry that it hasn't persisted yet,
  * because enough followers to have a majority have aknowledged that they have
  * appended the entry. The leader's last_stored field hence lags behind its

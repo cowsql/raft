@@ -132,8 +132,10 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     struct raft_event event;
 
     if (status != 0) {
+        assert(r->legacy.closing);
+        assert(status == RAFT_CANCELED);
         if (req->index <= logLastIndex(r->legacy.log)) {
-            logTruncate(r->legacy.log, req->index);
+            goto out;
         }
     }
 
@@ -141,12 +143,11 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
     event.persisted_entries.n = req->n;
-    event.persisted_entries.status = status;
-
-    raft_free(req);
 
     LegacyForwardToRaftIo(r, &event);
 
+out:
+    raft_free(req);
     logRelease(r->legacy.log, event.persisted_entries.index,
                event.persisted_entries.batch, event.persisted_entries.n);
 }
@@ -914,53 +915,6 @@ static int legacyApply(struct raft *r,
     return rv;
 }
 
-static void legacyPersistedEntriesFailure(struct raft *r,
-                                          struct raft_event *event)
-{
-    raft_index index = event->persisted_entries.index;
-    unsigned n = event->persisted_entries.n;
-    int status = event->persisted_entries.status;
-
-    for (unsigned i = 0; i < n; i++) {
-        struct request *req = legacyGetRequest(r, index + i, -1);
-        if (!req) {
-            tracef("no request found at index %llu", index + i);
-            continue;
-        }
-        switch (req->type) {
-            case RAFT_COMMAND: {
-                struct raft_apply *apply = (struct raft_apply *)req;
-                if (apply->cb) {
-                    apply->status = status;
-                    apply->result = NULL;
-                    QUEUE_PUSH(&r->legacy.requests, &apply->queue);
-                }
-                break;
-            }
-            case RAFT_BARRIER: {
-                struct raft_barrier *barrier = (struct raft_barrier *)req;
-                if (barrier->cb) {
-                    barrier->status = status;
-                    QUEUE_PUSH(&r->legacy.requests, &barrier->queue);
-                }
-                break;
-            }
-            case RAFT_CHANGE: {
-                struct raft_change *change = (struct raft_change *)req;
-                if (change->cb) {
-                    change->status = status;
-                    QUEUE_PUSH(&r->legacy.requests, &change->queue);
-                }
-                break;
-            }
-            default:
-                tracef("unknown request type, shutdown.");
-                assert(false);
-                break;
-        }
-    }
-}
-
 void LegacyLeadershipTransferClose(struct raft *r)
 {
     struct raft_transfer *req = r->transfer;
@@ -978,18 +932,11 @@ void LegacyLeadershipTransferClose(struct raft *r)
     }
 }
 
-static void legacyHandleStateUpdate(struct raft *r, struct raft_event *event)
+static void legacyHandleStateUpdate(struct raft *r)
 {
     assert(r->legacy.prev_state != r->state);
 
     if (r->legacy.prev_state == RAFT_LEADER) {
-        /* If we're stepping down because of disk write failure, fail
-         * requests using the same status code as the write failure.*/
-        if (event->type == RAFT_PERSISTED_ENTRIES &&
-            event->persisted_entries.status != 0) {
-            legacyPersistedEntriesFailure(r, event);
-        }
-
         LegacyFailPendingRequests(r);
         assert(QUEUE_IS_EMPTY(&r->legacy.pending));
     }
@@ -1088,7 +1035,7 @@ static int legacyHandleEvent(struct raft *r,
     }
 
     if (update.flags & RAFT_UPDATE_STATE) {
-        legacyHandleStateUpdate(r, event);
+        legacyHandleStateUpdate(r);
     }
 
     /* Check whether a raft_change request has been completed. */

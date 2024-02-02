@@ -485,7 +485,6 @@ struct raft_event
             raft_index index;
             struct raft_entry *batch;
             unsigned n;
-            int status;
         } persisted_entries;
         struct
         {
