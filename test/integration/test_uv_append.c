@@ -458,7 +458,7 @@ TEST(append, noSpaceUponPrepareCurrent, setUp, tearDownDeps, 0, DirTmpfsParams)
     struct fixture *f = data;
     SKIP_IF_NO_FIXTURE;
     raft_uv_set_segment_size(&f->io, SEGMENT_BLOCK_SIZE * 32768);
-    raft_uv_set_segment_retry(&f->io, 10);
+    raft_uv_set_disk_retry(&f->io, 10);
     APPEND_SUBMIT(0, 1, 64);
     LOOP_RUN(5);
     APPEND_EXPECT(0, RAFT_CANCELED);
@@ -477,7 +477,7 @@ TEST(append, noSpaceUponPrepareSpare, setUp, tearDownDeps, 0, DirTmpfsParams)
     return MUNIT_SKIP;
 #endif
     raft_uv_set_segment_size(&f->io, SEGMENT_BLOCK_SIZE * 2);
-    raft_uv_set_segment_retry(&f->io, 10);
+    raft_uv_set_disk_retry(&f->io, 10);
     DirFill(f->dir, SEGMENT_BLOCK_SIZE * 3);
     APPEND(1, SEGMENT_BLOCK_SIZE);
     APPEND_SUBMIT(0, 1, SEGMENT_BLOCK_SIZE);

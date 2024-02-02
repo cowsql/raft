@@ -246,7 +246,8 @@ static void uvPrepareAfterWorkCb(uv_work_t *work, int status)
     if (segment->status != 0) {
         assert(uv->prepare_retry.data == uv);
         uv->prepare_retry.data = segment;
-        rv = uv_timer_start(&uv->prepare_retry, uvPrepareRetryTimerCb, 10, 0);
+        rv = uv_timer_start(&uv->prepare_retry, uvPrepareRetryTimerCb,
+                            uv->disk_retry, 0);
         assert(rv == 0);
         return;
     }

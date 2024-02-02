@@ -784,7 +784,7 @@ int raft_uv_init(struct raft_io *io,
     uv->direct_io = false;
     uv->async_io = false;
     uv->segment_size = UV__MAX_SEGMENT_SIZE;
-    uv->segment_retry = UV__SEGMENT_RETRY_RATE;
+    uv->disk_retry = UV__DISK_RETRY_RATE;
     uv->block_size = 0;
     QUEUE_INIT(&uv->clients);
     QUEUE_INIT(&uv->servers);
@@ -859,11 +859,11 @@ void raft_uv_set_segment_size(struct raft_io *io, size_t size)
     uv->segment_size = size;
 }
 
-void raft_uv_set_segment_retry(struct raft_io *io, unsigned msecs)
+void raft_uv_set_disk_retry(struct raft_io *io, unsigned msecs)
 {
     struct uv *uv;
     uv = io->impl;
-    uv->segment_retry = msecs;
+    uv->disk_retry = msecs;
 }
 
 void raft_uv_set_block_size(struct raft_io *io, size_t size)
