@@ -723,6 +723,17 @@ static void legacyCheckChangeRequest(struct raft *r,
         struct raft_event *event;
         unsigned i;
 
+        /* If we're transferring leadership, fail the request. */
+        if (raft_transferee(r) != 0) {
+            r->legacy.change = NULL;
+            if (change->cb != NULL) {
+                change->type = RAFT_CHANGE;
+                change->status = RAFT_LEADERSHIPLOST;
+                QUEUE_PUSH(&r->legacy.requests, &change->queue);
+            }
+            return;
+        }
+
         i = configurationIndexOf(&r->configuration, change->catch_up_id);
         assert(i < r->configuration.n);
 
