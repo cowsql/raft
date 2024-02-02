@@ -132,6 +132,10 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
     assert(rv == 0); /* This should never fail */
     uv->prepare_retry.data = uv;
 
+    rv = uv_timer_init(uv->loop, &uv->append_retry);
+    assert(rv == 0); /* This should never fail */
+    uv->append_retry.data = uv;
+
     return 0;
 }
 
@@ -220,6 +224,9 @@ void uvMaybeFireCloseCb(struct uv *uv)
         return;
     }
     if (uv->prepare_retry.data != NULL) {
+        return;
+    }
+    if (uv->append_retry.data != NULL) {
         return;
     }
     if (!QUEUE_IS_EMPTY(&uv->append_segments)) {

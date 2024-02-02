@@ -979,6 +979,14 @@ static void uvBarrierClose(struct uv *uv)
     }
 }
 
+static void uvAppendRetryCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->append_retry.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
 void uvAppendClose(struct uv *uv)
 {
     struct uvAliveSegment *segment;
@@ -990,6 +998,11 @@ void uvAppendClose(struct uv *uv)
     uvAppendFinishPendingRequests(uv, RAFT_CANCELED);
 
     uvFinalizeCurrentAliveSegmentOnceIdle(uv);
+
+    if (uv->append_retry.data != NULL) {
+        uv_timer_stop(&uv->append_retry);
+        uv_close((uv_handle_t *)&uv->append_retry, uvAppendRetryCloseCb);
+    }
 
     /* Also finalize the segments that we didn't write at all and are just
      * sitting in the append_segments queue waiting for writes against the

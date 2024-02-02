@@ -77,12 +77,13 @@ struct uv
     void *prepare_inflight;              /* Segment being prepared */
     queue prepare_reqs;                  /* Pending prepare requests. */
     queue prepare_pool;                  /* Prepared open segments */
-    struct uv_timer_s prepare_retry;     /* Timer prepare retries */
+    struct uv_timer_s prepare_retry;     /* Timer for prepare retries */
     uvCounter prepare_next_counter;      /* Counter of next open segment */
     raft_index append_next_index;        /* Index of next entry to append */
     queue append_segments;               /* Open segments in use. */
     queue append_pending_reqs;           /* Pending append requests. */
     queue append_writing_reqs;           /* Append requests in flight */
+    struct uv_timer_s append_retry;      /* Timer for append retries */
     struct UvBarrier *barrier;           /* Inflight barrier request */
     queue finalize_reqs;                 /* Segments waiting to be closed */
     struct uv_work_s finalize_work;      /* Resize and rename segments */
