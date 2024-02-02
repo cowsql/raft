@@ -326,20 +326,11 @@ static void replicationQuorum(struct raft *r, const raft_index index);
 static int leaderPersistEntriesDone(struct raft *r,
                                     raft_index index,
                                     struct raft_entry *entries,
-                                    unsigned n,
-                                    int status)
+                                    unsigned n)
 {
     size_t server_index;
 
     assert(r->state == RAFT_LEADER);
-
-    /* In case of a failed disk write, convert immediately to follower state,
-     * giving the cluster a chance to elect another leader that doesn't have a
-     * full disk (or whatever caused our write error). */
-    if (status != 0) {
-        convertToFollower(r);
-        goto out;
-    }
 
     updateLastStored(r, index, entries, n);
 
@@ -361,22 +352,19 @@ static int leaderPersistEntriesDone(struct raft *r,
     /* Check if we can commit some new entries. */
     replicationQuorum(r, r->last_stored);
 
-out:
     return 0;
 }
 
 static int followerPersistEntriesDone(struct raft *r,
                                       raft_index index,
                                       struct raft_entry *entries,
-                                      unsigned n,
-                                      int status);
+                                      unsigned n);
 
 /* Invoked once a disk write request for new entries has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
                                   raft_index index,
                                   struct raft_entry *entries,
-                                  unsigned n,
-                                  int status)
+                                  unsigned n)
 {
     int rv;
 
@@ -384,23 +372,15 @@ int replicationPersistEntriesDone(struct raft *r,
 
     switch (r->state) {
         case RAFT_LEADER:
-            rv = leaderPersistEntriesDone(r, index, entries, n, status);
+            rv = leaderPersistEntriesDone(r, index, entries, n);
             break;
         case RAFT_FOLLOWER:
-            rv = followerPersistEntriesDone(r, index, entries, n, status);
+            rv = followerPersistEntriesDone(r, index, entries, n);
             break;
         default:
-            if (status == 0) {
-                updateLastStored(r, index, entries, n);
-            }
+            updateLastStored(r, index, entries, n);
             rv = 0;
             break;
-    }
-
-    if (status != 0) {
-        if (index <= TrailLastIndex(&r->trail)) {
-            TrailTruncate(&r->trail, index);
-        }
     }
 
     if (rv != 0) {
@@ -600,8 +580,7 @@ static void sendAppendEntriesResult(
 static int followerPersistEntriesDone(struct raft *r,
                                       raft_index first_index,
                                       struct raft_entry *entries,
-                                      unsigned n,
-                                      int status)
+                                      unsigned n)
 {
     struct raft_append_entries_result result;
     size_t i;
@@ -616,11 +595,6 @@ static int followerPersistEntriesDone(struct raft *r,
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result.features = MESSAGE__FEATURE_CAPACITY;
-
-    if (status != 0) {
-        result.rejected = first_index;
-        goto respond;
-    }
 
     i = updateLastStored(r, first_index, entries, n);
 
@@ -655,7 +629,6 @@ static int followerPersistEntriesDone(struct raft *r,
 
     result.rejected = 0;
 
-respond:
     result.last_log_index = r->last_stored;
     result.capacity = r->capacity;
     sendAppendEntriesResult(r, &result);

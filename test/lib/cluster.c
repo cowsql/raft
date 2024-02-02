@@ -411,13 +411,8 @@ static void serverCancelEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
     unsigned n = event->persisted_entries.n;
-    int rv;
 
-    event->time = s->cluster->time;
-    event->persisted_entries.status = RAFT_CANCELED;
-
-    rv = serverStep(s, &step->event);
-    munit_assert_int(rv, ==, 0);
+    (void)s;
 
     if (n > 0) {
         raft_free(event->persisted_entries.batch[0].batch);

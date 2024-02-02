@@ -143,7 +143,6 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
     event.persisted_entries.n = req->n;
-    event.persisted_entries.status = 0;
 
     LegacyForwardToRaftIo(r, &event);
 

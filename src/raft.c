@@ -388,8 +388,7 @@ static int stepStart(struct raft *r,
 static int stepPersistedEntries(struct raft *r,
                                 raft_index index,
                                 struct raft_entry *entries,
-                                unsigned n,
-                                int status)
+                                unsigned n)
 {
     raft_index last_stored = r->last_stored + n;
     raft_index last_index = TrailLastIndex(&r->trail);
@@ -406,7 +405,7 @@ static int stepPersistedEntries(struct raft *r,
               entries[0].term, index + n - 1, entries[n - 1].term);
     }
 
-    rv = replicationPersistEntriesDone(r, index, entries, n, status);
+    rv = replicationPersistEntriesDone(r, index, entries, n);
 
     return rv;
 }
@@ -510,8 +509,7 @@ int raft_step(struct raft *r,
         case RAFT_PERSISTED_ENTRIES:
             rv = stepPersistedEntries(r, event->persisted_entries.index,
                                       event->persisted_entries.batch,
-                                      event->persisted_entries.n,
-                                      event->persisted_entries.status);
+                                      event->persisted_entries.n);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
             rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
