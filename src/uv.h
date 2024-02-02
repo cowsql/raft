@@ -23,8 +23,8 @@
 /* Enough to hold a segment filename (either open or closed) */
 #define UV__SEGMENT_FILENAME_BUF_SIZE 34
 
-/* Retry failed segment creation every 5 seconds by default. */
-#define UV__SEGMENT_RETRY_RATE 1000 * 5
+/* Retry failed disk operations every 5 seconds by default. */
+#define UV__DISK_RETRY_RATE 1000 * 5
 
 /* Template string for snapshot filenames: snapshot term, snapshot index,
  * creation timestamp (milliseconds since epoch). */
@@ -69,7 +69,7 @@ struct uv
     bool direct_io;                      /* Whether direct I/O is supported */
     bool async_io;                       /* Whether async I/O is supported */
     size_t segment_size;                 /* Initial size of open segments. */
-    unsigned segment_retry;              /* Segment creation retry rate */
+    unsigned disk_retry;                 /* Disk operations retry rate */
     size_t block_size;                   /* Block size of the data dir */
     queue clients;                       /* Outbound connections */
     queue servers;                       /* Inbound connections */
@@ -77,12 +77,13 @@ struct uv
     void *prepare_inflight;              /* Segment being prepared */
     queue prepare_reqs;                  /* Pending prepare requests. */
     queue prepare_pool;                  /* Prepared open segments */
-    struct uv_timer_s prepare_retry;     /* Timer prepare retries */
+    struct uv_timer_s prepare_retry;     /* Timer for prepare retries */
     uvCounter prepare_next_counter;      /* Counter of next open segment */
     raft_index append_next_index;        /* Index of next entry to append */
     queue append_segments;               /* Open segments in use. */
     queue append_pending_reqs;           /* Pending append requests. */
     queue append_writing_reqs;           /* Append requests in flight */
+    struct uv_timer_s append_retry;      /* Timer for append retries */
     struct UvBarrier *barrier;           /* Inflight barrier request */
     queue finalize_reqs;                 /* Segments waiting to be closed */
     struct uv_work_s finalize_work;      /* Resize and rename segments */
