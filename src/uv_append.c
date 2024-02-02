@@ -1012,7 +1012,7 @@ size_t UvAppendCapacity(struct uv *uv)
 
     QUEUE_FOREACH (head, &uv->append_segments) {
         struct uvAliveSegment *segment;
-        size_t written;
+        size_t size;
         segment = QUEUE_DATA(head, struct uvAliveSegment, queue);
 
         /* Skip segments that were not assigned a prepared segment yet. */
@@ -1020,12 +1020,12 @@ size_t UvAppendCapacity(struct uv *uv)
             continue;
         }
 
-        written = segment->written;
-        if (written > uv->segment_size) {
-            written = uv->segment_size;
+        size = segment->size;
+        if (size > uv->segment_size) {
+            size = uv->segment_size;
         }
 
-        capacity += uv->segment_size - written;
+        capacity += uv->segment_size - size;
     }
 
     return capacity;
