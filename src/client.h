@@ -25,7 +25,4 @@ void ClientCatchUp(struct raft *r, raft_id server_id);
 /* Start transferring leadership to the given server. */
 int ClientTransfer(struct raft *r, raft_id server_id);
 
-/* XXX Used by legacy.c, should be private. */
-raft_id clientSelectTransferee(struct raft *r);
-
 #endif /* CLIENT_H_ */
