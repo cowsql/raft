@@ -1338,8 +1338,6 @@ int raft_assign(struct raft *r,
     raft_index last_index;
     int rv;
 
-    r->now = r->io->time(r->io);
-
     if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
         goto err;
@@ -1547,7 +1545,6 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     struct raft_event event;
     int rv;
 
-    r->now = r->io->time(r->io);
     if (r->legacy.closing) {
         switch (message->type) {
             case RAFT_IO_APPEND_ENTRIES:
@@ -1563,7 +1560,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     }
 
     event.type = RAFT_RECEIVE;
-    event.time = r->now;
+    event.time = r->io->time(r->io);
     event.receive.message = message;
 
     rv = LegacyForwardToRaftIo(r, &event);
