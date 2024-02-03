@@ -633,6 +633,24 @@ raft_time raft_timeout(const struct raft *r)
     return timeout;
 }
 
+int raft_match_index(const struct raft *r, raft_id id, raft_index *index)
+{
+    unsigned i;
+
+    if (r->state != RAFT_LEADER) {
+        return RAFT_NOTLEADER;
+    }
+
+    i = configurationIndexOf(&r->configuration, id);
+    if (i == r->configuration.n) {
+        return RAFT_BADID;
+    }
+
+    *index = progressMatchIndex(r, i);
+
+    return 0;
+}
+
 int raft_catch_up(const struct raft *r, raft_id id, int *status)
 {
     unsigned i;

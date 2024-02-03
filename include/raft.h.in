@@ -1034,6 +1034,15 @@ RAFT_API raft_index raft_commit_index(const struct raft *r);
 RAFT_API raft_time raft_timeout(const struct raft *r);
 
 /**
+ * Return the current match index of the server with the given ID.
+ *
+ * It must be called when in leader state.
+ */
+RAFT_API int raft_match_index(const struct raft *r,
+                              raft_id id,
+                              raft_index *index);
+
+/**
  * Return information about the progress of a server that is catching up with
  * logs after a #RAFT_CATCH_UP event was fired.
  */
