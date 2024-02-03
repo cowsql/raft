@@ -106,7 +106,6 @@ int raft_init(struct raft *r,
     r->state = RAFT_FOLLOWER;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
-    r->snapshot.taking = false;
     r->snapshot.persisting = false;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;
@@ -152,6 +151,7 @@ int raft_init(struct raft *r,
         r->legacy.step_cb = NULL;
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
+        r->legacy.snapshot_taking = false;
         r->transfer = NULL;
         r->legacy.log = logInit();
         if (r->legacy.log == NULL) {
@@ -631,6 +631,24 @@ raft_time raft_timeout(const struct raft *r)
     }
 
     return timeout;
+}
+
+int raft_match_index(const struct raft *r, raft_id id, raft_index *index)
+{
+    unsigned i;
+
+    if (r->state != RAFT_LEADER) {
+        return RAFT_NOTLEADER;
+    }
+
+    i = configurationIndexOf(&r->configuration, id);
+    if (i == r->configuration.n) {
+        return RAFT_BADID;
+    }
+
+    *index = progressMatchIndex(r, i);
+
+    return 0;
 }
 
 int raft_catch_up(const struct raft *r, raft_id id, int *status)

@@ -192,7 +192,7 @@ raft_index progressNextIndex(struct raft *r, unsigned i)
     return r->leader_state.progress[i].next_index;
 }
 
-raft_index progressMatchIndex(struct raft *r, unsigned i)
+raft_index progressMatchIndex(const struct raft *r, unsigned i)
 {
     return r->leader_state.progress[i].match_index;
 }

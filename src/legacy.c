@@ -1,15 +1,11 @@
 #include "legacy.h"
 #include "assert.h"
-#include "client.h"
 #include "configuration.h"
-#include "convert.h"
 #include "entry.h"
 #include "err.h"
 #include "log.h"
 #include "membership.h"
-#include "progress.h"
 #include "queue.h"
-#include "replication.h"
 #include "request.h"
 #include "snapshot.h"
 #include "tracing.h"
@@ -403,7 +399,7 @@ struct legacyTakeSnapshot
  */
 static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 {
-    r->snapshot.taking = false;
+    r->legacy.snapshot_taking = false;
 
     if (r->fsm->version == 1 ||
         (r->fsm->version > 1 && r->fsm->snapshot_finalize == NULL)) {
@@ -426,19 +422,14 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     struct raft_snapshot *snapshot = &req->snapshot;
     struct raft_event event;
 
-    r->snapshot.persisting = false;
-
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
-    /* If we are shutting down, cancel the snapshot.
-     *
-     * Or the snapshot's index might not be in the log anymore because the
-     * associated entry failed to be persisted and got truncated (TODO: we
-     * should retry instead of truncating). */
     assert(metadata.term != 0);
-    if (r->legacy.closing ||
-        logTermOf(r->legacy.log, metadata.index) != metadata.term) {
+    assert(logTermOf(r->legacy.log, metadata.index) == metadata.term);
+
+    /* If we are shutting down, cancel the snapshot. */
+    if (r->legacy.closing) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
     }
@@ -466,16 +457,12 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     int rv;
     assert(!r->snapshot.persisting);
     req->put.data = req;
-    r->snapshot.persisting = true;
     rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &req->put, snapshot,
                              takeSnapshotCb);
-    if (rv != 0) {
-        r->snapshot.persisting = false;
-    }
     return rv;
 }
 
-static bool legacyShouldTakeSnapshot(struct raft *r)
+static bool legacyShouldTakeSnapshot(const struct raft *r)
 {
     /* We currently support only synchronous FSMs, where entries are applied
      * synchronously as soon as we advance the commit index, so the two
@@ -491,7 +478,7 @@ static bool legacyShouldTakeSnapshot(struct raft *r)
 
     /* If a snapshot is already in progress or we're installing a snapshot, we
      * don't want to start another one. */
-    if (r->snapshot.taking || r->snapshot.persisting) {
+    if (r->legacy.snapshot_taking || r->snapshot.persisting) {
         return false;
     };
 
@@ -522,6 +509,8 @@ static void legacyTakeSnapshot(struct raft *r)
      * synchronously as soon as we advance the commit index, so the two
      * values always match when we get here. */
     assert(r->last_applied == r->commit_index);
+
+    assert(!r->snapshot.persisting);
 
     tracef("take snapshot at %lld", r->commit_index);
 
@@ -566,7 +555,7 @@ static void legacyTakeSnapshot(struct raft *r)
         goto abort_after_snapshot;
     }
 
-    r->snapshot.taking = true;
+    r->legacy.snapshot_taking = true;
 
     return;
 
@@ -1156,14 +1145,12 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     return 0;
 }
 
-void LegacyLeadershipTransferInit(struct raft *r,
-                                  struct raft_transfer *req,
-                                  raft_id id,
-                                  raft_transfer_cb cb)
+static void legacyLeadershipTransferInit(struct raft *r,
+                                         struct raft_transfer *req,
+                                         raft_id id,
+                                         raft_transfer_cb cb)
 {
     assert(r->state == RAFT_LEADER);
-    assert(r->leader_state.transferee == 0);
-    assert(!r->leader_state.transferring);
 
     req->cb = cb;
     req->id = id;
@@ -1301,16 +1288,6 @@ int raft_add(struct raft *r,
     struct raft_configuration configuration;
     int rv;
 
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
-    rv = membershipCanChangeConfiguration(r);
-    if (rv != 0) {
-        return rv;
-    }
-
     /* Make a copy of the current configuration, and add the new server to
      * it. */
     rv = configurationCopy(&r->configuration, &configuration);
@@ -1353,11 +1330,8 @@ int raft_assign(struct raft *r,
 {
     const struct raft_server *server;
     struct raft_event event;
-    unsigned server_index;
-    raft_index last_index;
+    raft_index match_index;
     int rv;
-
-    r->now = r->io->time(r->io);
 
     if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
         rv = RAFT_NOTLEADER;
@@ -1405,10 +1379,8 @@ int raft_assign(struct raft *r,
         goto err;
     }
 
-    server_index = configurationIndexOf(&r->configuration, id);
-    assert(server_index < r->configuration.n);
-
-    last_index = logLastIndex(r->legacy.log);
+    rv = raft_match_index(r, id, &match_index);
+    assert(rv == 0);
 
     req->cb = cb;
     req->catch_up_id = 0;
@@ -1419,9 +1391,10 @@ int raft_assign(struct raft *r,
     /* If we are not promoting to the voter role or if the log of this
      * server is already up-to-date, we can submit the configuration change
      * immediately. */
-    if (role != RAFT_VOTER ||
-        progressMatchIndex(r, server_index) == last_index) {
+    if (role != RAFT_VOTER || match_index == raft_last_index(r)) {
+        unsigned server_index = configurationIndexOf(&r->configuration, id);
         int old_role = r->configuration.servers[server_index].role;
+
         r->configuration.servers[server_index].role = role;
 
         rv = clientChangeConfiguration(r, &r->configuration);
@@ -1456,25 +1429,8 @@ int raft_remove(struct raft *r,
                 raft_id id,
                 raft_change_cb cb)
 {
-    const struct raft_server *server;
     struct raft_configuration configuration;
     int rv;
-
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
-    rv = membershipCanChangeConfiguration(r);
-    if (rv != 0) {
-        return rv;
-    }
-
-    server = configurationGet(&r->configuration, id);
-    if (server == NULL) {
-        rv = RAFT_BADID;
-        goto err;
-    }
 
     /* Make a copy of the current configuration, and remove the given server
      * from it. */
@@ -1516,39 +1472,8 @@ int raft_transfer(struct raft *r,
                   raft_id id,
                   raft_transfer_cb cb)
 {
-    const struct raft_server *server;
     struct raft_event event;
-    unsigned i;
     int rv;
-
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        ErrMsgFromCode(r->errmsg, rv);
-        goto err;
-    }
-
-    if (id == 0) {
-        id = clientSelectTransferee(r);
-        if (id == 0) {
-            rv = RAFT_NOTFOUND;
-            ErrMsgPrintf(r->errmsg, "there's no other voting server");
-            goto err;
-        }
-    }
-
-    server = configurationGet(&r->configuration, id);
-    if (server == NULL || server->id == r->id || server->role != RAFT_VOTER) {
-        rv = RAFT_BADID;
-        ErrMsgFromCode(r->errmsg, rv);
-        goto err;
-    }
-
-    /* If this follower is up-to-date, we can send it the TimeoutNow message
-     * right away. */
-    i = configurationIndexOf(&r->configuration, server->id);
-    assert(i < r->configuration.n);
-
-    LegacyLeadershipTransferInit(r, req, id, cb);
 
     event.time = r->io->time(r->io);
     event.type = RAFT_TRANSFER;
@@ -1558,6 +1483,9 @@ int raft_transfer(struct raft *r,
     if (rv != 0) {
         goto err;
     }
+
+    assert(raft_transferee(r) != 0);
+    legacyLeadershipTransferInit(r, req, raft_transferee(r), cb);
 
     return 0;
 
@@ -1611,7 +1539,6 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     struct raft_event event;
     int rv;
 
-    r->now = r->io->time(r->io);
     if (r->legacy.closing) {
         switch (message->type) {
             case RAFT_IO_APPEND_ENTRIES:
@@ -1627,7 +1554,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     }
 
     event.type = RAFT_RECEIVE;
-    event.time = r->now;
+    event.time = r->io->time(r->io);
     event.receive.message = message;
 
     rv = LegacyForwardToRaftIo(r, &event);

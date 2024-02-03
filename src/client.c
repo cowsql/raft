@@ -218,7 +218,7 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
 }
 
 /* Find a suitable voting follower. */
-raft_id clientSelectTransferee(struct raft *r)
+static raft_id clientSelectTransferee(struct raft *r)
 {
     const struct raft_server *transferee = NULL;
     unsigned i;

@@ -944,7 +944,7 @@ int replicationInstallSnapshot(struct raft *r,
     /* If we are taking a snapshot ourselves or installing a snapshot, ignore
      * the request, the leader will eventually retry. TODO: we should do
      * something smarter. */
-    if (r->snapshot.taking || r->snapshot.persisting) {
+    if (r->legacy.snapshot_taking || r->snapshot.persisting) {
         *async = true;
         infof("already taking or installing snapshot");
         return RAFT_BUSY;

@@ -616,6 +616,7 @@ struct raft; /* Forward declaration. */
         struct raft_change *change;     /* Pending membership change */      \
         raft_index snapshot_index;      /* Last persisted snapshot */        \
         struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
+        bool snapshot_taking;              /* True when taking a snapshot */ \
         struct raft_log *log;              /* Cache on-disk log */           \
     } legacy;
 #endif /* RAFT__LEGACY_no */
@@ -694,8 +695,8 @@ struct raft_io_snapshot_put
 #define RAFT__SNAPSHOT_FIELDS_V1                                           \
     struct                                                                 \
     {                                                                      \
-        bool taking;     /* A RAFT_TAKE_SNAPSHOT request is in flight */   \
-        bool persisting; /* A RAFT_PERSIT_SNAPSHOT request is in flight */ \
+        bool unused;                                                       \
+        bool persisting; /* A RAFT_UPDATE_SNAPSHOT request is in flight */ \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);
@@ -1031,6 +1032,15 @@ RAFT_API raft_index raft_commit_index(const struct raft *r);
  * Return the time at which the next RAFT_TIMEOUT event should be fired.
  */
 RAFT_API raft_time raft_timeout(const struct raft *r);
+
+/**
+ * Return the current match index of the server with the given ID.
+ *
+ * It must be called when in leader state.
+ */
+RAFT_API int raft_match_index(const struct raft *r,
+                              raft_id id,
+                              raft_index *index);
 
 /**
  * Return information about the progress of a server that is catching up with
