@@ -845,3 +845,5 @@ const char *raft_role_name(int role)
     }
     return name;
 }
+
+#undef infof
