@@ -492,7 +492,6 @@ struct raft_event
             size_t offset;
             struct raft_buffer chunk;
             bool last;
-            int status;
         } persisted_snapshot;
         struct
         {
@@ -617,6 +616,7 @@ struct raft; /* Forward declaration. */
         raft_index snapshot_index;      /* Last persisted snapshot */        \
         struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
         bool snapshot_taking;              /* True when taking a snapshot */ \
+        void *snapshot_pending;            /* Pending install snapshot */    \
         struct raft_log *log;              /* Cache on-disk log */           \
     } legacy;
 #endif /* RAFT__LEGACY_no */

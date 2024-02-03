@@ -242,7 +242,6 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     event.persisted_snapshot.offset = req->offset;
     event.persisted_snapshot.chunk = req->chunk;
     event.persisted_snapshot.last = req->last;
-    event.persisted_snapshot.status = status;
 
     /* If we successfully persisted the snapshot, keep the snapshot data around,
      * since we'll then need it immediately after calling raft_step(), in order
@@ -253,15 +252,15 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
         assert(r->legacy.snapshot_index == 0);
         r->legacy.snapshot_index = req->metadata.index;
         r->legacy.snapshot_chunk = req->chunk;
+        LegacyForwardToRaftIo(r, &event);
     } else {
         assert(r->legacy.closing);
         assert(status == RAFT_CANCELED);
         raft_free(req->chunk.base);
+        raft_configuration_close(&req->metadata.configuration);
     }
 
     raft_free(req);
-
-    LegacyForwardToRaftIo(r, &event);
 }
 
 static int legacyHandleUpdateSnapshot(struct raft *r,

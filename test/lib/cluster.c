@@ -423,16 +423,10 @@ static void serverCancelEntries(struct test_server *s, struct step *step)
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    int rv;
+    (void)s;
 
-    event->time = s->cluster->time;
-    event->persisted_snapshot.status = RAFT_CANCELED;
-
-    /* XXX: this should probably be done by raft core */
     raft_free(event->persisted_snapshot.chunk.base);
-
-    rv = serverStep(s, event);
-    munit_assert_int(rv, ==, 0);
+    raft_configuration_close(&event->persisted_snapshot.metadata.configuration);
 }
 
 /* Release the memory used by a RAFT_RECEIVE event. */

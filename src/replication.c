@@ -872,8 +872,7 @@ int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_snapshot_metadata *metadata,
                                    size_t offset,
                                    struct raft_buffer *chunk,
-                                   bool last,
-                                   int status)
+                                   bool last)
 {
     struct raft_append_entries_result result;
     int rv;
@@ -892,12 +891,6 @@ int replicationPersistSnapshotDone(struct raft *r,
     result.features = MESSAGE__FEATURE_CAPACITY;
     result.rejected = 0;
 
-    if (status != 0) {
-        infof("failed to persist snapshot %llu^%llu: %s", metadata->index,
-              metadata->term, raft_strerror(status));
-        goto discard;
-    }
-
     /* From Figure 5.3:
      *
      *   7. Discard the entire log
@@ -905,8 +898,7 @@ int replicationPersistSnapshotDone(struct raft *r,
      */
     rv = RestoreSnapshot(r, metadata);
     if (rv != 0) {
-        tracef("restore snapshot %llu: %s", metadata->index,
-               raft_strerror(status));
+        tracef("restore snapshot %llu: %s", metadata->index, raft_strerror(rv));
         goto discard;
     }
 

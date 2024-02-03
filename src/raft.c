@@ -152,6 +152,7 @@ int raft_init(struct raft *r,
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
         r->legacy.snapshot_taking = false;
+        r->legacy.snapshot_pending = NULL;
         r->transfer = NULL;
         r->legacy.log = logInit();
         if (r->legacy.log == NULL) {
@@ -414,13 +415,11 @@ static int stepPersistedSnapshot(struct raft *r,
                                  struct raft_snapshot_metadata *metadata,
                                  size_t offset,
                                  struct raft_buffer *chunk,
-                                 bool last,
-                                 int status)
+                                 bool last)
 {
     int rv;
     infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
-    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last,
-                                        status);
+    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last);
     if (rv != 0) {
         return rv;
     }
@@ -515,8 +514,7 @@ int raft_step(struct raft *r,
             rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
                                        event->persisted_snapshot.offset,
                                        &event->persisted_snapshot.chunk,
-                                       event->persisted_snapshot.last,
-                                       event->persisted_snapshot.status);
+                                       event->persisted_snapshot.last);
             break;
         case RAFT_RECEIVE:
             rv = stepReceive(r, event->receive.message);

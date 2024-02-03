@@ -287,10 +287,7 @@ TEST(snapshot, AbortIfRejected, setUp, tearDown, 0, NULL)
         "           start persisting snapshot (2^2)\n");
     CLUSTER_STOP(2);
     CLUSTER_START(2);
-    CLUSTER_TRACE(
-        "[ 150] 2 > persisted snapshot (2^2)\n"
-        "           failed to persist snapshot 2^2: operation canceled\n"
-        "[ 150] 2 > term 3, voted for 1, 1 entry (1^1)\n");
+    CLUSTER_TRACE("[ 150] 2 > term 3, voted for 1, 1 entry (1^1)\n");
 
     /* Server 1 eventually sends server 2 a heartbeat, which server 2 rejects.
      * At that point server 1 sends again the snapshot. */
