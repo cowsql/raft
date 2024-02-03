@@ -1,15 +1,11 @@
 #include "legacy.h"
 #include "assert.h"
-#include "client.h"
 #include "configuration.h"
-#include "convert.h"
 #include "entry.h"
 #include "err.h"
 #include "log.h"
 #include "membership.h"
-#include "progress.h"
 #include "queue.h"
-#include "replication.h"
 #include "request.h"
 #include "snapshot.h"
 #include "tracing.h"
@@ -1334,8 +1330,7 @@ int raft_assign(struct raft *r,
 {
     const struct raft_server *server;
     struct raft_event event;
-    unsigned server_index;
-    raft_index last_index;
+    raft_index match_index;
     int rv;
 
     if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
@@ -1384,10 +1379,8 @@ int raft_assign(struct raft *r,
         goto err;
     }
 
-    server_index = configurationIndexOf(&r->configuration, id);
-    assert(server_index < r->configuration.n);
-
-    last_index = logLastIndex(r->legacy.log);
+    rv = raft_match_index(r, id, &match_index);
+    assert(rv == 0);
 
     req->cb = cb;
     req->catch_up_id = 0;
@@ -1398,9 +1391,10 @@ int raft_assign(struct raft *r,
     /* If we are not promoting to the voter role or if the log of this
      * server is already up-to-date, we can submit the configuration change
      * immediately. */
-    if (role != RAFT_VOTER ||
-        progressMatchIndex(r, server_index) == last_index) {
+    if (role != RAFT_VOTER || match_index == raft_last_index(r)) {
+        unsigned server_index = configurationIndexOf(&r->configuration, id);
         int old_role = r->configuration.servers[server_index].role;
+
         r->configuration.servers[server_index].role = role;
 
         rv = clientChangeConfiguration(r, &r->configuration);
