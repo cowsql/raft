@@ -884,6 +884,7 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);
+    assert(status == 0);
 
     r->snapshot.persisting = false;
 
@@ -891,12 +892,6 @@ int replicationPersistSnapshotDone(struct raft *r,
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result.features = MESSAGE__FEATURE_CAPACITY;
     result.rejected = 0;
-
-    if (status != 0) {
-        infof("failed to persist snapshot %llu^%llu: %s", metadata->index,
-              metadata->term, raft_strerror(status));
-        goto discard;
-    }
 
     /* From Figure 5.3:
      *
