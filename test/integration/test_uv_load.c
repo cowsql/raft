@@ -811,6 +811,41 @@ TEST(load, emptySnapshot, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
+/* There are two snapshots, but the last one has an invalid metadata file. The
+ * first one is loaded and the invalid one is discarded.  */
+TEST(load, invalidSnapshotMetadata, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    struct snapshot snapshot = {
+        1, /* term */
+        4, /* index */
+        1  /* data */
+    };
+    char filename[64];
+    uint64_t now;
+    uint64_t format = 0;
+
+    SNAPSHOT_PUT(1, 4, 1);
+
+    /* Take a snapshot but then truncate the data file, as if the server ran out
+     * of space before it could write it. */
+    uv_update_time(&f->loop);
+    now = uv_now(&f->loop);
+    sprintf(filename, "snapshot-2-6-%ju.meta", now);
+    SNAPSHOT_PUT(2, 6, 2);
+    DirOverwriteFile(f->dir, filename, &format, sizeof format, 0);
+
+    LOAD(0,         /* term */
+         0,         /* voted for */
+         &snapshot, /* snapshot */
+         5,         /* start index */
+         0,         /* data for first loaded entry */
+         0          /* n entries */
+    );
+
+    return MUNIT_OK;
+}
+
 /* There is an orphaned snapshot and an orphaned snapshot .meta file,
  * make sure they are removed */
 TEST(load, orphanedSnapshotFiles, setUp, tearDown, 0, NULL)
