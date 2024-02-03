@@ -1155,8 +1155,6 @@ static void legacyLeadershipTransferInit(struct raft *r,
                                          raft_transfer_cb cb)
 {
     assert(r->state == RAFT_LEADER);
-    assert(r->leader_state.transferee == 0);
-    assert(!r->leader_state.transferring);
 
     req->cb = cb;
     req->id = id;
@@ -1541,8 +1539,6 @@ int raft_transfer(struct raft *r,
     i = configurationIndexOf(&r->configuration, server->id);
     assert(i < r->configuration.n);
 
-    legacyLeadershipTransferInit(r, req, id, cb);
-
     event.time = r->io->time(r->io);
     event.type = RAFT_TRANSFER;
     event.transfer.server_id = id;
@@ -1551,6 +1547,9 @@ int raft_transfer(struct raft *r,
     if (rv != 0) {
         goto err;
     }
+
+    assert(raft_transferee(r) != 0);
+    legacyLeadershipTransferInit(r, req, raft_transferee(r), cb);
 
     return 0;
 
