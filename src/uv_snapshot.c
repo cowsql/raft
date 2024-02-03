@@ -494,18 +494,14 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     int rv;
 
-    rv = UvOsClose(put->snapshot_fd);
-    assert(rv == 0);
-    rv = UvOsClose(put->meta.fd);
-    assert(rv == 0);
-
     sprintf(metadata, UV__SNAPSHOT_META_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    rv = UvFsMakeFile(uv->dir, metadata, put->meta.bufs, 2, put->errmsg);
+    rv = UvFsFinalizeTempFile(put->meta.fd, uv->dir, metadata, put->meta.bufs,
+                              2, put->errmsg);
     if (rv != 0) {
-        tracef("snapshot.meta creation failed %d", rv);
         ErrMsgWrapf(put->errmsg, "write %s", metadata);
+        tracef("snapshot.meta creation failed: %s", put->errmsg);
         put->status = RAFT_IOERR;
         return;
     }
@@ -513,11 +509,10 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     sprintf(snapshot, UV__SNAPSHOT_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    tracef("snapshot write start");
-    rv = UvFsMakeFile(uv->dir, snapshot, put->snapshot->bufs,
-                      put->snapshot->n_bufs, put->errmsg);
+    rv = UvFsFinalizeTempFile(put->snapshot_fd, uv->dir, snapshot,
+                              put->snapshot->bufs, put->snapshot->n_bufs,
+                              put->errmsg);
     tracef("snapshot write end %d", rv);
-
     if (rv != 0) {
         tracef("snapshot creation failed %d", rv);
         ErrMsgWrapf(put->errmsg, "write %s", snapshot);
