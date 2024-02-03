@@ -426,8 +426,6 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     struct raft_snapshot *snapshot = &req->snapshot;
     struct raft_event event;
 
-    r->snapshot.persisting = false;
-
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
@@ -466,12 +464,8 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     int rv;
     assert(!r->snapshot.persisting);
     req->put.data = req;
-    r->snapshot.persisting = true;
     rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &req->put, snapshot,
                              takeSnapshotCb);
-    if (rv != 0) {
-        r->snapshot.persisting = false;
-    }
     return rv;
 }
 
