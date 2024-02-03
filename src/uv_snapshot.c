@@ -603,6 +603,52 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
     uvSnapshotPutStart(put);
 }
 
+static void uvSnapshotPutWorkAllocateCb(uv_work_t *work)
+{
+    struct uvSnapshotPut *put = work->data;
+    put->status = 0;
+}
+
+static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
+{
+    struct uvSnapshotPut *put = work->data;
+    const struct raft_snapshot *snapshot = put->snapshot;
+    struct uv *uv = put->uv;
+    raft_index next_index;
+    int rv;
+
+    assert(status == 0);
+    uv->snapshot_put_work.data = NULL;
+
+    if (uv->closing) {
+        put->status = RAFT_CANCELED;
+        goto abort;
+    }
+
+    /* - If the trailing parameter is set to 0, it means that we're restoring a
+     * snapshot. Submit a barrier request setting the next append index to the
+     * snapshot's last index + 1.
+     * - When we are only writing a snapshot during normal operation, we close
+     * all current open segments. New writes can continue on newly opened
+     * segments that will only contain entries that are newer than the snapshot,
+     * and we don't change append_next_index. */
+    next_index =
+        (put->trailing == 0) ? (snapshot->index + 1) : uv->append_next_index;
+
+    rv = UvBarrier(uv, next_index, &put->barrier);
+    if (rv != 0) {
+        put->status = rv;
+        goto abort;
+    }
+
+    return;
+
+abort:
+    assert(put->status != 0);
+    uvSnapshotPutFinish(put);
+    UvUnblock(uv);
+}
+
 int UvSnapshotPut(struct raft_io *io,
                   unsigned trailing,
                   struct raft_io_snapshot_put *req,
@@ -614,7 +660,6 @@ int UvSnapshotPut(struct raft_io *io,
     uint8_t *cursor;
     unsigned crc;
     int rv;
-    raft_index next_index;
 
     uv = io->impl;
     if (uv->closing) {
@@ -662,16 +707,11 @@ int UvSnapshotPut(struct raft_io *io,
     cursor = (uint8_t *)&put->meta.header[1];
     bytePut64(&cursor, crc);
 
-    /* - If the trailing parameter is set to 0, it means that we're restoring a
-     * snapshot. Submit a barrier request setting the next append index to the
-     * snapshot's last index + 1.
-     * - When we are only writing a snapshot during normal operation, we close
-     * all current open segments. New writes can continue on newly opened
-     * segments that will only contain entries that are newer than the snapshot,
-     * and we don't change append_next_index. */
-    next_index =
-        (trailing == 0) ? (snapshot->index + 1) : uv->append_next_index;
-    rv = UvBarrier(uv, next_index, &put->barrier);
+    /* Allocate two temporary files to hold the metadata and snapshot files. */
+    uv->snapshot_put_work.data = put;
+    rv = uv_queue_work(uv->loop, &uv->snapshot_put_work,
+                       uvSnapshotPutWorkAllocateCb,
+                       uvSnapshotPutAfterWorkAllocateCb);
     if (rv != 0) {
         goto err_after_configuration_encode;
     }
