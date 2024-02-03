@@ -152,6 +152,7 @@ int raft_init(struct raft *r,
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
         r->legacy.snapshot_taking = false;
+        r->legacy.snapshot_pending = NULL;
         r->transfer = NULL;
         r->legacy.log = logInit();
         if (r->legacy.log == NULL) {
