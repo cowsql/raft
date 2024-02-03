@@ -1507,37 +1507,8 @@ int raft_transfer(struct raft *r,
                   raft_id id,
                   raft_transfer_cb cb)
 {
-    const struct raft_server *server;
     struct raft_event event;
-    unsigned i;
     int rv;
-
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        ErrMsgFromCode(r->errmsg, rv);
-        goto err;
-    }
-
-    if (id == 0) {
-        id = clientSelectTransferee(r);
-        if (id == 0) {
-            rv = RAFT_NOTFOUND;
-            ErrMsgPrintf(r->errmsg, "there's no other voting server");
-            goto err;
-        }
-    }
-
-    server = configurationGet(&r->configuration, id);
-    if (server == NULL || server->id == r->id || server->role != RAFT_VOTER) {
-        rv = RAFT_BADID;
-        ErrMsgFromCode(r->errmsg, rv);
-        goto err;
-    }
-
-    /* If this follower is up-to-date, we can send it the TimeoutNow message
-     * right away. */
-    i = configurationIndexOf(&r->configuration, server->id);
-    assert(i < r->configuration.n);
 
     event.time = r->io->time(r->io);
     event.type = RAFT_TRANSFER;
