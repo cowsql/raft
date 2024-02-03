@@ -58,46 +58,47 @@ struct uvMetadata
 /* Hold state of a libuv-based raft_io implementation. */
 struct uv
 {
-    struct raft_io *io;                  /* I/O object we're implementing */
-    struct uv_loop_s *loop;              /* UV event loop */
-    char dir[UV__DIR_LEN];               /* Data directory */
-    struct raft_uv_transport *transport; /* Network transport */
-    struct raft_tracer *tracer;          /* Debug tracing */
-    raft_id id;                          /* Server ID */
-    int state;                           /* Current state */
-    bool errored;                        /* If a disk I/O error was hit */
-    bool direct_io;                      /* Whether direct I/O is supported */
-    bool async_io;                       /* Whether async I/O is supported */
-    size_t segment_size;                 /* Initial size of open segments. */
-    unsigned disk_retry;                 /* Disk operations retry rate */
-    size_t block_size;                   /* Block size of the data dir */
-    queue clients;                       /* Outbound connections */
-    queue servers;                       /* Inbound connections */
-    unsigned connect_retry_delay;        /* Client connection retry delay */
-    void *prepare_inflight;              /* Segment being prepared */
-    queue prepare_reqs;                  /* Pending prepare requests. */
-    queue prepare_pool;                  /* Prepared open segments */
-    struct uv_timer_s prepare_retry;     /* Timer for prepare retries */
-    uvCounter prepare_next_counter;      /* Counter of next open segment */
-    raft_index append_next_index;        /* Index of next entry to append */
-    queue append_segments;               /* Open segments in use. */
-    queue append_pending_reqs;           /* Pending append requests. */
-    queue append_writing_reqs;           /* Append requests in flight */
-    struct uv_timer_s append_retry;      /* Timer for append retries */
-    struct UvBarrier *barrier;           /* Inflight barrier request */
-    queue finalize_reqs;                 /* Segments waiting to be closed */
-    struct uv_work_s finalize_work;      /* Resize and rename segments */
-    struct uv_work_s truncate_work;      /* Execute truncate log requests */
-    queue snapshot_get_reqs;             /* Inflight get snapshot requests */
-    queue async_work_reqs;               /* Inflight async work requests */
-    struct uv_work_s snapshot_put_work;  /* Execute snapshot put requests */
-    struct uvMetadata metadata;          /* Cache of metadata on disk */
-    struct uv_timer_s timer;             /* Timer for periodic ticks */
-    raft_io_tick_cb tick_cb;             /* Invoked when the timer expires */
-    raft_io_recv_cb recv_cb;             /* Invoked when upon RPC messages */
-    queue aborting;                      /* Cleanups upon errors or shutdown */
-    bool closing;                        /* True if we are closing */
-    raft_io_close_cb close_cb;           /* Invoked when finishing closing */
+    struct raft_io *io;                   /* I/O object we're implementing */
+    struct uv_loop_s *loop;               /* UV event loop */
+    char dir[UV__DIR_LEN];                /* Data directory */
+    struct raft_uv_transport *transport;  /* Network transport */
+    struct raft_tracer *tracer;           /* Debug tracing */
+    raft_id id;                           /* Server ID */
+    int state;                            /* Current state */
+    bool errored;                         /* If a disk I/O error was hit */
+    bool direct_io;                       /* Whether direct I/O is supported */
+    bool async_io;                        /* Whether async I/O is supported */
+    size_t segment_size;                  /* Initial size of open segments. */
+    unsigned disk_retry;                  /* Disk operations retry rate */
+    size_t block_size;                    /* Block size of the data dir */
+    queue clients;                        /* Outbound connections */
+    queue servers;                        /* Inbound connections */
+    unsigned connect_retry_delay;         /* Client connection retry delay */
+    void *prepare_inflight;               /* Segment being prepared */
+    queue prepare_reqs;                   /* Pending prepare requests. */
+    queue prepare_pool;                   /* Prepared open segments */
+    struct uv_timer_s prepare_retry;      /* Timer for prepare retries */
+    uvCounter prepare_next_counter;       /* Counter of next open segment */
+    raft_index append_next_index;         /* Index of next entry to append */
+    queue append_segments;                /* Open segments in use. */
+    queue append_pending_reqs;            /* Pending append requests. */
+    queue append_writing_reqs;            /* Append requests in flight */
+    struct uv_timer_s append_retry;       /* Timer for append retries */
+    struct UvBarrier *barrier;            /* Inflight barrier request */
+    queue finalize_reqs;                  /* Segments waiting to be closed */
+    struct uv_work_s finalize_work;       /* Resize and rename segments */
+    struct uv_work_s truncate_work;       /* Execute truncate log requests */
+    queue snapshot_get_reqs;              /* Inflight get snapshot requests */
+    queue async_work_reqs;                /* Inflight async work requests */
+    struct uv_work_s snapshot_put_work;   /* Execute snapshot put requests */
+    struct uv_timer_s snapshot_put_retry; /* Timer for snapshot put retries */
+    struct uvMetadata metadata;           /* Cache of metadata on disk */
+    struct uv_timer_s timer;              /* Timer for periodic ticks */
+    raft_io_tick_cb tick_cb;              /* Invoked when the timer expires */
+    raft_io_recv_cb recv_cb;              /* Invoked when upon RPC messages */
+    queue aborting;                       /* Cleanups upon errors or shutdown */
+    bool closing;                         /* True if we are closing */
+    raft_io_close_cb close_cb;            /* Invoked when finishing closing */
     bool auto_recovery; /* Try to recover from corrupt segments */
     struct uv_prepare_s prepare;
     struct uv_check_s check;
