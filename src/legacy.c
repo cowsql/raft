@@ -230,6 +230,12 @@ struct legacyPersistSnapshot
     bool last;
 };
 
+static void legacyCancelPersistSnapshot(struct legacyPersistSnapshot *req)
+{
+    raft_free(req->chunk.base);
+    raft_configuration_close(&req->metadata.configuration);
+}
+
 static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
                                     int status)
 {
@@ -256,11 +262,32 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     } else {
         assert(r->legacy.closing);
         assert(status == RAFT_CANCELED);
-        raft_free(req->chunk.base);
-        raft_configuration_close(&req->metadata.configuration);
+        legacyCancelPersistSnapshot(req);
     }
 
     raft_free(req);
+}
+
+static int legacyPersistSnapshotStart(struct legacyPersistSnapshot *req)
+{
+    struct raft *r = req->r;
+    int rv;
+
+    logRestore(r->legacy.log, req->metadata.index, req->metadata.term);
+
+    rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
+                             legacyPersistSnapshotCb);
+    if (rv != 0) {
+        goto err;
+    }
+
+    return 0;
+
+err:
+    raft_free(req);
+    ErrMsgTransferf(r->io->errmsg, r->errmsg, "put snapshot at %llu",
+                    req->metadata.index);
+    return rv;
 }
 
 static int legacyHandleUpdateSnapshot(struct raft *r,
@@ -271,6 +298,8 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
 {
     struct legacyPersistSnapshot *req;
     int rv;
+
+    assert(r->legacy.snapshot_pending == NULL);
 
     req = raft_malloc(sizeof *req);
     if (req == NULL) {
@@ -290,10 +319,14 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
 
-    logRestore(r->legacy.log, req->metadata.index, req->metadata.term);
+    /* If we're taking a snapshot, put this install on hold until it's
+     * completed. */
+    if (r->legacy.snapshot_taking) {
+        r->legacy.snapshot_pending = req;
+        return 0;
+    }
 
-    rv = r->io->snapshot_put(r->io, 0, &req->put, &req->snapshot,
-                             legacyPersistSnapshotCb);
+    rv = legacyPersistSnapshotStart(req);
     if (rv != 0) {
         goto err;
     }
@@ -433,6 +466,13 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     if (r->legacy.closing) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
+
+        /* Also cancel any persist snapshot request. */
+        if (r->legacy.snapshot_pending != NULL) {
+            struct legacyPersistSnapshot *persist;
+            persist = r->legacy.snapshot_pending;
+            legacyCancelPersistSnapshot(persist);
+        }
     }
 
     if (status != 0) {
@@ -449,6 +489,15 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     event.snapshot.metadata = metadata;
     event.snapshot.trailing = 0;
     LegacyForwardToRaftIo(r, &event);
+
+    if (r->legacy.snapshot_pending != NULL) {
+        struct legacyPersistSnapshot *persist;
+        int rv;
+        r->legacy.snapshot_pending = NULL;
+        persist = r->legacy.snapshot_pending;
+        rv = legacyPersistSnapshotStart(persist);
+        assert(rv == 0);
+    }
 }
 
 static int putSnapshot(struct legacyTakeSnapshot *req)
@@ -512,6 +561,7 @@ static void legacyTakeSnapshot(struct raft *r)
     assert(r->last_applied == r->commit_index);
 
     assert(!r->snapshot.persisting);
+    assert(r->legacy.snapshot_pending == NULL);
 
     tracef("take snapshot at %lld", r->commit_index);
 
