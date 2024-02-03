@@ -284,6 +284,9 @@ int UvSnapshotGet(struct raft_io *io,
                   struct raft_io_snapshot_get *req,
                   raft_io_snapshot_get_cb cb);
 
+/* Cancel any pending snapshot operation. */
+void UvSnapshotClose(struct uv *uv);
+
 /* Return a list of all snapshots and segments found in the data directory. Both
  * snapshots and segments are ordered by filename (closed segments come before
  * open ones). */

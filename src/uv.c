@@ -311,14 +311,6 @@ static void uvPrepareRetryCloseCb(uv_handle_t *handle)
     uvMaybeFireCloseCb(uv);
 }
 
-static void uvSnapshotPutRetryCloseCb(uv_handle_t *handle)
-{
-    struct uv *uv = handle->data;
-    assert(uv->closing);
-    uv->snapshot_put_retry.data = NULL;
-    uvMaybeFireCloseCb(uv);
-}
-
 /* Implementation of raft_io->close. */
 static void uvClose(struct raft_io *io, raft_io_close_cb cb)
 {
@@ -353,11 +345,7 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
         uv_timer_stop(&uv->prepare_retry);
         uv_close((uv_handle_t *)&uv->prepare_retry, uvPrepareRetryCloseCb);
     }
-    if (uv->snapshot_put_retry.data != NULL) {
-        uv_timer_stop(&uv->snapshot_put_retry);
-        uv_close((uv_handle_t *)&uv->snapshot_put_retry,
-                 uvSnapshotPutRetryCloseCb);
-    }
+    UvSnapshotClose(uv);
     uvMaybeFireCloseCb(uv);
 }
 

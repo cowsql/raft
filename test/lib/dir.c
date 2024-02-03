@@ -398,7 +398,10 @@ void DirFill(const char *dir, const size_t n)
     munit_assert_int(fd, !=, -1);
 
     rv = posix_fallocate(fd, 0, size - n);
-    munit_assert_int(rv, ==, 0);
+    if (rv != 0) {
+        munit_logf(MUNIT_LOG_ERROR, "posix_fallocate %zu bytes: %s", size - n,
+                   strerror(rv));
+    }
 
     /* If n is zero, make sure any further write fails with ENOSPC */
     if (n == 0) {

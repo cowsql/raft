@@ -37,8 +37,10 @@ static void snapshotPutCbAssertResult(struct raft_io_snapshot_put *req,
                                       int status)
 {
     struct result *result = req->data;
+    struct raft_snapshot *snapshot = result->data;
     munit_assert_int(status, ==, result->status);
     result->done = true;
+    raft_configuration_close(&snapshot->configuration);
 }
 
 static void snapshotGetCbAssertResult(struct raft_io_snapshot_get *req,
@@ -70,7 +72,7 @@ static void snapshotGetCbAssertResult(struct raft_io_snapshot_get *req,
     struct raft_buffer _snapshot_buf;                              \
     uint64_t _snapshot_data;                                       \
     struct raft_io_snapshot_put _req;                              \
-    struct result _result = {STATUS, false, NULL};                 \
+    struct result _result = {STATUS, false, &_snapshot};           \
     int _rv;                                                       \
     _snapshot.term = 1;                                            \
     _snapshot.index = INDEX;                                       \
@@ -93,7 +95,6 @@ static void snapshotGetCbAssertResult(struct raft_io_snapshot_get *req,
     do {                                                               \
         SNAPSHOT_PUT_REQ(TRAILING, INDEX, 0 /* rv */, 0 /* status */); \
         LOOP_RUN_UNTIL(&_result.done);                                 \
-        raft_configuration_close(&_snapshot.configuration);            \
     } while (0)
 
 /* Submit a snapshot put request and assert that it fails synchronously with the
@@ -132,32 +133,32 @@ static void snapshotGetCbAssertResult(struct raft_io_snapshot_get *req,
  *
  *****************************************************************************/
 
-static void *setUpDeps(const MunitParameter params[], void *user_data)
-{
-    struct fixture *f = munit_malloc(sizeof *f);
-    SETUP_UV_DEPS;
-    f->io.data = f;
-    f->closed = false;
-    return f;
-}
-
 static void tearDownDeps(void *data)
 {
     struct fixture *f = data;
+    if (f == NULL) {
+        return;
+    }
     TEAR_DOWN_UV_DEPS;
     free(f);
 }
 
 static void *setUp(const MunitParameter params[], void *user_data)
 {
-    struct fixture *f = setUpDeps(params, user_data);
+    struct fixture *f = munit_malloc(sizeof *f);
+    SETUP_UV_DEPS;
     SETUP_UV;
+    f->io.data = f;
+    f->closed = false;
     return f;
 }
 
 static void tearDown(void *data)
 {
     struct fixture *f = data;
+    if (f == NULL) {
+        return;
+    }
     TEAR_DOWN_UV;
     tearDownDeps(f);
 }
@@ -299,5 +300,64 @@ TEST(snapshot_put,
     APPEND_SUBMIT(5, 256, 8);
     APPEND_WAIT(4);
     APPEND_WAIT(5);
+    return MUNIT_OK;
+}
+
+/* A request to install a snapshot fails due to lack of disk space, the
+ * operation is retried until it's finally cancelled upon shutdown. */
+TEST(snapshot_put, noSpaceRetryCancel, setUp, tearDownDeps, 0, DirTmpfsParams)
+{
+    struct fixture *f = data;
+    unsigned i;
+    SKIP_IF_NO_FIXTURE;
+#if defined(__powerpc64__)
+    /* XXX: fails on ppc64el */
+    TEAR_DOWN_UV;
+    return MUNIT_SKIP;
+#endif
+    raft_uv_set_segment_size(&f->io, 4096 * 2);
+    raft_uv_set_disk_retry(&f->io, 10);
+
+    for (i = 0; i < 5; i++) {
+        APPEND(10, 8);
+    }
+
+    DirFill(f->dir, 32);
+
+    SNAPSHOT_PUT_REQ(128, /* trailing */
+                     280 /* index */, 0 /* rv */, RAFT_CANCELED);
+    LOOP_RUN(2);
+    TEAR_DOWN_UV;
+    return MUNIT_OK;
+}
+
+/* A request to install a snapshot is retried due to lack of disk space and
+ * eventually succeeds when disk space is recovered. */
+TEST(snapshot_put, noSpaceRetryResolved, setUp, tearDown, 0, DirTmpfsParams)
+{
+    struct fixture *f = data;
+    unsigned i;
+    SKIP_IF_NO_FIXTURE;
+#if defined(__powerpc64__)
+    /* XXX: fails on ppc64el */
+    return MUNIT_SKIP;
+#endif
+    raft_uv_set_segment_size(&f->io, 4096 * 2);
+    raft_uv_set_disk_retry(&f->io, 10);
+
+    for (i = 0; i < 5; i++) {
+        APPEND(10, 8);
+    }
+
+    DirFill(f->dir, 32);
+
+    SNAPSHOT_PUT_REQ(128, /* trailing */
+                     280 /* index */, 0 /* rv */, 0);
+    LOOP_RUN(2);
+
+    DirRemoveFile(f->dir, ".fill");
+
+    LOOP_RUN_UNTIL(&_result.done);
+
     return MUNIT_OK;
 }
