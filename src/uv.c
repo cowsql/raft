@@ -469,19 +469,27 @@ static int uvLoadSnapshotAndEntries(struct uv *uv,
     /* Load the most recent snapshot, if any. */
     if (snapshots != NULL) {
         char snapshot_filename[UV__FILENAME_LEN];
+        size_t i;
         *snapshot = RaftHeapMalloc(sizeof **snapshot);
         if (*snapshot == NULL) {
             rv = RAFT_NOMEM;
             goto err;
         }
-        rv = UvSnapshotLoad(uv, &snapshots[n_snapshots - 1], *snapshot,
-                            uv->io->errmsg);
+        for (i = 1; i <= n_snapshots; i++) {
+            uvSnapshotFilenameOf(&snapshots[n_snapshots - i],
+                                 snapshot_filename);
+            rv = UvSnapshotLoad(uv, &snapshots[n_snapshots - i], *snapshot,
+                                uv->io->errmsg);
+            if (rv == 0) {
+                break;
+            }
+            tracef("skip invalid snapshot %s", snapshot_filename);
+        }
         if (rv != 0) {
             RaftHeapFree(*snapshot);
             *snapshot = NULL;
             goto err;
         }
-        uvSnapshotFilenameOf(&snapshots[n_snapshots - 1], snapshot_filename);
         tracef("most recent snapshot at %lld", (*snapshot)->index);
         RaftHeapFree(snapshots);
         snapshots = NULL;
