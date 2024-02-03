@@ -933,10 +933,15 @@ int replicationInstallSnapshot(struct raft *r,
     *rejected = args->last_index;
     *async = false;
 
-    /* If we are taking a snapshot ourselves or installing a snapshot, ignore
-     * the request, the leader will eventually retry. TODO: we should do
-     * something smarter. */
-    if (r->legacy.snapshot_taking || r->snapshot.persisting) {
+    /* If we are installing a snapshot, ignore the request, the leader will
+     * eventually retry.
+     *
+     * Note that if we are taking a snapshot, the consuming code is supposed to
+     * wait until taking the snapshot completes before starting to persist this
+     * one.
+     *
+     * TODO: we should do something smarter. */
+    if (r->snapshot.persisting) {
         *async = true;
         infof("already taking or installing snapshot");
         return RAFT_BUSY;
