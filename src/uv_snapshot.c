@@ -389,11 +389,13 @@ struct uvSnapshotPut
     size_t trailing;
     struct raft_io_snapshot_put *req;
     const struct raft_snapshot *snapshot;
+    uv_file snapshot_fd; /* Pre-allocated snapshot file */
     struct
     {
         unsigned long long timestamp;
         uint64_t header[4];         /* Format, CRC, configuration index/len */
         struct raft_buffer bufs[2]; /* Preamble and configuration */
+        uv_file fd;                 /* Pre-allocated metadata temp file */
     } meta;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     int status;
@@ -495,10 +497,10 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     sprintf(metadata, UV__SNAPSHOT_META_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    rv = UvFsMakeFile(uv->dir, metadata, put->meta.bufs, 2, put->errmsg);
+    rv = UvFsFinalizeTempFile(put->meta.fd, uv->dir, metadata, put->errmsg);
     if (rv != 0) {
-        tracef("snapshot.meta creation failed %d", rv);
-        ErrMsgWrapf(put->errmsg, "write %s", metadata);
+        ErrMsgWrapf(put->errmsg, "finalize %s", metadata);
+        tracef("snapshot.meta creation failed: %s", put->errmsg);
         put->status = RAFT_IOERR;
         return;
     }
@@ -506,14 +508,11 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     sprintf(snapshot, UV__SNAPSHOT_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    tracef("snapshot write start");
-    rv = UvFsMakeFile(uv->dir, snapshot, put->snapshot->bufs,
-                      put->snapshot->n_bufs, put->errmsg);
+    rv = UvFsFinalizeTempFile(put->snapshot_fd, uv->dir, snapshot, put->errmsg);
     tracef("snapshot write end %d", rv);
-
     if (rv != 0) {
         tracef("snapshot creation failed %d", rv);
-        ErrMsgWrapf(put->errmsg, "write %s", snapshot);
+        ErrMsgWrapf(put->errmsg, "finalize %s", snapshot);
         UvFsRemoveFile(uv->dir, metadata, errmsg);
         UvFsRemoveFile(uv->dir, snapshot, errmsg);
         put->status = RAFT_IOERR;
@@ -603,6 +602,75 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
     uvSnapshotPutStart(put);
 }
 
+static void uvSnapshotPutWorkAllocateCb(uv_work_t *work)
+{
+    struct uvSnapshotPut *put = work->data;
+    struct uv *uv = put->uv;
+    const struct raft_snapshot *snapshot = put->snapshot;
+    int rv;
+
+    rv = UvFsCreateTempFile(uv->dir, put->meta.bufs, 2, &put->meta.fd,
+                            put->errmsg);
+    if (rv != 0) {
+        goto abort;
+    }
+
+    rv = UvFsCreateTempFile(uv->dir, snapshot->bufs, snapshot->n_bufs,
+                            &put->snapshot_fd, put->errmsg);
+    if (rv != 0) {
+        goto abort_after_meta_open;
+    }
+
+    put->status = 0;
+
+    return;
+
+abort_after_meta_open:
+    UvOsClose(put->meta.fd);
+abort:
+    put->status = rv;
+}
+
+static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
+{
+    struct uvSnapshotPut *put = work->data;
+    const struct raft_snapshot *snapshot = put->snapshot;
+    struct uv *uv = put->uv;
+    raft_index next_index;
+    int rv;
+
+    assert(status == 0);
+    uv->snapshot_put_work.data = NULL;
+
+    if (uv->closing || put->status != 0) {
+        put->status = RAFT_CANCELED;
+        goto abort;
+    }
+
+    /* - If the trailing parameter is set to 0, it means that we're restoring a
+     * snapshot. Submit a barrier request setting the next append index to the
+     * snapshot's last index + 1.
+     * - When we are only writing a snapshot during normal operation, we close
+     * all current open segments. New writes can continue on newly opened
+     * segments that will only contain entries that are newer than the snapshot,
+     * and we don't change append_next_index. */
+    next_index =
+        (put->trailing == 0) ? (snapshot->index + 1) : uv->append_next_index;
+
+    rv = UvBarrier(uv, next_index, &put->barrier);
+    if (rv != 0) {
+        put->status = rv;
+        goto abort;
+    }
+
+    return;
+
+abort:
+    assert(put->status != 0);
+    uvSnapshotPutFinish(put);
+    UvUnblock(uv);
+}
+
 int UvSnapshotPut(struct raft_io *io,
                   unsigned trailing,
                   struct raft_io_snapshot_put *req,
@@ -614,7 +682,6 @@ int UvSnapshotPut(struct raft_io *io,
     uint8_t *cursor;
     unsigned crc;
     int rv;
-    raft_index next_index;
 
     uv = io->impl;
     if (uv->closing) {
@@ -662,16 +729,11 @@ int UvSnapshotPut(struct raft_io *io,
     cursor = (uint8_t *)&put->meta.header[1];
     bytePut64(&cursor, crc);
 
-    /* - If the trailing parameter is set to 0, it means that we're restoring a
-     * snapshot. Submit a barrier request setting the next append index to the
-     * snapshot's last index + 1.
-     * - When we are only writing a snapshot during normal operation, we close
-     * all current open segments. New writes can continue on newly opened
-     * segments that will only contain entries that are newer than the snapshot,
-     * and we don't change append_next_index. */
-    next_index =
-        (trailing == 0) ? (snapshot->index + 1) : uv->append_next_index;
-    rv = UvBarrier(uv, next_index, &put->barrier);
+    /* Allocate two temporary files to hold the metadata and snapshot files. */
+    uv->snapshot_put_work.data = put;
+    rv = uv_queue_work(uv->loop, &uv->snapshot_put_work,
+                       uvSnapshotPutWorkAllocateCb,
+                       uvSnapshotPutAfterWorkAllocateCb);
     if (rv != 0) {
         goto err_after_configuration_encode;
     }

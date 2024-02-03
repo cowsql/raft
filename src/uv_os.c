@@ -227,3 +227,18 @@ int UvOsSetDirectIo(uv_file fd)
     }
     return 0;
 }
+
+int UvOsLinkat(uv_file olddirfd,
+               const char *oldpath,
+               int newdirfd,
+               const char *newpath,
+               int flags)
+{
+    int rv;
+    rv = linkat(olddirfd, oldpath, newdirfd, newpath, flags);
+    if (rv == -1) {
+        return -errno;
+    }
+    assert(rv == 0);
+    return 0;
+}

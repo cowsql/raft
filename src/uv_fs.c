@@ -178,6 +178,26 @@ int UvFsOpenFileForReading(const char *dir,
     return uvFsOpenFile(dir, filename, flags, 0, fd, errmsg);
 }
 
+static int uvFsAllocate(uv_file fd, size_t size, char *errmsg)
+{
+    int rv;
+    rv = UvOsFallocate(fd, 0, (off_t)size);
+    if (rv != 0) {
+        switch (rv) {
+            case UV_ENOSPC:
+                ErrMsgPrintf(errmsg, "not enough space to allocate %zu bytes",
+                             size);
+                rv = RAFT_NOSPACE;
+                break;
+            default:
+                UvOsErrMsg(errmsg, "posix_allocate", rv);
+                rv = RAFT_IOERR;
+                break;
+        }
+    }
+    return rv;
+}
+
 int UvFsAllocateFile(const char *dir,
                      const char *filename,
                      size_t size,
@@ -199,19 +219,8 @@ int UvFsAllocateFile(const char *dir,
     }
 
     /* Allocate the desired size. */
-    rv = UvOsFallocate(*fd, 0, (off_t)size);
+    rv = uvFsAllocate(*fd, size, errmsg);
     if (rv != 0) {
-        switch (rv) {
-            case UV_ENOSPC:
-                ErrMsgPrintf(errmsg, "not enough space to allocate %zu bytes",
-                             size);
-                rv = RAFT_NOSPACE;
-                break;
-            default:
-                UvOsErrMsg(errmsg, "posix_allocate", rv);
-                rv = RAFT_IOERR;
-                break;
-        }
         goto err_after_open;
     }
 
@@ -220,6 +229,97 @@ int UvFsAllocateFile(const char *dir,
 err_after_open:
     UvOsClose(*fd);
     UvOsUnlink(path);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
+int UvFsCreateTempFile(const char *dir,
+                       struct raft_buffer *bufs,
+                       unsigned n_bufs,
+                       uv_file *fd,
+                       char *errmsg)
+{
+    unsigned i;
+    size_t size = 0;
+    int rv;
+
+    for (i = 0; i < n_bufs; i++) {
+        size += bufs[i].len;
+    }
+
+    rv = uvFsOpenFile(dir, "", O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR, fd,
+                      errmsg);
+    if (rv != 0) {
+        goto err;
+    }
+
+    rv = uvFsAllocate(*fd, size, errmsg);
+    if (rv != 0) {
+        goto err_after_open;
+    }
+
+    rv = UvOsWrite(*fd, (const uv_buf_t *)bufs, n_bufs, 0);
+    if (rv != (int)(size)) {
+        if (rv < 0) {
+            UvOsErrMsg(errmsg, "write", rv);
+        } else {
+            ErrMsgPrintf(errmsg, "short write: only %d bytes written", rv);
+        }
+        rv = RAFT_IOERR;
+        goto err_after_open;
+    }
+
+    rv = UvOsFsync(*fd);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "fsync", rv);
+        rv = RAFT_IOERR;
+        goto err_after_open;
+    }
+
+    return 0;
+
+err_after_open:
+    UvOsClose(*fd);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
+int UvFsFinalizeTempFile(uv_file fd,
+                         const char *dir,
+                         const char *filename,
+                         char *errmsg)
+{
+    char path[UV__PATH_SZ];
+    char procpath[PATH_MAX];
+    int rv;
+
+    rv = UvOsJoin(dir, filename, path);
+    if (rv != 0) {
+        rv = RAFT_INVALID;
+        goto err_before_close;
+    }
+
+    snprintf(procpath, PATH_MAX, "/proc/self/fd/%d", fd);
+    rv = UvOsLinkat(AT_FDCWD, procpath, AT_FDCWD, path, AT_SYMLINK_FOLLOW);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "linkat", rv);
+        rv = RAFT_IOERR;
+        goto err_before_close;
+    }
+
+    rv = UvOsClose(fd);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "close", rv);
+        rv = RAFT_IOERR;
+        goto err;
+    }
+
+    return 0;
+
+err_before_close:
+    UvOsClose(fd);
 err:
     assert(rv != 0);
     return rv;
