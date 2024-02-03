@@ -497,10 +497,9 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     sprintf(metadata, UV__SNAPSHOT_META_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    rv = UvFsFinalizeTempFile(put->meta.fd, uv->dir, metadata, put->meta.bufs,
-                              2, put->errmsg);
+    rv = UvFsFinalizeTempFile(put->meta.fd, uv->dir, metadata, put->errmsg);
     if (rv != 0) {
-        ErrMsgWrapf(put->errmsg, "write %s", metadata);
+        ErrMsgWrapf(put->errmsg, "finalize %s", metadata);
         tracef("snapshot.meta creation failed: %s", put->errmsg);
         put->status = RAFT_IOERR;
         return;
@@ -509,13 +508,11 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     sprintf(snapshot, UV__SNAPSHOT_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
 
-    rv = UvFsFinalizeTempFile(put->snapshot_fd, uv->dir, snapshot,
-                              put->snapshot->bufs, put->snapshot->n_bufs,
-                              put->errmsg);
+    rv = UvFsFinalizeTempFile(put->snapshot_fd, uv->dir, snapshot, put->errmsg);
     tracef("snapshot write end %d", rv);
     if (rv != 0) {
         tracef("snapshot creation failed %d", rv);
-        ErrMsgWrapf(put->errmsg, "write %s", snapshot);
+        ErrMsgWrapf(put->errmsg, "finalize %s", snapshot);
         UvFsRemoveFile(uv->dir, metadata, errmsg);
         UvFsRemoveFile(uv->dir, snapshot, errmsg);
         put->status = RAFT_IOERR;
@@ -610,23 +607,16 @@ static void uvSnapshotPutWorkAllocateCb(uv_work_t *work)
     struct uvSnapshotPut *put = work->data;
     struct uv *uv = put->uv;
     const struct raft_snapshot *snapshot = put->snapshot;
-    size_t snapshot_size = 0;
-    size_t metadata_size;
-    unsigned i;
     int rv;
 
-    metadata_size = put->meta.bufs[0].len + put->meta.bufs[1].len;
-    rv = UvFsAllocateTempFile(uv->dir, metadata_size, &put->meta.fd,
-                              put->errmsg);
+    rv = UvFsCreateTempFile(uv->dir, put->meta.bufs, 2, &put->meta.fd,
+                            put->errmsg);
     if (rv != 0) {
         goto abort;
     }
 
-    for (i = 0; i < snapshot->n_bufs; i++) {
-        snapshot_size += snapshot->bufs[0].len;
-    }
-    rv = UvFsAllocateTempFile(uv->dir, snapshot_size, &put->snapshot_fd,
-                              put->errmsg);
+    rv = UvFsCreateTempFile(uv->dir, snapshot->bufs, snapshot->n_bufs,
+                            &put->snapshot_fd, put->errmsg);
     if (rv != 0) {
         goto abort_after_meta_open;
     }

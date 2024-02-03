@@ -234,12 +234,19 @@ err:
     return rv;
 }
 
-int UvFsAllocateTempFile(const char *dir,
-                         size_t size,
-                         uv_file *fd,
-                         char *errmsg)
+int UvFsCreateTempFile(const char *dir,
+                       struct raft_buffer *bufs,
+                       unsigned n_bufs,
+                       uv_file *fd,
+                       char *errmsg)
 {
+    unsigned i;
+    size_t size = 0;
     int rv;
+
+    for (i = 0; i < n_bufs; i++) {
+        size += bufs[i].len;
+    }
 
     rv = uvFsOpenFile(dir, "", O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR, fd,
                       errmsg);
@@ -249,6 +256,24 @@ int UvFsAllocateTempFile(const char *dir,
 
     rv = uvFsAllocate(*fd, size, errmsg);
     if (rv != 0) {
+        goto err_after_open;
+    }
+
+    rv = UvOsWrite(*fd, (const uv_buf_t *)bufs, n_bufs, 0);
+    if (rv != (int)(size)) {
+        if (rv < 0) {
+            UvOsErrMsg(errmsg, "write", rv);
+        } else {
+            ErrMsgPrintf(errmsg, "short write: only %d bytes written", rv);
+        }
+        rv = RAFT_IOERR;
+        goto err_after_open;
+    }
+
+    rv = UvOsFsync(*fd);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "fsync", rv);
+        rv = RAFT_IOERR;
         goto err_after_open;
     }
 
@@ -264,37 +289,11 @@ err:
 int UvFsFinalizeTempFile(uv_file fd,
                          const char *dir,
                          const char *filename,
-                         struct raft_buffer *bufs,
-                         unsigned n_bufs,
                          char *errmsg)
 {
     char path[UV__PATH_SZ];
     char procpath[PATH_MAX];
-    size_t size = 0;
-    unsigned i;
     int rv;
-
-    for (i = 0; i < n_bufs; i++) {
-        size += bufs[i].len;
-    }
-
-    rv = UvOsWrite(fd, (const uv_buf_t *)bufs, n_bufs, 0);
-    if (rv != (int)(size)) {
-        if (rv < 0) {
-            UvOsErrMsg(errmsg, "write", rv);
-        } else {
-            ErrMsgPrintf(errmsg, "short write: only %d bytes written", rv);
-        }
-        rv = RAFT_IOERR;
-        goto err_before_close;
-    }
-
-    rv = UvOsFsync(fd);
-    if (rv != 0) {
-        UvOsErrMsg(errmsg, "fsync", rv);
-        rv = RAFT_IOERR;
-        goto err_before_close;
-    }
 
     rv = UvOsJoin(dir, filename, path);
     if (rv != 0) {

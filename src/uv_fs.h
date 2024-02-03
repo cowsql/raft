@@ -43,19 +43,18 @@ int UvFsAllocateFile(const char *dir,
                      uv_file *fd,
                      char *errmsg);
 
-/* Allocate an invisible temporary file of the given size within the given
- * directory, returning its file descriptor. */
-int UvFsAllocateTempFile(const char *dir,
-                         size_t size,
-                         uv_file *fd,
-                         char *errmsg);
+/* Allocate and write an invisible temporary file of the given size within the
+ * given directory, returning its file descriptor. */
+int UvFsCreateTempFile(const char *dir,
+                       struct raft_buffer *bufs,
+                       unsigned n_bufs,
+                       uv_file *fd,
+                       char *errmsg);
 
-/* Write data to an invisible tempfile and then rename it to the given name. */
+/* Finalize an invisible tempfile renaming it to the given name. */
 int UvFsFinalizeTempFile(uv_file fd,
                          const char *dir,
                          const char *filename,
-                         struct raft_buffer *bufs,
-                         unsigned n_bufs,
                          char *errmsg);
 
 /* Create a file and write the given content into it. */
