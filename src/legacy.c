@@ -242,7 +242,6 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     event.persisted_snapshot.offset = req->offset;
     event.persisted_snapshot.chunk = req->chunk;
     event.persisted_snapshot.last = req->last;
-    event.persisted_snapshot.status = status;
 
     /* If we successfully persisted the snapshot, keep the snapshot data around,
      * since we'll then need it immediately after calling raft_step(), in order

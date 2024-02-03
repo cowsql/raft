@@ -872,8 +872,7 @@ int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_snapshot_metadata *metadata,
                                    size_t offset,
                                    struct raft_buffer *chunk,
-                                   bool last,
-                                   int status)
+                                   bool last)
 {
     struct raft_append_entries_result result;
     int rv;
@@ -884,7 +883,6 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);
-    assert(status == 0);
 
     r->snapshot.persisting = false;
 
@@ -900,8 +898,7 @@ int replicationPersistSnapshotDone(struct raft *r,
      */
     rv = RestoreSnapshot(r, metadata);
     if (rv != 0) {
-        tracef("restore snapshot %llu: %s", metadata->index,
-               raft_strerror(status));
+        tracef("restore snapshot %llu: %s", metadata->index, raft_strerror(rv));
         goto discard;
     }
 

@@ -492,7 +492,6 @@ struct raft_event
             size_t offset;
             struct raft_buffer chunk;
             bool last;
-            int status;
         } persisted_snapshot;
         struct
         {
