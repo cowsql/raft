@@ -1149,10 +1149,10 @@ int LegacyForwardToRaftIo(struct raft *r, struct raft_event *event)
     return 0;
 }
 
-void LegacyLeadershipTransferInit(struct raft *r,
-                                  struct raft_transfer *req,
-                                  raft_id id,
-                                  raft_transfer_cb cb)
+static void legacyLeadershipTransferInit(struct raft *r,
+                                         struct raft_transfer *req,
+                                         raft_id id,
+                                         raft_transfer_cb cb)
 {
     assert(r->state == RAFT_LEADER);
     assert(r->leader_state.transferee == 0);
@@ -1541,7 +1541,7 @@ int raft_transfer(struct raft *r,
     i = configurationIndexOf(&r->configuration, server->id);
     assert(i < r->configuration.n);
 
-    LegacyLeadershipTransferInit(r, req, id, cb);
+    legacyLeadershipTransferInit(r, req, id, cb);
 
     event.time = r->io->time(r->io);
     event.type = RAFT_TRANSFER;
