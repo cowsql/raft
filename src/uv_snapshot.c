@@ -389,11 +389,13 @@ struct uvSnapshotPut
     size_t trailing;
     struct raft_io_snapshot_put *req;
     const struct raft_snapshot *snapshot;
+    uv_file snapshot_fd; /* Pre-allocated snapshot file */
     struct
     {
         unsigned long long timestamp;
         uint64_t header[4];         /* Format, CRC, configuration index/len */
         struct raft_buffer bufs[2]; /* Preamble and configuration */
+        uv_file fd;                 /* Pre-allocated metadata temp file */
     } meta;
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     int status;
@@ -491,6 +493,11 @@ static void uvSnapshotPutWorkCb(uv_work_t *work)
     char snapshot[UV__FILENAME_LEN];
     char errmsg[RAFT_ERRMSG_BUF_SIZE];
     int rv;
+
+    rv = UvOsClose(put->snapshot_fd);
+    assert(rv == 0);
+    rv = UvOsClose(put->meta.fd);
+    assert(rv == 0);
 
     sprintf(metadata, UV__SNAPSHOT_META_TEMPLATE, put->snapshot->term,
             put->snapshot->index, put->meta.timestamp);
@@ -606,7 +613,50 @@ static void uvSnapshotPutBarrierCb(struct UvBarrierReq *barrier)
 static void uvSnapshotPutWorkAllocateCb(uv_work_t *work)
 {
     struct uvSnapshotPut *put = work->data;
+    struct uv *uv = put->uv;
+    const struct raft_snapshot *snapshot = put->snapshot;
+    size_t snapshot_size = 0;
+    size_t metadata_size;
+    unsigned i;
+    int rv;
+
+    rv = UvOsOpen(uv->dir, O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR,
+                  &put->meta.fd);
+    if (rv != 0) {
+        goto abort;
+    }
+
+    metadata_size = put->meta.bufs[0].len + put->meta.bufs[1].len;
+    rv = UvOsFallocate(put->meta.fd, 0, (off_t)metadata_size);
+    if (rv != 0) {
+        goto abort_after_meta_open;
+    }
+
+    rv = UvOsOpen(uv->dir, O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR,
+                  &put->snapshot_fd);
+    if (rv != 0) {
+        goto abort_after_meta_open;
+    }
+
+    for (i = 0; i < snapshot->n_bufs; i++) {
+        snapshot_size += snapshot->bufs[0].len;
+    }
+
+    rv = UvOsFallocate(put->snapshot_fd, 0, (off_t)snapshot_size);
+    if (rv != 0) {
+        goto abort_after_snapshot_open;
+    }
+
     put->status = 0;
+
+    return;
+
+abort_after_snapshot_open:
+    UvOsClose(put->snapshot_fd);
+abort_after_meta_open:
+    UvOsClose(put->meta.fd);
+abort:
+    put->status = rv;
 }
 
 static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
@@ -620,7 +670,7 @@ static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
     assert(status == 0);
     uv->snapshot_put_work.data = NULL;
 
-    if (uv->closing) {
+    if (uv->closing || put->status != 0) {
         put->status = RAFT_CANCELED;
         goto abort;
     }
