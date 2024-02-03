@@ -620,39 +620,26 @@ static void uvSnapshotPutWorkAllocateCb(uv_work_t *work)
     unsigned i;
     int rv;
 
-    rv = UvOsOpen(uv->dir, O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR,
-                  &put->meta.fd);
+    metadata_size = put->meta.bufs[0].len + put->meta.bufs[1].len;
+    rv = UvFsAllocateTempFile(uv->dir, metadata_size, &put->meta.fd,
+                              put->errmsg);
     if (rv != 0) {
         goto abort;
-    }
-
-    metadata_size = put->meta.bufs[0].len + put->meta.bufs[1].len;
-    rv = UvOsFallocate(put->meta.fd, 0, (off_t)metadata_size);
-    if (rv != 0) {
-        goto abort_after_meta_open;
-    }
-
-    rv = UvOsOpen(uv->dir, O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR,
-                  &put->snapshot_fd);
-    if (rv != 0) {
-        goto abort_after_meta_open;
     }
 
     for (i = 0; i < snapshot->n_bufs; i++) {
         snapshot_size += snapshot->bufs[0].len;
     }
-
-    rv = UvOsFallocate(put->snapshot_fd, 0, (off_t)snapshot_size);
+    rv = UvFsAllocateTempFile(uv->dir, snapshot_size, &put->snapshot_fd,
+                              put->errmsg);
     if (rv != 0) {
-        goto abort_after_snapshot_open;
+        goto abort_after_meta_open;
     }
 
     put->status = 0;
 
     return;
 
-abort_after_snapshot_open:
-    UvOsClose(put->snapshot_fd);
 abort_after_meta_open:
     UvOsClose(put->meta.fd);
 abort:

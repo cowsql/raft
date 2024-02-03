@@ -43,6 +43,13 @@ int UvFsAllocateFile(const char *dir,
                      uv_file *fd,
                      char *errmsg);
 
+/* Allocate an invisible temporary file of the given size within the given
+ * directory, returning its file descriptor. */
+int UvFsAllocateTempFile(const char *dir,
+                         size_t size,
+                         uv_file *fd,
+                         char *errmsg);
+
 /* Create a file and write the given content into it. */
 int UvFsMakeFile(const char *dir,
                  const char *filename,

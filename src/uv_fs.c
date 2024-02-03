@@ -178,6 +178,26 @@ int UvFsOpenFileForReading(const char *dir,
     return uvFsOpenFile(dir, filename, flags, 0, fd, errmsg);
 }
 
+static int uvFsAllocate(uv_file fd, size_t size, char *errmsg)
+{
+    int rv;
+    rv = UvOsFallocate(fd, 0, (off_t)size);
+    if (rv != 0) {
+        switch (rv) {
+            case UV_ENOSPC:
+                ErrMsgPrintf(errmsg, "not enough space to allocate %zu bytes",
+                             size);
+                rv = RAFT_NOSPACE;
+                break;
+            default:
+                UvOsErrMsg(errmsg, "posix_allocate", rv);
+                rv = RAFT_IOERR;
+                break;
+        }
+    }
+    return rv;
+}
+
 int UvFsAllocateFile(const char *dir,
                      const char *filename,
                      size_t size,
@@ -199,19 +219,8 @@ int UvFsAllocateFile(const char *dir,
     }
 
     /* Allocate the desired size. */
-    rv = UvOsFallocate(*fd, 0, (off_t)size);
+    rv = uvFsAllocate(*fd, size, errmsg);
     if (rv != 0) {
-        switch (rv) {
-            case UV_ENOSPC:
-                ErrMsgPrintf(errmsg, "not enough space to allocate %zu bytes",
-                             size);
-                rv = RAFT_NOSPACE;
-                break;
-            default:
-                UvOsErrMsg(errmsg, "posix_allocate", rv);
-                rv = RAFT_IOERR;
-                break;
-        }
         goto err_after_open;
     }
 
@@ -220,6 +229,33 @@ int UvFsAllocateFile(const char *dir,
 err_after_open:
     UvOsClose(*fd);
     UvOsUnlink(path);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
+int UvFsAllocateTempFile(const char *dir,
+                         size_t size,
+                         uv_file *fd,
+                         char *errmsg)
+{
+    int rv;
+
+    rv = uvFsOpenFile(dir, "", O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR, fd,
+                      errmsg);
+    if (rv != 0) {
+        goto err;
+    }
+
+    rv = uvFsAllocate(*fd, size, errmsg);
+    if (rv != 0) {
+        goto err_after_open;
+    }
+
+    return 0;
+
+err_after_open:
+    UvOsClose(*fd);
 err:
     assert(rv != 0);
     return rv;

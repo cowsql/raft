@@ -78,6 +78,7 @@ int UvOsIoGetevents(aio_context_t ctx,
                     struct timespec *timeout);
 int UvOsEventfd(unsigned int initval, int flags);
 int UvOsSetDirectIo(uv_file fd);
+int UvOsLinkat(uv_file fd);
 
 /* Format an error message caused by a failed system call or stdlib function. */
 #define UvOsErrMsg(ERRMSG, SYSCALL, ERRNUM)              \
