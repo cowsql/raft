@@ -429,14 +429,11 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     takeSnapshotClose(r, snapshot);
     raft_free(req);
 
-    /* If we are shutting down, cancel the snapshot.
-     *
-     * Or the snapshot's index might not be in the log anymore because the
-     * associated entry failed to be persisted and got truncated (TODO: we
-     * should retry instead of truncating). */
     assert(metadata.term != 0);
-    if (r->legacy.closing ||
-        logTermOf(r->legacy.log, metadata.index) != metadata.term) {
+    assert(logTermOf(r->legacy.log, metadata.index) == metadata.term);
+
+    /* If we are shutting down, cancel the snapshot. */
+    if (r->legacy.closing) {
         tracef("cancelling snapshot");
         status = RAFT_CANCELED;
     }
