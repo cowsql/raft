@@ -254,6 +254,8 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
         r->legacy.snapshot_index = req->metadata.index;
         r->legacy.snapshot_chunk = req->chunk;
     } else {
+        assert(r->legacy.closing);
+        assert(status == RAFT_CANCELED);
         raft_free(req->chunk.base);
     }
 
@@ -435,8 +437,8 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     }
 
     if (status != 0) {
-        tracef("snapshot %lld at term %lld: %s", metadata.index, metadata.term,
-               raft_strerror(status));
+        assert(r->legacy.closing);
+        assert(status == RAFT_CANCELED);
         configurationClose(&metadata.configuration);
         return;
     }
