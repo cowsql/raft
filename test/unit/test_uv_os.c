@@ -1,4 +1,5 @@
 #include "../../src/uv_os.h"
+#include "../lib/dir.h"
 #include "../lib/runner.h"
 
 SUITE(UvOsJoin)
@@ -79,5 +80,26 @@ TEST(UvOsJoin, dirAndFilenameMax, NULL, NULL, 0, NULL)
     snprintf(cmp_path, UV__DIR_LEN + UV__FILENAME_LEN + 1 + 1, "%s/%s", dir,
              filename);
     munit_assert_string_equal(path, cmp_path);
+    return MUNIT_OK;
+}
+
+SUITE(UvOsOpen)
+
+TEST(UvOsOpen, Tmpfile, DirSetUp, DirTearDown, 0, DirAllParams)
+{
+    const char *dir = data;
+    uv_file fd;
+    int rv;
+
+    if (dir == NULL) {
+        return MUNIT_SKIP;
+    }
+
+    rv = UvOsOpen(dir, O_TMPFILE | O_WRONLY, S_IRUSR | S_IWUSR, &fd);
+    munit_assert_int(rv, ==, 0);
+
+    rv = UvOsClose(fd);
+    munit_assert_int(rv, ==, 0);
+
     return MUNIT_OK;
 }
