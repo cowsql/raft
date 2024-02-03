@@ -616,6 +616,7 @@ struct raft; /* Forward declaration. */
         struct raft_change *change;     /* Pending membership change */      \
         raft_index snapshot_index;      /* Last persisted snapshot */        \
         struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
+        bool snapshot_taking;              /* True when taking a snapshot */ \
         struct raft_log *log;              /* Cache on-disk log */           \
     } legacy;
 #endif /* RAFT__LEGACY_no */
@@ -694,8 +695,8 @@ struct raft_io_snapshot_put
 #define RAFT__SNAPSHOT_FIELDS_V1                                           \
     struct                                                                 \
     {                                                                      \
-        bool taking;     /* A RAFT_TAKE_SNAPSHOT request is in flight */   \
-        bool persisting; /* A RAFT_PERSIT_SNAPSHOT request is in flight */ \
+        bool unused;                                                       \
+        bool persisting; /* A RAFT_UPDATE_SNAPSHOT request is in flight */ \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);

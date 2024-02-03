@@ -403,7 +403,7 @@ struct legacyTakeSnapshot
  */
 static void takeSnapshotClose(struct raft *r, struct raft_snapshot *s)
 {
-    r->snapshot.taking = false;
+    r->legacy.snapshot_taking = false;
 
     if (r->fsm->version == 1 ||
         (r->fsm->version > 1 && r->fsm->snapshot_finalize == NULL)) {
@@ -482,7 +482,7 @@ static bool legacyShouldTakeSnapshot(const struct raft *r)
 
     /* If a snapshot is already in progress or we're installing a snapshot, we
      * don't want to start another one. */
-    if (r->snapshot.taking || r->snapshot.persisting) {
+    if (r->legacy.snapshot_taking || r->snapshot.persisting) {
         return false;
     };
 
@@ -559,7 +559,7 @@ static void legacyTakeSnapshot(struct raft *r)
         goto abort_after_snapshot;
     }
 
-    r->snapshot.taking = true;
+    r->legacy.snapshot_taking = true;
 
     return;
 
