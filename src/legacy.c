@@ -475,7 +475,7 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     return rv;
 }
 
-static bool legacyShouldTakeSnapshot(struct raft *r)
+static bool legacyShouldTakeSnapshot(const struct raft *r)
 {
     /* We currently support only synchronous FSMs, where entries are applied
      * synchronously as soon as we advance the commit index, so the two
@@ -522,6 +522,8 @@ static void legacyTakeSnapshot(struct raft *r)
      * synchronously as soon as we advance the commit index, so the two
      * values always match when we get here. */
     assert(r->last_applied == r->commit_index);
+
+    assert(!r->snapshot.persisting);
 
     tracef("take snapshot at %lld", r->commit_index);
 
