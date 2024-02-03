@@ -136,6 +136,10 @@ static int uvInit(struct raft_io *io, raft_id id, const char *address)
     assert(rv == 0); /* This should never fail */
     uv->append_retry.data = uv;
 
+    rv = uv_timer_init(uv->loop, &uv->snapshot_put_retry);
+    assert(rv == 0); /* This should never fail */
+    uv->snapshot_put_retry.data = uv;
+
     return 0;
 }
 
@@ -227,6 +231,9 @@ void uvMaybeFireCloseCb(struct uv *uv)
         return;
     }
     if (uv->append_retry.data != NULL) {
+        return;
+    }
+    if (uv->snapshot_put_retry.data != NULL) {
         return;
     }
     if (!QUEUE_IS_EMPTY(&uv->append_segments)) {
@@ -338,6 +345,7 @@ static void uvClose(struct raft_io *io, raft_io_close_cb cb)
         uv_timer_stop(&uv->prepare_retry);
         uv_close((uv_handle_t *)&uv->prepare_retry, uvPrepareRetryCloseCb);
     }
+    UvSnapshotClose(uv);
     uvMaybeFireCloseCb(uv);
 }
 

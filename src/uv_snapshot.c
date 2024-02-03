@@ -631,6 +631,21 @@ abort:
     put->status = rv;
 }
 
+static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status);
+
+static void uvSnapshotPutRetryTimerCb(uv_timer_t *timer)
+{
+    struct uvSnapshotPut *put = timer->data;
+    struct uv *uv = put->uv;
+    int rv;
+    uv->snapshot_put_retry.data = uv;
+    uv->snapshot_put_work.data = put;
+    rv = uv_queue_work(uv->loop, &uv->snapshot_put_work,
+                       uvSnapshotPutWorkAllocateCb,
+                       uvSnapshotPutAfterWorkAllocateCb);
+    assert(rv == 0);
+}
+
 static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
 {
     struct uvSnapshotPut *put = work->data;
@@ -642,9 +657,19 @@ static void uvSnapshotPutAfterWorkAllocateCb(uv_work_t *work, int status)
     assert(status == 0);
     uv->snapshot_put_work.data = NULL;
 
-    if (uv->closing || put->status != 0) {
+    if (uv->closing) {
         put->status = RAFT_CANCELED;
         goto abort;
+    }
+
+    if (put->status != 0) {
+        assert(uv->snapshot_put_retry.data == uv);
+        uv->snapshot_put_retry.data = put;
+        tracef("retry snapshot write");
+        rv = uv_timer_start(&uv->snapshot_put_retry, uvSnapshotPutRetryTimerCb,
+                            uv->disk_retry, 0);
+        assert(rv == 0);
+        return;
     }
 
     /* - If the trailing parameter is set to 0, it means that we're restoring a
@@ -840,6 +865,30 @@ err_after_req_alloc:
 err:
     assert(rv != 0);
     return rv;
+}
+
+static void uvSnapshotPutRetryCloseCb(uv_handle_t *handle)
+{
+    struct uv *uv = handle->data;
+    assert(uv->closing);
+    uv->snapshot_put_retry.data = NULL;
+    uvMaybeFireCloseCb(uv);
+}
+
+void UvSnapshotClose(struct uv *uv)
+{
+    if (uv->snapshot_put_retry.data != NULL) {
+        if (uv->snapshot_put_retry.data != uv) {
+            struct uvSnapshotPut *put = uv->snapshot_put_retry.data;
+            put->status = RAFT_CANCELED;
+            uvSnapshotPutFinish(put);
+            UvUnblock(uv);
+            uv->snapshot_put_retry.data = uv;
+        }
+        uv_timer_stop(&uv->snapshot_put_retry);
+        uv_close((uv_handle_t *)&uv->snapshot_put_retry,
+                 uvSnapshotPutRetryCloseCb);
+    }
 }
 
 #undef tracef
