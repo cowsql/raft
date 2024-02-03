@@ -261,6 +261,71 @@ err:
     return rv;
 }
 
+int UvFsFinalizeTempFile(uv_file fd,
+                         const char *dir,
+                         const char *filename,
+                         struct raft_buffer *bufs,
+                         unsigned n_bufs,
+                         char *errmsg)
+{
+    char path[UV__PATH_SZ];
+    char procpath[PATH_MAX];
+    size_t size = 0;
+    unsigned i;
+    int rv;
+
+    for (i = 0; i < n_bufs; i++) {
+        size += bufs[i].len;
+    }
+
+    rv = UvOsWrite(fd, (const uv_buf_t *)bufs, n_bufs, 0);
+    if (rv != (int)(size)) {
+        if (rv < 0) {
+            UvOsErrMsg(errmsg, "write", rv);
+        } else {
+            ErrMsgPrintf(errmsg, "short write: only %d bytes written", rv);
+        }
+        rv = RAFT_IOERR;
+        goto err_before_close;
+    }
+
+    rv = UvOsFsync(fd);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "fsync", rv);
+        rv = RAFT_IOERR;
+        goto err_before_close;
+    }
+
+    rv = UvOsJoin(dir, filename, path);
+    if (rv != 0) {
+        rv = RAFT_INVALID;
+        goto err_before_close;
+    }
+
+    snprintf(procpath, PATH_MAX, "/proc/self/fd/%d", fd);
+    rv = UvOsLinkat(AT_FDCWD, procpath, AT_FDCWD, path, AT_SYMLINK_FOLLOW);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "linkat", rv);
+        rv = RAFT_IOERR;
+        goto err_before_close;
+    }
+
+    rv = UvOsClose(fd);
+    if (rv != 0) {
+        UvOsErrMsg(errmsg, "close", rv);
+        rv = RAFT_IOERR;
+        goto err;
+    }
+
+    return 0;
+
+err_before_close:
+    UvOsClose(fd);
+err:
+    assert(rv != 0);
+    return rv;
+}
+
 static int uvFsWriteFile(const char *dir,
                          const char *filename,
                          int flags,

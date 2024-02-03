@@ -50,6 +50,14 @@ int UvFsAllocateTempFile(const char *dir,
                          uv_file *fd,
                          char *errmsg);
 
+/* Write data to an invisible tempfile and then rename it to the given name. */
+int UvFsFinalizeTempFile(uv_file fd,
+                         const char *dir,
+                         const char *filename,
+                         struct raft_buffer *bufs,
+                         unsigned n_bufs,
+                         char *errmsg);
+
 /* Create a file and write the given content into it. */
 int UvFsMakeFile(const char *dir,
                  const char *filename,
