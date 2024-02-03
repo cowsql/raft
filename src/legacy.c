@@ -1292,16 +1292,6 @@ int raft_add(struct raft *r,
     struct raft_configuration configuration;
     int rv;
 
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
-    rv = membershipCanChangeConfiguration(r);
-    if (rv != 0) {
-        return rv;
-    }
-
     /* Make a copy of the current configuration, and add the new server to
      * it. */
     rv = configurationCopy(&r->configuration, &configuration);
@@ -1447,25 +1437,8 @@ int raft_remove(struct raft *r,
                 raft_id id,
                 raft_change_cb cb)
 {
-    const struct raft_server *server;
     struct raft_configuration configuration;
     int rv;
-
-    if (r->state != RAFT_LEADER || r->leader_state.transferee != 0) {
-        rv = RAFT_NOTLEADER;
-        goto err;
-    }
-
-    rv = membershipCanChangeConfiguration(r);
-    if (rv != 0) {
-        return rv;
-    }
-
-    server = configurationGet(&r->configuration, id);
-    if (server == NULL) {
-        rv = RAFT_BADID;
-        goto err;
-    }
 
     /* Make a copy of the current configuration, and remove the given server
      * from it. */
