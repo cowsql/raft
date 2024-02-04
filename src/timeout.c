@@ -54,12 +54,12 @@ static int timeoutFollower(struct raft *r)
             goto out;
         }
         if (r->snapshot.installing) {
-            infof("installing snapshot -> don't convert to candidate");
+            infof("installing snapshot -> stay follower");
             electionResetTimer(r);
             goto out;
         }
         if (r->last_stored < last_index) {
-            infof("persisting %u entries -> don't convert to candidate",
+            infof("persisting %u entries -> stay follower",
                   (unsigned)(last_index - r->last_stored));
             electionResetTimer(r);
             goto out;
