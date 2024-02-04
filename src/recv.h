@@ -40,7 +40,7 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term);
  * Errors:
  *
  * RAFT_NOMEM
- *     A copy of @address could not me made
+ *     A copy of @address could not be made
  */
 int recvUpdateLeader(struct raft *r, raft_id id, const char *address);
 

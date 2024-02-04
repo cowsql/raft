@@ -679,7 +679,17 @@ static int checkLogMatchingProperty(struct raft *r,
  *
  * The i output parameter will be set to the array index of the first new log
  * entry that we don't have yet in our log, among the ones included in the given
- * AppendEntries request. */
+ * AppendEntries request.
+ *
+ * Errors:
+ *
+ * RAFT_SHUTDOWN
+ *     A committed entry with a conflicting term has been found.
+ *
+ * RAFT_NOMEM
+ *     In case a configuration needs to be rolled back, a copy of the last
+ *     committed configuration to could not be made.
+ */
 static int deleteConflictingEntries(struct raft *r,
                                     const struct raft_append_entries *args,
                                     size_t *i)
@@ -709,6 +719,7 @@ static int deleteConflictingEntries(struct raft *r,
             if (r->configuration_uncommitted_index >= entry_index) {
                 rv = membershipRollback(r);
                 if (rv != 0) {
+                    assert(rv == RAFT_NOMEM);
                     return rv;
                 }
             }
@@ -767,6 +778,7 @@ int replicationAppend(struct raft *r,
     /* Delete conflicting entries. */
     rv = deleteConflictingEntries(r, args, &i);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM || rv == RAFT_SHUTDOWN);
         return rv;
     }
 

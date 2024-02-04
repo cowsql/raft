@@ -15,8 +15,13 @@
 int membershipCanChangeConfiguration(struct raft *r);
 
 /* Populate the given configuration object with the most recent committed
- * configuration, the one contained in the entry at
- * r->configuration_committed_index. */
+ * configuration, contained in the entry at r->configuration_committed_index.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     A copy of the configuration could not be made.
+ */
 int membershipFetchLastCommittedConfiguration(struct raft *r,
                                               struct raft_configuration *conf);
 
@@ -40,10 +45,17 @@ int membershipUncommittedChange(struct raft *r,
                                 const raft_index index,
                                 const struct raft_entry *entry);
 
-/* Rollback any promotion configuration change that was applied locally, but
+/* Rollback an uncommitted configuration change that was applied locally, but
  * failed to be committed. It must be called by followers after they receive an
  * AppendEntries RPC request that instructs them to evict the uncommitted entry
- * from their log. */
+ * from their log.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     A copy of the last committed configuration to rollback to could not be
+ *     made.
+ */
 int membershipRollback(struct raft *r);
 
 /* Start the leadership transfer by sending a TimeoutNow message to the target

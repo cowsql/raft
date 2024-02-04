@@ -56,6 +56,7 @@ int membershipFetchLastCommittedConfiguration(struct raft *r,
     assert(r->configuration_committed_index > 0);
     rv = configurationCopy(&r->configuration_committed, conf);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 
@@ -157,6 +158,7 @@ int membershipRollback(struct raft *r)
     assert(r != NULL);
     assert(r->state == RAFT_FOLLOWER);
     assert(r->configuration_uncommitted_index > 0);
+
     infof("roll back uncommitted configuration (%llu^%llu)",
           r->configuration_uncommitted_index,
           TrailTermOf(&r->trail, r->configuration_uncommitted_index));
@@ -168,6 +170,7 @@ int membershipRollback(struct raft *r)
     configurationClose(&r->configuration);
     rv = membershipFetchLastCommittedConfiguration(r, &r->configuration);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 
