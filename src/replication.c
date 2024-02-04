@@ -641,6 +641,7 @@ static int checkLogMatchingProperty(struct raft *r,
         assert(args->prev_log_term == 0);
         return 0;
     }
+    assert(args->prev_log_term != 0);
 
     local_prev_term = TrailTermOf(&r->trail, args->prev_log_index);
     if (local_prev_term == 0) {
