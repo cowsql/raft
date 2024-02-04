@@ -600,7 +600,7 @@ static int followerPersistEntriesDone(struct raft *r,
 
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
-    if (replicationInstallSnapshotBusy(r)) {
+    if (r->snapshot.installing) {
         goto out;
     }
 
@@ -1152,11 +1152,6 @@ static void replicationQuorum(struct raft *r, raft_index index)
               uncommitted, TrailTermOf(&r->trail, uncommitted), votes, suffix,
               n_voters);
     }
-}
-
-inline bool replicationInstallSnapshotBusy(struct raft *r)
-{
-    return r->last_stored == 0 && r->snapshot.installing;
 }
 
 #undef infof

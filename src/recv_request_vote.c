@@ -75,7 +75,7 @@ int recvRequestVote(struct raft *r,
      * This condition should only be reachable if the disrupt_leader flag is
      * set, since otherwise we wouldn't have passed the have_leader check above
      * (follower state is not cleared while a snapshot is being installed). */
-    if (replicationInstallSnapshotBusy(r)) {
+    if (r->snapshot.installing) {
         tracef("installing snapshot -> reject (disrupt_leader:%d)",
                (int)args->disrupt_leader);
         goto reply;

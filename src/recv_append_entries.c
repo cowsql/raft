@@ -104,7 +104,7 @@ int recvAppendEntries(struct raft *r,
     /* If we are installing a snapshot, ignore these entries. TODO: we should do
      * something smarter, e.g. buffering the entries in the I/O backend, which
      * should be in charge of serializing everything. */
-    if (replicationInstallSnapshotBusy(r) && args->n_entries > 0) {
+    if (r->snapshot.installing && args->n_entries > 0) {
         infof("snapshot install in progress -> ignore");
         if (args->n_entries > 0) {
             assert(args->entries[0].batch != NULL);

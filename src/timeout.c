@@ -53,7 +53,7 @@ static int timeoutFollower(struct raft *r)
             electionResetTimer(r);
             goto out;
         }
-        if (replicationInstallSnapshotBusy(r)) {
+        if (r->snapshot.installing) {
             infof("installing snapshot -> don't convert to candidate");
             electionResetTimer(r);
             goto out;
