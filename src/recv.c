@@ -106,15 +106,16 @@ void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match)
     }
 }
 
-void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
+int recvEnsureMatchingTerms(struct raft *r, raft_term term)
 {
+    int match;
+
     assert(r != NULL);
-    assert(match != NULL);
 
-    recvCheckMatchingTerms(r, term, match);
+    recvCheckMatchingTerms(r, term, &match);
 
-    if (*match == -1) {
-        return;
+    if (match == -1) {
+        goto out;
     }
 
     /* From Figure 3.1:
@@ -131,9 +132,12 @@ void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
      *   If a candidate or leader discovers that its term is out of date, it
      *   immediately reverts to follower state.
      */
-    if (*match == 1) {
+    if (match == 1) {
         recvBumpCurrentTerm(r, term);
     }
+
+out:
+    return match;
 }
 
 int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)

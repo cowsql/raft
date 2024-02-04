@@ -32,7 +32,7 @@ int recvRequestVoteResult(struct raft *r,
     if (r->candidate_state.in_pre_vote) {
         recvCheckMatchingTerms(r, result->term, &match);
     } else {
-        recvEnsureMatchingTerms(r, result->term, &match);
+        match = recvEnsureMatchingTerms(r, result->term);
     }
 
     /* Ignore responses if we are not candidate anymore */

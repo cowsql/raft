@@ -44,7 +44,7 @@ int recvTimeoutNow(struct raft *r,
 
     /* Possibly update our term. Ignore the request if it turns out we have a
      * higher term. */
-    recvEnsureMatchingTerms(r, args->term, &match);
+    match = recvEnsureMatchingTerms(r, args->term);
     if (match < 0) {
         return 0;
     }
