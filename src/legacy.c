@@ -505,7 +505,7 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     struct raft *r = req->r;
     struct raft_snapshot *snapshot = &req->snapshot;
     int rv;
-    assert(!r->snapshot.persisting);
+    assert(!r->snapshot.installing);
     req->put.data = req;
     rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &req->put, snapshot,
                              takeSnapshotCb);
@@ -528,7 +528,7 @@ static bool legacyShouldTakeSnapshot(const struct raft *r)
 
     /* If a snapshot is already in progress or we're installing a snapshot, we
      * don't want to start another one. */
-    if (r->legacy.snapshot_taking || r->snapshot.persisting) {
+    if (r->legacy.snapshot_taking || r->snapshot.installing) {
         return false;
     };
 
@@ -560,7 +560,7 @@ static void legacyTakeSnapshot(struct raft *r)
      * values always match when we get here. */
     assert(r->last_applied == r->commit_index);
 
-    assert(!r->snapshot.persisting);
+    assert(!r->snapshot.installing);
     assert(r->legacy.snapshot_pending == NULL);
 
     tracef("take snapshot at %lld", r->commit_index);

@@ -888,7 +888,7 @@ int replicationPersistSnapshotDone(struct raft *r,
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);
 
-    r->snapshot.persisting = false;
+    r->snapshot.installing = false;
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
@@ -945,7 +945,7 @@ int replicationInstallSnapshot(struct raft *r,
      * one.
      *
      * TODO: we should do something smarter. */
-    if (r->snapshot.persisting) {
+    if (r->snapshot.installing) {
         *async = true;
         infof("already taking or installing snapshot");
         return RAFT_BUSY;
@@ -973,8 +973,8 @@ int replicationInstallSnapshot(struct raft *r,
 
     r->last_stored = 0;
 
-    assert(!r->snapshot.persisting);
-    r->snapshot.persisting = true;
+    assert(!r->snapshot.installing);
+    r->snapshot.installing = true;
 
     metadata.index = args->last_index;
     metadata.term = args->last_term;
@@ -1156,7 +1156,7 @@ static void replicationQuorum(struct raft *r, raft_index index)
 
 inline bool replicationInstallSnapshotBusy(struct raft *r)
 {
-    return r->last_stored == 0 && r->snapshot.persisting;
+    return r->last_stored == 0 && r->snapshot.installing;
 }
 
 #undef infof

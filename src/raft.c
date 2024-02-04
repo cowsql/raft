@@ -106,7 +106,7 @@ int raft_init(struct raft *r,
     r->state = RAFT_FOLLOWER;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
-    r->snapshot.persisting = false;
+    r->snapshot.installing = false;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;
     r->max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS;
