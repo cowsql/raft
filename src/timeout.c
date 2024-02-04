@@ -15,7 +15,7 @@
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Apply time-dependent rules for followers (Figure 3.1). */
-static int tickFollower(struct raft *r)
+static int timeoutFollower(struct raft *r)
 {
     const struct raft_server *server;
     int rv;
@@ -71,7 +71,7 @@ out:
 }
 
 /* Apply time-dependent rules for candidates (Figure 3.1). */
-static int tickCandidate(struct raft *r)
+static int timeoutCandidate(struct raft *r)
 {
     assert(r != NULL);
     assert(r->state == RAFT_CANDIDATE);
@@ -137,7 +137,7 @@ static bool checkContactQuorum(struct raft *r)
 }
 
 /* Apply time-dependent rules for leaders (Figure 3.1). */
-static int tickLeader(struct raft *r)
+static int timeoutLeader(struct raft *r)
 {
     assert(r->state == RAFT_LEADER);
 
@@ -231,7 +231,7 @@ static int tickLeader(struct raft *r)
     return 0;
 }
 
-int Tick(struct raft *r)
+int Timeout(struct raft *r)
 {
     int rv = -1;
 
@@ -240,13 +240,13 @@ int Tick(struct raft *r)
 
     switch (r->state) {
         case RAFT_FOLLOWER:
-            rv = tickFollower(r);
+            rv = timeoutFollower(r);
             break;
         case RAFT_CANDIDATE:
-            rv = tickCandidate(r);
+            rv = timeoutCandidate(r);
             break;
         case RAFT_LEADER:
-            rv = tickLeader(r);
+            rv = timeoutLeader(r);
             break;
     }
 

@@ -28,7 +28,7 @@
 	"src/state.c",
 	"src/syscall.c",
 	"src/message.c",
-	"src/tick.c",
+	"src/timeout.c",
 	"src/tracing.c",
 	"src/uv.c",
 	"src/uv_append.c",
