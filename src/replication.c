@@ -751,14 +751,9 @@ int replicationAppend(struct raft *r,
     size_t j;
     int rv;
 
-    assert(r != NULL);
-    assert(args != NULL);
-    assert(rejected != NULL);
-    assert(async != NULL);
-
     assert(r->state == RAFT_FOLLOWER);
+    assert(*rejected == args->prev_log_index);
 
-    *rejected = args->prev_log_index;
     *async = false;
 
     /* Check the log matching property. */
