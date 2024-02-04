@@ -696,7 +696,7 @@ struct raft_io_snapshot_put
     struct                                                                 \
     {                                                                      \
         bool unused;                                                       \
-        bool persisting; /* A RAFT_UPDATE_SNAPSHOT request is in flight */ \
+        bool installing; /* A RAFT_UPDATE_SNAPSHOT request is in flight */ \
     }
 
 RAFT__ASSERT_COMPATIBILITY(RAFT__SNAPSHOT_FIELDS_V0, RAFT__SNAPSHOT_FIELDS_V1);

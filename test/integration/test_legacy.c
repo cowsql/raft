@@ -127,7 +127,7 @@ TEST(legacy, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
     /* Disconnect the servers again so that heartbeats, etc. won't arrive */
     CLUSTER_SATURATE_BOTHWAYS(0, 2);
     munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
-    munit_assert_true(CLUSTER_RAFT(2)->snapshot.persisting);
+    munit_assert_true(CLUSTER_RAFT(2)->snapshot.installing);
     CLUSTER_STEP_UNTIL_ELAPSED(4000);
     munit_assert_int(CLUSTER_STATE(2), ==, RAFT_FOLLOWER);
     return MUNIT_OK;

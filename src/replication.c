@@ -600,7 +600,7 @@ static int followerPersistEntriesDone(struct raft *r,
 
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
-    if (replicationInstallSnapshotBusy(r)) {
+    if (r->snapshot.installing) {
         goto out;
     }
 
@@ -714,6 +714,10 @@ static int deleteConflictingEntries(struct raft *r,
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
                 /* Should never happen; something is seriously wrong! */
+                infof(
+                    "conflicting terms %llu and %llu for entry %llu (commit "
+                    "index %llu) -> shutdown",
+                    local_term, entry->term, entry_index, r->commit_index);
                 return RAFT_SHUTDOWN;
             }
 
@@ -884,7 +888,7 @@ int replicationPersistSnapshotDone(struct raft *r,
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);
 
-    r->snapshot.persisting = false;
+    r->snapshot.installing = false;
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
@@ -941,7 +945,7 @@ int replicationInstallSnapshot(struct raft *r,
      * one.
      *
      * TODO: we should do something smarter. */
-    if (r->snapshot.persisting) {
+    if (r->snapshot.installing) {
         *async = true;
         infof("already taking or installing snapshot");
         return RAFT_BUSY;
@@ -969,8 +973,8 @@ int replicationInstallSnapshot(struct raft *r,
 
     r->last_stored = 0;
 
-    assert(!r->snapshot.persisting);
-    r->snapshot.persisting = true;
+    assert(!r->snapshot.installing);
+    r->snapshot.installing = true;
 
     metadata.index = args->last_index;
     metadata.term = args->last_term;
@@ -1148,11 +1152,6 @@ static void replicationQuorum(struct raft *r, raft_index index)
               uncommitted, TrailTermOf(&r->trail, uncommitted), votes, suffix,
               n_voters);
     }
-}
-
-inline bool replicationInstallSnapshotBusy(struct raft *r)
-{
-    return r->last_stored == 0 && r->snapshot.persisting;
 }
 
 #undef infof

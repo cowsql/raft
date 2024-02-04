@@ -79,9 +79,6 @@ int replicationInstallSnapshot(struct raft *r,
                                raft_index *rejected,
                                bool *async);
 
-/* Returns `true` if the raft instance is currently installing a snapshot */
-bool replicationInstallSnapshotBusy(struct raft *r);
-
 /* Called when handling a RAFT_PERSISTED_ENTRIES event. */
 int replicationPersistEntriesDone(struct raft *r,
                                   raft_index index,

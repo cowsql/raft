@@ -20,7 +20,7 @@
 #include "recv.h"
 #include "replication.h"
 #include "restore.h"
-#include "tick.h"
+#include "timeout.h"
 #include "tracing.h"
 #include "trail.h"
 
@@ -106,7 +106,7 @@ int raft_init(struct raft *r,
     r->state = RAFT_FOLLOWER;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
-    r->snapshot.persisting = false;
+    r->snapshot.installing = false;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;
     r->max_catch_up_rounds = DEFAULT_MAX_CATCH_UP_ROUNDS;
@@ -470,11 +470,17 @@ int stepSnapshot(struct raft *r,
     return replicationSnapshot(r, metadata, trailing);
 }
 
+int stepTimeout(struct raft *r)
+{
+    const char *state_name = raft_state_name(r->state);
+    infof("timeout as %s", state_name);
+    return Timeout(r);
+}
+
 int raft_step(struct raft *r,
               struct raft_event *event,
               struct raft_update *update)
 {
-    const char *state_name;
     int rv;
 
     assert(event != NULL);
@@ -528,9 +534,7 @@ int raft_step(struct raft *r,
                               event->snapshot.trailing);
             break;
         case RAFT_TIMEOUT:
-            state_name = raft_state_name(r->state);
-            infof("timeout as %s", state_name);
-            rv = Tick(r);
+            rv = stepTimeout(r);
             break;
         case RAFT_SUBMIT:
             infof("submit %u new client entr%s", event->submit.n,

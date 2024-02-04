@@ -5,17 +5,16 @@
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
-#include "membership.h"
 #include "progress.h"
-#include "queue.h"
 #include "replication.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
 /* Apply time-dependent rules for followers (Figure 3.1). */
-static int tickFollower(struct raft *r)
+static int timeoutFollower(struct raft *r)
 {
     const struct raft_server *server;
     int rv;
@@ -47,14 +46,21 @@ static int tickFollower(struct raft *r)
      *   current leader or granting vote to candidate, convert to candidate.
      */
     if (electionTimerExpired(r)) {
+        raft_index last_index = TrailLastIndex(&r->trail);
         const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
             infof("%s server -> stay follower", raft_role_name(server->role));
             electionResetTimer(r);
             goto out;
         }
-        if (replicationInstallSnapshotBusy(r)) {
+        if (r->snapshot.installing) {
             infof("installing snapshot -> don't convert to candidate");
+            electionResetTimer(r);
+            goto out;
+        }
+        if (r->last_stored < last_index) {
+            infof("persisting %u entries -> don't convert to candidate",
+                  (unsigned)(last_index - r->last_stored));
             electionResetTimer(r);
             goto out;
         }
@@ -71,7 +77,7 @@ out:
 }
 
 /* Apply time-dependent rules for candidates (Figure 3.1). */
-static int tickCandidate(struct raft *r)
+static int timeoutCandidate(struct raft *r)
 {
     assert(r != NULL);
     assert(r->state == RAFT_CANDIDATE);
@@ -137,7 +143,7 @@ static bool checkContactQuorum(struct raft *r)
 }
 
 /* Apply time-dependent rules for leaders (Figure 3.1). */
-static int tickLeader(struct raft *r)
+static int timeoutLeader(struct raft *r)
 {
     assert(r->state == RAFT_LEADER);
 
@@ -231,7 +237,7 @@ static int tickLeader(struct raft *r)
     return 0;
 }
 
-int Tick(struct raft *r)
+int Timeout(struct raft *r)
 {
     int rv = -1;
 
@@ -240,13 +246,13 @@ int Tick(struct raft *r)
 
     switch (r->state) {
         case RAFT_FOLLOWER:
-            rv = tickFollower(r);
+            rv = timeoutFollower(r);
             break;
         case RAFT_CANDIDATE:
-            rv = tickCandidate(r);
+            rv = timeoutCandidate(r);
             break;
         case RAFT_LEADER:
-            rv = tickLeader(r);
+            rv = timeoutLeader(r);
             break;
     }
 

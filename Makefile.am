@@ -37,7 +37,7 @@ libraft_la_SOURCES = \
   src/replication.c \
   src/state.c \
   src/syscall.c \
-  src/tick.c \
+  src/timeout.c \
   src/tracing.c \
   src/trail.c
 
