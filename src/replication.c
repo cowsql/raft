@@ -714,6 +714,10 @@ static int deleteConflictingEntries(struct raft *r,
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
                 /* Should never happen; something is seriously wrong! */
+                infof(
+                    "conflicting terms %llu and %llu for entry %llu (commit "
+                    "index %llu) -> shutdown",
+                    local_term, entry->term, entry_index, r->commit_index);
                 return RAFT_SHUTDOWN;
             }
 
