@@ -5,11 +5,10 @@
 #include "configuration.h"
 #include "convert.h"
 #include "election.h"
-#include "membership.h"
 #include "progress.h"
-#include "queue.h"
 #include "replication.h"
 #include "tracing.h"
+#include "trail.h"
 
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
@@ -47,6 +46,7 @@ static int timeoutFollower(struct raft *r)
      *   current leader or granting vote to candidate, convert to candidate.
      */
     if (electionTimerExpired(r)) {
+        raft_index last_index = TrailLastIndex(&r->trail);
         const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
             infof("%s server -> stay follower", raft_role_name(server->role));
@@ -55,6 +55,12 @@ static int timeoutFollower(struct raft *r)
         }
         if (r->snapshot.installing) {
             infof("installing snapshot -> don't convert to candidate");
+            electionResetTimer(r);
+            goto out;
+        }
+        if (r->last_stored < last_index) {
+            infof("persisting %u entries -> don't convert to candidate",
+                  (unsigned)(last_index - r->last_stored));
             electionResetTimer(r);
             goto out;
         }

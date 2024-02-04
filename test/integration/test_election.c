@@ -834,22 +834,9 @@ TEST(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* When starting an election and sending RequestVote messages, the candidate
- * node reports the index and term of its last persisted entry, not of the last
- * entry in its in-memory cache of the log, which might contain entries that are
- * still being persisted.
- *
- * In particular, this test exercises the case where the candidate has a not yet
- * persisted a configuration change entry in which the candidate is actually not
- * a voter anymore. Since we apply new pending configuration entries only once
- * persisted, the node is still using the old configuration, where it is a voter
- * and this is the reason why it converted to candidate despite having in its
- * in-memory log also an entry where it's not a voter anymore. That is all fine,
- * however if this candidate reported the index of the last entry in its
- * in-memory log cache as opposed to the last persisted one two bad things would
- * happen.
- */
-TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
+/* If a follower has entries that are still being persisted, it won't convert to
+ * candidate */
+TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned i;
@@ -1022,13 +1009,11 @@ TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
 
     munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_FOLLOWER);
 
-    /* Eventually both server 2 and server 3 time out and start elections,
-     * because they have been disconnected from the leader.
+    /* Eventually both server 2 and server 3 time out because they have been
+     * disconnected from the leader.
      *
-     * Server 2 is not a voter in the latest configuration at index 4, but it
-     * nevertheless converts to candidate as it's still using the original
-     * configuration at index 3, because it did receive the configuration at
-     * index 4, but hasn't persisted it yet. */
+     * Server 3 immediately converts to candidate. However server 2 is still
+     * persisting entries and stays follower. */
     CLUSTER_TRACE(
         "[ 240] 1 > recv append entries result from server 4\n"
         "[ 270] 1 > timeout as leader\n"
@@ -1053,25 +1038,19 @@ TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
         "[ 380] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 380] 2 > timeout as follower\n"
-        "           convert to candidate, start election for term 3\n"
+        "           persisting 2 entries -> don't convert to candidate\n"
         "[ 390] 1 > recv append entries result from server 4\n"
-        "[ 390] 3 > recv request vote from server 2\n"
-        "           local server has a leader (server 1) -> reject\n"
         "[ 390] 3 > timeout as follower\n"
         "           convert to candidate, start election for term 3\n");
 
-    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_CANDIDATE);
+    munit_assert_int(raft_state(CLUSTER_RAFT(2)), ==, RAFT_FOLLOWER);
     munit_assert_int(raft_state(CLUSTER_RAFT(3)), ==, RAFT_CANDIDATE);
 
     /* Server 3 can't win the election, because it does not consider server 2 a
      * voter, according to the configuration at index 4.
      *
-     * Server 2 also can't win the election, because the last index it sends is
-     * the index of its last persisted entry (entry 1), and so server 3 doesn't
-     * grant its vote. */
+     * Server 2 also can't win the election, because the it stays follower. */
     CLUSTER_TRACE(
-        "[ 400] 2 > recv request vote result from server 3\n"
-        "           remote term is lower (2 vs 3) -> ignore\n"
         "[ 420] 1 > timeout as leader\n"
         "           probe server 2 sending 2 entries (2^2..3^2)\n"
         "           probe server 3 sending a heartbeat (no entries)\n"
@@ -1092,12 +1071,9 @@ TEST(election, StartElectionWithUnpersistedEntries, setUp, tearDown, 0, NULL)
         "           pipeline server 4 sending a heartbeat (no entries)\n"
         "[ 530] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
-        "[ 530] 2 > timeout as candidate\n"
-        "           stay candidate, start election for term 4\n"
-        "[ 540] 1 > recv append entries result from server 4\n"
-        "[ 540] 3 > recv request vote from server 2\n"
-        "           remote term is higher (4 vs 3) -> bump term, step down\n"
-        "           remote log older (1^1 vs 3^2) -> don't grant vote\n");
+        "[ 530] 2 > timeout as follower\n"
+        "           persisting 2 entries -> don't convert to candidate\n"
+        "[ 540] 1 > recv append entries result from server 4\n");
 
     for (i = 0; i < 40; i++) {
         test_cluster_step(&f->cluster_);
