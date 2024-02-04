@@ -126,6 +126,8 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
     struct legacyPersistEntries *req = append->data;
     struct raft *r = req->r;
     struct raft_event event;
+    unsigned n = 0;
+    unsigned i;
 
     if (status != 0) {
         assert(r->legacy.closing);
@@ -133,10 +135,32 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
         goto out;
     }
 
+    /* Check which of these entries is still in our in-memory log */
+    for (i = 0; i < req->n; i++) {
+        struct raft_entry *entry = &req->entries[i];
+        raft_index index = req->index + i;
+        raft_term local_term = logTermOf(r->legacy.log, index);
+
+        /* If we have no entry at this index, or if the entry we have now has a
+         * different term, it means that this entry got truncated, so let's stop
+         * here. */
+        if (local_term == 0 || (local_term > 0 && local_term != entry->term)) {
+            if (i == 0) {
+                goto out; /* No entries in this batch is still in our log */
+            }
+            break;
+        }
+
+        /* If we do have an entry at this index, its term must match the one of
+         * the entry we wrote on disk. */
+        assert(local_term != 0 && local_term == entry->term);
+        n += 1;
+    }
+
     event.type = RAFT_PERSISTED_ENTRIES;
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
-    event.persisted_entries.n = req->n;
+    event.persisted_entries.n = n;
 
     LegacyForwardToRaftIo(r, &event);
 
