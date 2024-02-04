@@ -10,10 +10,9 @@ int recvMessage(struct raft *r, struct raft_message *message);
 
 /* Compare a request's term with the server's current term.
  *
- * The match output parameter will be set to 0 if the local term matches the
- * request's term, to -1 if the request's term is lower, and to 1 if the
- * request's term is higher. */
-void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match);
+ * Return 0 if the local term matches the request's term, to -1 if the request's
+ * term is lower, and to 1 if the request's term is higher. */
+int recvCheckMatchingTerms(const struct raft *r, raft_term term);
 
 /* Bump the current term and possibly step down from candidate or leader
  * state. */

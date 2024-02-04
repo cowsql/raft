@@ -95,15 +95,19 @@ void recvBumpCurrentTerm(struct raft *r, raft_term term)
     }
 }
 
-void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match)
+int recvCheckMatchingTerms(const struct raft *r, raft_term term)
 {
+    int match;
+
     if (term < r->current_term) {
-        *match = -1;
+        match = -1;
     } else if (term > r->current_term) {
-        *match = 1;
+        match = 1;
     } else {
-        *match = 0;
+        match = 0;
     }
+
+    return match;
 }
 
 int recvEnsureMatchingTerms(struct raft *r, raft_term term)
@@ -112,7 +116,7 @@ int recvEnsureMatchingTerms(struct raft *r, raft_term term)
 
     assert(r != NULL);
 
-    recvCheckMatchingTerms(r, term, &match);
+    match = recvCheckMatchingTerms(r, term);
 
     if (match == -1) {
         goto out;
