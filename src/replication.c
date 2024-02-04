@@ -631,7 +631,7 @@ static void followerPersistEntriesDone(struct raft *r,
  * Return 1 if the check did not pass and the request needs to be rejected.
  *
  * Return -1 if there's a conflict and we need to shutdown. */
-static int checkLogMatchingProperty(struct raft *r,
+static int checkLogMatchingProperty(const struct raft *r,
                                     const struct raft_append_entries *args)
 {
     raft_term local_prev_term;
@@ -667,39 +667,29 @@ static int checkLogMatchingProperty(struct raft *r,
     return 0;
 }
 
-/* Delete from our log all entries that conflict with the ones in the given
+/* Check if our log has entries that conflict with the ones in the given
  * AppendEntries request.
- *
- * From Figure 3.1:
- *
- *   [AppendEntries RPC] Receiver implementation:
- *
- *   3. If an existing entry conflicts with a new one (same index but
- *   different terms), delete the existing entry and all that follow it.
  *
  * The i output parameter will be set to the array index of the first new log
  * entry that we don't have yet in our log, among the ones included in the given
  * AppendEntries request.
  *
  * The truncate output parameter will be set to the index of the first
- * conflicting entry that was found, or 0 if no entry is conflicting.
+ * conflicting entry that was found, or 0 if no such entry entry was found.
  *
  * Errors:
  *
  * RAFT_SHUTDOWN
  *     A committed entry with a conflicting term has been found.
- *
- * RAFT_NOMEM
- *     In case a configuration needs to be rolled back, a copy of the last
- *     committed configuration to could not be made.
  */
-static int deleteConflictingEntries(struct raft *r,
-                                    const struct raft_append_entries *args,
-                                    size_t *i,
-                                    raft_index *truncate)
+static int checkConflictingEntries(const struct raft *r,
+                                   const struct raft_append_entries *args,
+                                   size_t *i,
+                                   raft_index *truncate)
 {
     size_t j;
-    int rv;
+
+    *truncate = 0;
 
     for (j = 0; j < args->n_entries; j++) {
         struct raft_entry *entry = &args->entries[j];
@@ -723,25 +713,6 @@ static int deleteConflictingEntries(struct raft *r,
 
             *truncate = entry_index;
 
-            /* Possibly discard uncommitted configuration changes. */
-            if (r->configuration_uncommitted_index >= entry_index) {
-                rv = membershipRollback(r);
-                if (rv != 0) {
-                    assert(rv == RAFT_NOMEM);
-                    return rv;
-                }
-            }
-
-            /* Delete all entries from this index on because they don't
-             * match. */
-            TrailTruncate(&r->trail, entry_index);
-
-            /* Drop information about previously stored entries that have just
-             * been discarded. */
-            if (r->last_stored >= entry_index) {
-                r->last_stored = entry_index - 1;
-            }
-
             /* We want to append all entries from here on, replacing anything
              * that we had before. */
             break;
@@ -753,6 +724,40 @@ static int deleteConflictingEntries(struct raft *r,
     }
 
     *i = j;
+
+    return 0;
+}
+
+/* Delete all entries from the given index onwards, possibly rolling back any
+ * affected uncommitted configuration.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     In case a configuration rollback is needed, a copy of the last committed
+ *     configuration could not be made.
+ */
+static int deleteConflictingEntries(struct raft *r, raft_index index)
+{
+    int rv;
+
+    /* Discard any uncommitted configuration change. */
+    if (r->configuration_uncommitted_index >= index) {
+        rv = membershipRollback(r);
+        if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
+            return rv;
+        }
+    }
+
+    /* Delete all entries from this index on because they don't match. */
+    TrailTruncate(&r->trail, index);
+
+    /* Drop information about previously stored entries that have just been
+     * discarded. */
+    if (r->last_stored >= index) {
+        r->last_stored = index - 1;
+    }
 
     return 0;
 }
@@ -784,11 +789,26 @@ int replicationAppend(struct raft *r,
         return match == 1 ? 0 : RAFT_SHUTDOWN;
     }
 
-    /* Delete conflicting entries. */
-    rv = deleteConflictingEntries(r, args, &i, &truncate);
+    /* Check for conflicting entries. */
+    rv = checkConflictingEntries(r, args, &i, &truncate);
     if (rv != 0) {
-        assert(rv == RAFT_NOMEM || rv == RAFT_SHUTDOWN);
+        assert(rv == RAFT_SHUTDOWN);
         return rv;
+    }
+
+    /* From Figure 3.1:
+     *
+     *   [AppendEntries RPC] Receiver implementation:
+     *
+     *   3. If an existing entry conflicts with a new one (same index but
+     *   different terms), delete the existing entry and all that follow it.
+     */
+    if (truncate > 0) {
+        rv = deleteConflictingEntries(r, truncate);
+        if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
+            return rv;
+        }
     }
 
     n = args->n_entries - i; /* Number of new entries */
