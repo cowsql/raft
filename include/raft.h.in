@@ -14,14 +14,22 @@
 #define RAFT__LEGACY_@enable_v0@
 /* clang-format on */
 
+/* Handle C/C++ differences for static asserts */
+#if defined(__cpp_static_assert)
+#define RAFT__STATIC_ASSERT static_assert
+#else
+#define RAFT__STATIC_ASSERT _Static_assert
+#endif
+
 /* Helper for statically checking ABI compatibility when changing or adding
  * struct fields. */
 #if defined(RAFT__LEGACY_no)
 #define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
-    _Static_assert(1 == 1, "no-op")
+    RAFT__STATIC_ASSERT(1 == 1, "no-op")
 #else
-#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
-    _Static_assert(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), "ABI breakage")
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS)        \
+    RAFT__STATIC_ASSERT(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), \
+                        "ABI breakage")
 #endif
 
 /**
@@ -1601,5 +1609,6 @@ RAFT_API int raft_transfer(struct raft *r,
 
 #undef RAFT__REQUEST
 #undef RAFT__ASSERT_COMPATIBILITY
+#undef RAFT__STATIC_ASSERT
 
 #endif /* RAFT_H */
