@@ -94,6 +94,7 @@ int recvAppendEntries(struct raft *r,
      * date. */
     rv = recvUpdateLeader(r, id, address);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 
