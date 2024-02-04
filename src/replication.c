@@ -355,10 +355,10 @@ static int leaderPersistEntriesDone(struct raft *r,
     return 0;
 }
 
-static int followerPersistEntriesDone(struct raft *r,
-                                      raft_index index,
-                                      struct raft_entry *entries,
-                                      unsigned n);
+static void followerPersistEntriesDone(struct raft *r,
+                                       raft_index index,
+                                       struct raft_entry *entries,
+                                       unsigned n);
 
 /* Invoked once a disk write request for new entries has been completed. */
 int replicationPersistEntriesDone(struct raft *r,
@@ -375,7 +375,8 @@ int replicationPersistEntriesDone(struct raft *r,
             rv = leaderPersistEntriesDone(r, index, entries, n);
             break;
         case RAFT_FOLLOWER:
-            rv = followerPersistEntriesDone(r, index, entries, n);
+            followerPersistEntriesDone(r, index, entries, n);
+            rv = 0;
             break;
         default:
             updateLastStored(r, index, entries, n);
@@ -577,15 +578,13 @@ static void sendAppendEntriesResult(
     }
 }
 
-static int followerPersistEntriesDone(struct raft *r,
-                                      raft_index first_index,
-                                      struct raft_entry *entries,
-                                      unsigned n)
+static void followerPersistEntriesDone(struct raft *r,
+                                       raft_index first_index,
+                                       struct raft_entry *entries,
+                                       unsigned n)
 {
     struct raft_append_entries_result result;
     size_t i;
-    size_t j;
-    int rv;
 
     assert(r->state == RAFT_FOLLOWER);
 
@@ -601,30 +600,14 @@ static int followerPersistEntriesDone(struct raft *r,
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
     if (r->snapshot.installing) {
-        goto out;
+        return;
     }
 
     /* If none of the entries that we persisted is present anymore in our
      * in-memory log, there's nothing to report or to do. We just discard
      * them. */
     if (i == 0) {
-        goto out;
-    }
-
-    /* Possibly apply configuration changes as uncommitted. */
-    for (j = 0; j < i; j++) {
-        struct raft_entry *entry = &entries[j];
-        raft_index index = first_index + j;
-        raft_term local_term = TrailTermOf(&r->trail, index);
-
-        assert(local_term != 0 && local_term == entry->term);
-
-        if (entry->type == RAFT_CHANGE) {
-            rv = membershipUncommittedChange(r, index, entry);
-            if (rv != 0) {
-                return rv;
-            }
-        }
+        return;
     }
 
     result.rejected = 0;
@@ -632,9 +615,6 @@ static int followerPersistEntriesDone(struct raft *r,
     result.last_log_index = r->last_stored;
     result.capacity = r->capacity;
     sendAppendEntriesResult(r, &result);
-
-out:
-    return 0;
 }
 
 /* Check the log matching property against an incoming AppendEntries request.
@@ -840,6 +820,7 @@ int replicationAppend(struct raft *r,
      * entries present in the message (here "new entries" means entries that we
      * don't have yet in our in-memory log).  That's because we call TrailAppend
      * above exactly n times, once for each new log entry. */
+    assert(n_entries > 0);
     assert(n_entries == n);
 
     entries = &args->entries[i];
@@ -854,6 +835,17 @@ int replicationAppend(struct raft *r,
         infof("start persisting %u new entries (%llu^%llu..%llu^%llu)",
               n_entries, index, entries[0].term, index + n_entries - 1,
               entries[n_entries - 1].term);
+    }
+
+    /* Possibly apply configuration changes as uncommitted. */
+    for (i = 0; i < n_entries; i++) {
+        struct raft_entry *entry = &entries[i];
+        if (entry->type == RAFT_CHANGE) {
+            rv = membershipUncommittedChange(r, index, entry);
+            if (rv != 0) {
+                goto err;
+            }
+        }
     }
 
     persistEntries(r, index, entries, n_entries);

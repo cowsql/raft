@@ -834,9 +834,8 @@ TEST(election, PreVoteNoStaleVotes, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* If a follower has entries that are still being persisted, it won't convert to
- * candidate */
-TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
+/* If a follower is a stand-by, it won't convert to candidate */
+TEST(election, StayFollowerIfStandBy, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     unsigned i;
@@ -1012,8 +1011,9 @@ TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
     /* Eventually both server 2 and server 3 time out because they have been
      * disconnected from the leader.
      *
-     * Server 3 immediately converts to candidate. However server 2 is still
-     * persisting entries and stays follower. */
+     * Server 3 immediately converts to candidate. Server 2 is still persisting
+     * entries, but it applies configuration changes immediately so it finds out
+     * it's a stand-by and stays follower. */
     CLUSTER_TRACE(
         "[ 240] 1 > recv append entries result from server 4\n"
         "[ 270] 1 > timeout as leader\n"
@@ -1038,7 +1038,7 @@ TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
         "[ 380] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 380] 2 > timeout as follower\n"
-        "           persisting 2 entries -> don't convert to candidate\n"
+        "           stand-by server -> stay follower\n"
         "[ 390] 1 > recv append entries result from server 4\n"
         "[ 390] 3 > timeout as follower\n"
         "           convert to candidate, start election for term 3\n");
@@ -1072,7 +1072,7 @@ TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
         "[ 530] 4 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 530] 2 > timeout as follower\n"
-        "           persisting 2 entries -> don't convert to candidate\n"
+        "           stand-by server -> stay follower\n"
         "[ 540] 1 > recv append entries result from server 4\n");
 
     for (i = 0; i < 40; i++) {
@@ -1083,6 +1083,210 @@ TEST(election, StayFollowerIfUnpersistedEntries, setUp, tearDown, 0, NULL)
 
     /* Server 1 is still leader, since it can contact server 4. */
     munit_assert_int(raft_state(CLUSTER_RAFT(1)), ==, RAFT_LEADER);
+
+    return MUNIT_OK;
+}
+
+/* If a follower is installing a snapshot, it won't convert to
+ * candidate */
+TEST(election, StayFollowerIfInstallingSnapshot, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    unsigned id;
+
+    /* Set very low threshold and trailing entries number */
+    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
+    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+
+    /* Bootstrap a cluster with 3 servers. */
+    for (id = 1; id <= 3; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[   0] 3 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 110] 3 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
+
+    /* Submit a couple of entries, causing server 1 to eventually take a
+     * snapshot. */
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+
+    /* Disconnect server 2 from server 1, so it won't receive these entries. */
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_DISCONNECT(2, 2);
+
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (3^2)\n"
+        "[ 120] 1 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 1 > persisted 1 entry (3^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 3\n"
+        "           pipeline server 3 sending 2 entries (2^2..3^2)\n"
+        "[ 150] 3 > recv append entries from server 1\n"
+        "           start persisting 2 new entries (2^2..3^2)\n"
+        "[ 160] 3 > persisted 2 entry (2^2..3^2)\n"
+        "           send success result to 1\n"
+        "[ 170] 1 > recv append entries result from server 3\n"
+        "           commit 2 new entries (2^2..3^2)\n"
+        "[ 170] 1 > new snapshot (3^2), 0 trailing entries\n");
+
+    /* Reconnect server 2 to server 1, so it will receive the snapshot. */
+    CLUSTER_RECONNECT(1, 2);
+    CLUSTER_RECONNECT(2, 2);
+
+    /* Server 2 takes a very long time to persist the snapshot. */
+    CLUSTER_SET_DISK_LATENCY(2, 1000);
+
+    CLUSTER_TRACE(
+        "[ 170] 1 > timeout as leader\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 180] 2 > recv append entries from server 1\n"
+        "           missing previous entry (3^2) -> reject\n"
+        "[ 190] 1 > recv append entries result from server 2\n"
+        "           log mismatch -> send old entries\n"
+        "           missing previous entry at index 1 -> needs snapshot\n"
+        "           sending snapshot (3^2) to server 2\n"
+        "[ 190] 1 > timeout as leader\n"
+        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "[ 200] 2 > recv install snapshot from server 1\n"
+        "           start persisting snapshot (3^2)\n");
+
+    /* Disconnect server 1 from server 2 and 3. */
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_DISCONNECT(2, 1);
+    CLUSTER_DISCONNECT(1, 3);
+    CLUSTER_DISCONNECT(3, 1);
+
+    /* Server 2 eventually times out, but it does not convert to candidate
+     * because it's still persisting the snapshot. */
+    CLUSTER_TRACE(
+        "[ 240] 1 > timeout as leader\n"
+        "           server 3 is unreachable -> abort pipeline\n"
+        "           timeout install snapshot at index 3\n"
+        "           missing previous entry at index 0 -> needs snapshot\n"
+        "           sending snapshot (3^2) to server 2\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 290] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort snapshot\n"
+        "           missing previous entry at index 0 -> needs snapshot\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n"
+        "[ 310] 3 > timeout as follower\n"
+        "           convert to candidate, start election for term 3\n"
+        "[ 320] 2 > recv request vote from server 3\n"
+        "           local server has a leader (server 1) -> reject\n"
+        "[ 330] 3 > recv request vote result from server 2\n"
+        "           remote term is lower (2 vs 3) -> ignore\n"
+        "[ 330] 2 > timeout as follower\n"
+        "           installing snapshot -> stay follower\n");
+
+    return MUNIT_OK;
+}
+
+/* If a follower has entries that are still being persisted, it won't convert to
+ * candidate */
+TEST(election, StayFollowerIfPersistingEntries, setUp, tearDown, 0, NULL)
+{
+    struct fixture *f = data;
+    unsigned id;
+
+    /* Bootstrap a cluster with 3 servers. */
+    for (id = 1; id <= 3; id++) {
+        CLUSTER_SET_TERM(id, 1 /* term */);
+        CLUSTER_ADD_ENTRY(id, RAFT_CHANGE, 3 /* servers */, 3 /* voters */);
+        CLUSTER_START(id);
+    }
+
+    /* Server 1 becomes leader. */
+    CLUSTER_TRACE(
+        "[   0] 1 > term 1, 1 entry (1^1)\n"
+        "[   0] 2 > term 1, 1 entry (1^1)\n"
+        "[   0] 3 > term 1, 1 entry (1^1)\n"
+        "[ 100] 1 > timeout as follower\n"
+        "           convert to candidate, start election for term 2\n"
+        "[ 110] 2 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 110] 3 > recv request vote from server 1\n"
+        "           remote term is higher (2 vs 1) -> bump term\n"
+        "           remote log is equal (1^1) -> grant vote\n"
+        "[ 120] 1 > recv request vote result from server 2\n"
+        "           quorum reached with 2 votes out of 3 -> convert to leader\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           probe server 3 sending a heartbeat (no entries)\n");
+
+    /* Server 2 takes a very long time to persist entries. */
+    CLUSTER_SET_DISK_LATENCY(2, 1000);
+
+    /* Submit an entry and replicate it to server 2 and 3. */
+    CLUSTER_SUBMIT(1 /* ID */, COMMAND, 8 /* size */);
+    CLUSTER_TRACE(
+        "[ 120] 1 > submit 1 new client entry\n"
+        "           replicate 1 new command entry (2^2)\n"
+        "[ 120] 1 > recv request vote result from server 3\n"
+        "           local server is leader -> ignore\n"
+        "[ 130] 1 > persisted 1 entry (2^2)\n"
+        "           next uncommitted entry (2^2) has 1 vote out of 3\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 130] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "           pipeline server 2 sending 1 entry (2^2)\n"
+        "[ 140] 1 > recv append entries result from server 3\n"
+        "           pipeline server 3 sending 1 entry (2^2)\n"
+        "[ 150] 2 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^2)\n"
+        "[ 150] 3 > recv append entries from server 1\n"
+        "           start persisting 1 new entry (2^2)\n");
+
+    /* Disconnect server 1 from server 2 and 3. */
+    CLUSTER_DISCONNECT(1, 2);
+    CLUSTER_DISCONNECT(2, 1);
+    CLUSTER_DISCONNECT(1, 3);
+    CLUSTER_DISCONNECT(3, 1);
+
+    /* Server 2 eventually times out, but stays follower because it's still
+     * persisting the new entry. */
+    CLUSTER_TRACE(
+        "[ 160] 3 > persisted 1 entry (2^2)\n"
+        "           send success result to 1\n"
+        "[ 190] 1 > timeout as leader\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
+        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "[ 240] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
+        "           server 3 is unreachable -> abort pipeline\n"
+        "           probe server 2 sending 1 entry (2^2)\n"
+        "           probe server 3 sending 1 entry (2^2)\n"
+        "[ 280] 2 > timeout as follower\n"
+        "           persisting 1 entries -> stay follower\n");
 
     return MUNIT_OK;
 }
