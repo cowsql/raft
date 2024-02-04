@@ -681,6 +681,9 @@ static int checkLogMatchingProperty(struct raft *r,
  * entry that we don't have yet in our log, among the ones included in the given
  * AppendEntries request.
  *
+ * The truncate output parameter will be set to the index of the first
+ * conflicting entry that was found, or 0 if no entry is conflicting.
+ *
  * Errors:
  *
  * RAFT_SHUTDOWN
@@ -692,7 +695,8 @@ static int checkLogMatchingProperty(struct raft *r,
  */
 static int deleteConflictingEntries(struct raft *r,
                                     const struct raft_append_entries *args,
-                                    size_t *i)
+                                    size_t *i,
+                                    raft_index *truncate)
 {
     size_t j;
     int rv;
@@ -701,6 +705,8 @@ static int deleteConflictingEntries(struct raft *r,
         struct raft_entry *entry = &args->entries[j];
         raft_index entry_index = args->prev_log_index + 1 + j;
         raft_term local_term = TrailTermOf(&r->trail, entry_index);
+
+        assert(entry->term != 0);
 
         if (local_term > 0 && local_term != entry->term) {
             if (entry_index <= r->commit_index) {
@@ -714,6 +720,8 @@ static int deleteConflictingEntries(struct raft *r,
 
             infof("log mismatch (%llu^%llu vs %llu^%llu) -> truncate",
                   entry_index, local_term, entry_index, entry->term);
+
+            *truncate = entry_index;
 
             /* Possibly discard uncommitted configuration changes. */
             if (r->configuration_uncommitted_index >= entry_index) {
@@ -754,8 +762,9 @@ int replicationAppend(struct raft *r,
                       raft_index *rejected,
                       bool *async)
 {
-    raft_index index;
     struct raft_entry *entries;
+    raft_index index;
+    raft_index truncate;
     unsigned n_entries;
     int match;
     size_t n;
@@ -776,7 +785,7 @@ int replicationAppend(struct raft *r,
     }
 
     /* Delete conflicting entries. */
-    rv = deleteConflictingEntries(r, args, &i);
+    rv = deleteConflictingEntries(r, args, &i, &truncate);
     if (rv != 0) {
         assert(rv == RAFT_NOMEM || rv == RAFT_SHUTDOWN);
         return rv;
