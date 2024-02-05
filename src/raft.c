@@ -406,7 +406,7 @@ static int stepPersistedEntries(struct raft *r,
               entries[0].term, index + n - 1, entries[n - 1].term);
     }
 
-    rv = replicationPersistEntriesDone(r, index, entries, n);
+    rv = replicationPersistEntriesDone(r, index, n);
 
     return rv;
 }
