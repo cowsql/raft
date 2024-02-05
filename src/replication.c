@@ -296,7 +296,8 @@ static size_t updateLastStored(struct raft *r,
                                struct raft_entry *entries,
                                size_t n_entries)
 {
-    size_t i;
+    (void)first_index;
+    (void)entries;
 
     /* XXX When installing a snapshot we immediately reset our log, we probably
      * should wait for the snapshot to complete. */
@@ -304,19 +305,8 @@ static size_t updateLastStored(struct raft *r,
         return 0;
     }
 
-    /* Check which of these entries is still in our in-memory log */
-    for (i = 0; i < n_entries; i++) {
-        struct raft_entry *entry = &entries[i];
-        raft_index index = first_index + i;
-        raft_term local_term = TrailTermOf(&r->trail, index);
-
-        /* If we do have an entry at this index, its term must match the one of
-         * the entry we wrote on disk. */
-        assert(local_term != 0 && local_term == entry->term);
-    }
-
-    r->last_stored += i;
-    return i;
+    r->last_stored += n_entries;
+    return n_entries;
 }
 
 static void replicationQuorum(struct raft *r, const raft_index index);
