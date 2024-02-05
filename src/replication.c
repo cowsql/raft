@@ -299,12 +299,6 @@ static size_t updateLastStored(struct raft *r,
     (void)first_index;
     (void)entries;
 
-    /* XXX When installing a snapshot we immediately reset our log, we probably
-     * should wait for the snapshot to complete. */
-    if (r->snapshot.installing) {
-        return 0;
-    }
-
     r->last_stored += n_entries;
     return n_entries;
 }
@@ -584,13 +578,13 @@ static void followerPersistEntriesDone(struct raft *r,
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result.features = MESSAGE__FEATURE_CAPACITY;
 
-    i = updateLastStored(r, first_index, entries, n);
-
     /* We received an InstallSnapshot RPC while these entries were being
      * persisted to disk */
     if (r->snapshot.installing) {
         return;
     }
+
+    i = updateLastStored(r, first_index, entries, n);
 
     /* If none of the entries that we persisted is present anymore in our
      * in-memory log, there's nothing to report or to do. */
