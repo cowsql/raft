@@ -298,18 +298,17 @@ static size_t updateLastStored(struct raft *r,
 {
     size_t i;
 
+    /* XXX When installing a snapshot we immediately reset our log, we probably
+     * should wait for the snapshot to complete. */
+    if (r->snapshot.installing) {
+        return 0;
+    }
+
     /* Check which of these entries is still in our in-memory log */
     for (i = 0; i < n_entries; i++) {
         struct raft_entry *entry = &entries[i];
         raft_index index = first_index + i;
         raft_term local_term = TrailTermOf(&r->trail, index);
-
-        /* If we have no entry at this index, or if the entry we have now has a
-         * different term, it means that this entry got truncated, so let's stop
-         * here. */
-        if (local_term == 0 || (local_term > 0 && local_term != entry->term)) {
-            break;
-        }
 
         /* If we do have an entry at this index, its term must match the one of
          * the entry we wrote on disk. */
