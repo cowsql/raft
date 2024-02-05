@@ -391,13 +391,11 @@ static int stepPersistedEntries(struct raft *r,
                                 struct raft_entry *entries,
                                 unsigned n)
 {
-    raft_index last_stored = r->last_stored + n;
     raft_index last_index = TrailLastIndex(&r->trail);
     int rv;
 
     assert(n > 0);
-    assert(last_stored > 0);
-    assert(last_index > 0);
+    assert(last_index >= index + n - 1);
 
     if (n == 1) {
         infof("persisted 1 entry (%llu^%llu)", index, entries[0].term);
