@@ -868,9 +868,12 @@ struct raft
                 raft_id id;
                 char *address;
             } current_leader;
+            union {
+                raft_index match; /* Highest local index that matches leader. */
 #if !defined(RAFT__LEGACY_no)
-            uint64_t reserved[8]; /* Future use */
+                uint64_t reserved[8]; /* Future use */
 #endif
+            };
         } follower_state;
         struct
         {

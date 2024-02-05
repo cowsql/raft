@@ -87,6 +87,15 @@ void convertToFollower(struct raft *r)
 
     r->follower_state.current_leader.id = 0;
     r->follower_state.current_leader.address = NULL;
+
+    /* The follower's match index tracks the highest index in the local log that
+     * is known to match the same index in the leader log, because the leader
+     * has sent an AppendEntries request containing that index.
+     *
+     * This is necessary in order to avoid sending AppendEntries results that
+     * contain indexes that were never checked against the log matching
+     * property. */
+    r->follower_state.match = 0;
 }
 
 int convertToCandidate(struct raft *r, const bool disrupt_leader)

@@ -604,15 +604,20 @@ static void followerPersistEntriesDone(struct raft *r,
     }
 
     /* If none of the entries that we persisted is present anymore in our
-     * in-memory log, there's nothing to report or to do. We just discard
-     * them. */
+     * in-memory log, there's nothing to report or to do. */
     if (i == 0) {
+        return;
+    }
+
+    /* If we haven't received any AppendEntries request yet and so we have no
+     * idea of what the leader's log contain, don't report anything. */
+    if (r->follower_state.match == 0) {
         return;
     }
 
     result.rejected = 0;
 
-    result.last_log_index = r->last_stored;
+    result.last_log_index = min(r->last_stored, r->follower_state.match);
     result.capacity = r->capacity;
     sendAppendEntriesResult(r, &result);
 }
@@ -825,6 +830,13 @@ int replicationAppend(struct raft *r,
         if (rv != 0) {
             goto err;
         }
+    }
+
+    /* Update our local match index, since we can be sure that all entries in
+     * our log up to the last one in this AppendEntries request now match the
+     * ones of the leader of the current term. */
+    if (args->prev_log_index + args->n_entries >= r->follower_state.match) {
+        r->follower_state.match = args->prev_log_index + args->n_entries;
     }
 
     *rejected = 0;

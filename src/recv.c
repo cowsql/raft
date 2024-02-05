@@ -93,6 +93,10 @@ void recvBumpCurrentTerm(struct raft *r, raft_term term)
         /* Also convert to follower. */
         convertToFollower(r);
     }
+
+    /* Reset the match index, because we don't know anything about the leader of
+     * this new term yet. */
+    r->follower_state.match = 0;
 }
 
 int recvCheckMatchingTerms(const struct raft *r, raft_term term)
