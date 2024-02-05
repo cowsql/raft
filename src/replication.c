@@ -296,9 +296,9 @@ static size_t updateLastStored(struct raft *r,
                                struct raft_entry *entries,
                                size_t n_entries)
 {
-    (void)first_index;
     (void)entries;
 
+    assert(r->last_stored == first_index - 1);
     r->last_stored += n_entries;
     return n_entries;
 }
@@ -567,7 +567,6 @@ static void followerPersistEntriesDone(struct raft *r,
                                        unsigned n)
 {
     struct raft_append_entries_result result;
-    size_t i;
 
     assert(r->state == RAFT_FOLLOWER);
 
@@ -584,13 +583,7 @@ static void followerPersistEntriesDone(struct raft *r,
         return;
     }
 
-    i = updateLastStored(r, first_index, entries, n);
-
-    /* If none of the entries that we persisted is present anymore in our
-     * in-memory log, there's nothing to report or to do. */
-    if (i == 0) {
-        return;
-    }
+    updateLastStored(r, first_index, entries, n);
 
     /* If we haven't received any AppendEntries request yet and so we have no
      * idea of what the leader's log contain, don't report anything. */

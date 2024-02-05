@@ -157,6 +157,7 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
         n += 1;
     }
 
+    assert(n > 0);
     event.type = RAFT_PERSISTED_ENTRIES;
     event.persisted_entries.index = req->index;
     event.persisted_entries.batch = req->entries;
@@ -205,10 +206,9 @@ static int legacyHandleUpdateEntries(struct raft *r,
         }
     }
 
-    if (n > 0) {
-        assert(entries[0].batch != NULL);
-        raft_free(entries[0].batch);
-    }
+    assert(n > 0);
+    assert(entries[0].batch != NULL);
+    raft_free(entries[0].batch);
 
     rv = r->io->truncate(r->io, index);
     if (rv != 0) {
