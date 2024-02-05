@@ -386,27 +386,33 @@ static int stepStart(struct raft *r,
     return 0;
 }
 
-static int stepPersistedEntries(struct raft *r,
-                                raft_index index,
-                                struct raft_entry *entries,
-                                unsigned n)
+static int stepPersistedEntries(struct raft *r, raft_index index, unsigned n)
 {
-    raft_index last_index = TrailLastIndex(&r->trail);
-    int rv;
+    raft_index first_term = 0;
+    raft_index last_term = 0;
 
     assert(n > 0);
-    assert(last_index >= index + n - 1);
 
-    if (n == 1) {
-        infof("persisted 1 entry (%llu^%llu)", index, entries[0].term);
-    } else {
-        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, index,
-              entries[0].term, index + n - 1, entries[n - 1].term);
+    /* XXX: we discard our log immediately when starting to install a snapshot,
+     * so we don't have information about the terms in that case. */
+    if (!r->snapshot.installing) {
+        assert(TrailLastIndex(&r->trail) >= index + n - 1);
+
+        first_term = TrailTermOf(&r->trail, index);
+        last_term = TrailTermOf(&r->trail, index + n - 1);
+
+        assert(first_term > 0);
+        assert(last_term > 0);
     }
 
-    rv = replicationPersistEntriesDone(r, index, n);
+    if (n == 1) {
+        infof("persisted 1 entry (%llu^%llu)", index, first_term);
+    } else {
+        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, index, first_term,
+              index + n - 1, last_term);
+    }
 
-    return rv;
+    return replicationPersistEntriesDone(r, index, n);
 }
 
 static int stepPersistedSnapshot(struct raft *r,
@@ -511,7 +517,6 @@ int raft_step(struct raft *r,
             break;
         case RAFT_PERSISTED_ENTRIES:
             rv = stepPersistedEntries(r, event->persisted_entries.index,
-                                      event->persisted_entries.batch,
                                       event->persisted_entries.n);
             break;
         case RAFT_PERSISTED_SNAPSHOT:

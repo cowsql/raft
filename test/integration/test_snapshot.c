@@ -525,7 +525,7 @@ TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
         "           sending snapshot (3^1) to server 2\n"
         "[  80] 2 > recv install snapshot from server 1\n"
         "           start persisting snapshot (3^1)\n"
-        "[  90] 2 > persisted 1 entry (2^1)\n");
+        "[  90] 2 > persisted 1 entry (2^0)\n");
 
     return MUNIT_OK;
 }
