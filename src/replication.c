@@ -949,7 +949,7 @@ int replicationInstallSnapshot(struct raft *r,
     if (r->snapshot.installing) {
         *async = true;
         infof("already taking or installing snapshot");
-        return RAFT_BUSY;
+        return 0;
     }
 
     /* If our last snapshot is more up-to-date, this is a no-op */
