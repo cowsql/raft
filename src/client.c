@@ -277,7 +277,7 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     r->leader_state.transferee = server_id;
     r->leader_state.transfer_start = r->now;
 
-    if (progressIsUpToDate(r, i)) {
+    if (progressMatchIndex(r, i) == TrailLastIndex(&r->trail)) {
         rv = membershipLeadershipTransferStart(r);
         if (rv != 0) {
             r->leader_state.transferee = 0;

@@ -481,7 +481,8 @@ int replicationUpdate(struct raft *r,
      * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
      * already did). */
     if (r->leader_state.transferee == server->id) {
-        if (progressIsUpToDate(r, i) && !r->leader_state.transferring) {
+        raft_index match_index = progressMatchIndex(r, i);
+        if (match_index == last_index && !r->leader_state.transferring) {
             rv = membershipLeadershipTransferStart(r);
             if (rv != 0) {
                 r->leader_state.transferee = 0;

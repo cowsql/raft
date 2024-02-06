@@ -104,6 +104,9 @@ int raft_init(struct raft *r,
     r->commit_index = 0;
     r->last_stored = 0;
     r->state = RAFT_FOLLOWER;
+    r->follower_state.current_leader.id = 0;
+    r->follower_state.current_leader.address = NULL;
+    r->follower_state.match = 0;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.installing = false;

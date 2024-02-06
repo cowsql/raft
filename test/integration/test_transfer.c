@@ -51,23 +51,23 @@ TEST(raft_transfer, UpToDate, setUp, tearDown, 0, NULL)
         "           remote log is equal (1^1) -> grant vote\n"
         "[ 120] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
-        "           probe server 2 sending a heartbeat (no entries)\n");
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n");
 
     test_cluster_transfer(&f->cluster_, 1, 2);
     munit_assert_ullong(raft_transferee(CLUSTER_RAFT(1)), ==, 2);
 
     CLUSTER_TRACE(
-        "[ 120] 1 > transfer leadership to 2\n"
+        "[ 140] 1 > transfer leadership to 2\n"
         "           send timeout to 2\n"
-        "[ 130] 2 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 130] 2 > recv timeout now from server 1\n"
+        "[ 150] 2 > recv timeout now from server 1\n"
         "           convert to candidate, start election for term 3\n"
-        "[ 140] 1 > recv append entries result from server 2\n"
-        "[ 140] 1 > recv request vote from server 2\n"
+        "[ 160] 1 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term, step down\n"
         "           remote log is equal (1^1) -> grant vote\n"
-        "[ 150] 2 > recv request vote result from server 1\n"
+        "[ 170] 2 > recv request vote result from server 1\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 1 sending a heartbeat (no entries)\n");
 
@@ -182,7 +182,13 @@ TEST(raft_transfer, Expire, setUp, tearDown, 0, NULL)
         "           probe server 2 sending a heartbeat (no entries)\n"
         "           probe server 3 sending a heartbeat (no entries)\n"
         "[ 120] 1 > recv request vote result from server 3\n"
-        "           local server is leader -> ignore\n")
+        "           local server is leader -> ignore\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 130] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n"
+        "[ 140] 1 > recv append entries result from server 3\n");
 
     /* Stop server 2 and try to transfer leadership to it. */
     CLUSTER_STOP(2 /* ID */);
@@ -192,18 +198,22 @@ TEST(raft_transfer, Expire, setUp, tearDown, 0, NULL)
 
     /* Eventually server 1 stops trying to transfer its leadership. */
     CLUSTER_TRACE(
-        "[ 120] 1 > transfer leadership to 2\n"
+        "[ 140] 1 > transfer leadership to 2\n"
         "           send timeout to 2\n"
-        "[ 130] 3 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 140] 1 > recv append entries result from server 3\n"
         "[ 170] 1 > timeout as leader\n"
-        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           pipeline server 2 sending a heartbeat (no entries)\n"
         "           pipeline server 3 sending a heartbeat (no entries)\n"
         "[ 180] 3 > recv append entries from server 1\n"
         "           no new entries to persist\n"
         "[ 190] 1 > recv append entries result from server 3\n"
         "[ 220] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort pipeline\n"
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "           pipeline server 3 sending a heartbeat (no entries)\n"
+        "[ 230] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 240] 1 > recv append entries result from server 3\n"
+        "[ 270] 1 > timeout as leader\n"
         "           probe server 2 sending a heartbeat (no entries)\n"
         "           pipeline server 3 sending a heartbeat (no entries)\n"
         "           server 2 not replicating fast enough -> abort transfer\n");
@@ -412,23 +422,23 @@ TEST(raft_transfer, PreVote, setUp, tearDown, 0, NULL)
         "           remote log is equal (1^1) -> grant vote\n"
         "[ 140] 1 > recv request vote result from server 2\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
-        "           probe server 2 sending a heartbeat (no entries)\n");
+        "           probe server 2 sending a heartbeat (no entries)\n"
+        "[ 150] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 160] 1 > recv append entries result from server 2\n");
 
     /* Perform a successful leadership transfer. */
     test_cluster_transfer(&f->cluster_, 1, 2);
 
     CLUSTER_TRACE(
-        "[ 140] 1 > transfer leadership to 2\n"
+        "[ 160] 1 > transfer leadership to 2\n"
         "           send timeout to 2\n"
-        "[ 150] 2 > recv append entries from server 1\n"
-        "           no new entries to persist\n"
-        "[ 150] 2 > recv timeout now from server 1\n"
+        "[ 170] 2 > recv timeout now from server 1\n"
         "           convert to candidate, start election for term 3\n"
-        "[ 160] 1 > recv append entries result from server 2\n"
-        "[ 160] 1 > recv request vote from server 2\n"
+        "[ 180] 1 > recv request vote from server 2\n"
         "           remote term is higher (3 vs 2) -> bump term, step down\n"
         "           remote log is equal (1^1) -> grant vote\n"
-        "[ 170] 2 > recv request vote result from server 1\n"
+        "[ 190] 2 > recv request vote result from server 1\n"
         "           quorum reached with 2 votes out of 2 -> convert to leader\n"
         "           probe server 1 sending a heartbeat (no entries)\n");
 
