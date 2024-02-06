@@ -393,6 +393,8 @@ static int stepPersistedEntries(struct raft *r, raft_index index)
     raft_index last_term = 0;
     unsigned n;
 
+    /* The newly peristed index must be greater than our previous last stored
+     * mark. */
     assert(index > r->last_stored);
 
     n = (unsigned)(index - r->last_stored);
@@ -426,6 +428,12 @@ static int stepPersistedSnapshot(struct raft *r,
                                  bool last)
 {
     int rv;
+
+    /* We wait for all writes to be settled before transitioning to candidate
+     * state, and no new writes are issued as candidate, so the current state
+     * must be leader or follower */
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+
     infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
     rv = replicationPersistSnapshotDone(r, metadata, offset, last);
     if (rv != 0) {

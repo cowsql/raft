@@ -336,6 +336,11 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index)
 {
     int rv;
 
+    /* We wait for all writes to be settled before transitioning to candidate
+     * state, and no new writes are issued as candidate, so the current state
+     * must be leader or follower */
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+
     switch (r->state) {
         case RAFT_LEADER:
             rv = leaderPersistEntriesDone(r, index);
@@ -345,8 +350,9 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index)
             rv = 0;
             break;
         default:
-            updateLastStored(r, index);
-            rv = 0;
+            /* We expect no write to complete during candidate state */
+            assert(0);
+            rv = RAFT_SHUTDOWN;
             break;
     }
 
