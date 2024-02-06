@@ -231,6 +231,7 @@ struct test_server
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */
     char address[8];              /* Server address */
+    bool snapshot_install;        /* True if installing a snapshot */
     bool running;                 /* Whether the server is running */
 
     struct

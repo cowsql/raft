@@ -517,15 +517,18 @@ TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
         "           commit 1 new entry (3^1)\n"
         "[  40] 1 > new snapshot (3^1), 0 trailing entries\n");
 
-    /* Eventually server 1 replicates the snapshot to server 2 and finishes the
-     * initial entry write, which is stale. */
+    /* Eventually server 1 replicates the snapshot to server 2. The inital write
+     * never gets fired because it's stale. */
     CLUSTER_TRACE(
         "[  70] 1 > timeout as leader\n"
         "           missing previous entry at index 1 -> needs snapshot\n"
         "           sending snapshot (3^1) to server 2\n"
         "[  80] 2 > recv install snapshot from server 1\n"
         "           start persisting snapshot (3^1)\n"
-        "[  90] 2 > persisted 2 entry (1^0..2^0)\n");
+        "[ 120] 1 > timeout as leader\n"
+        "           server 2 is unreachable -> abort snapshot\n"
+        "           missing previous entry at index 0 -> needs snapshot\n"
+        "           probe server 2 sending a heartbeat (no entries)\n");
 
     return MUNIT_OK;
 }

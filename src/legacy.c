@@ -135,6 +135,12 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
         goto out;
     }
 
+    /* If we're installing a snapshot discard these entries because they are
+     * supposed to be truncated. */
+    if (r->legacy.snapshot_install) {
+        goto out;
+    }
+
     /* Check which of these entries is still in our in-memory log */
     for (i = 0; i < req->n; i++) {
         struct raft_entry *entry = &req->entries[i];

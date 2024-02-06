@@ -413,6 +413,7 @@ static void serverInit(struct test_server *s,
     s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
+    s->snapshot_install = false;
     s->running = false;
 }
 
@@ -647,6 +648,10 @@ static void serverProcessSnapshot(struct test_server *s,
                                   bool last)
 {
     struct step *step = munit_malloc(sizeof *step);
+
+    munit_assert_false(s->snapshot_install);
+
+    s->snapshot_install = true;
 
     step->id = s->raft.id;
 
@@ -974,8 +979,10 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
         diskAddEntry(&s->disk, &entries[i]);
     }
 
-    rv = serverStep(s, event);
-    munit_assert_int(rv, ==, 0);
+    if (!s->snapshot_install) {
+        rv = serverStep(s, event);
+        munit_assert_int(rv, ==, 0);
+    }
 
     if (n > 0) {
         raft_free(step->entries.batch[0].batch);
@@ -988,6 +995,8 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     struct test_snapshot *snapshot = munit_malloc(sizeof *snapshot);
     struct raft_event *event = &step->event;
     int rv;
+
+    s->snapshot_install = false;
 
     snapshot->metadata.index = event->persisted_snapshot.metadata.index;
     snapshot->metadata.term = event->persisted_snapshot.metadata.term;
