@@ -932,6 +932,9 @@ int replicationInstallSnapshot(struct raft *r,
 
     assert(r->state == RAFT_FOLLOWER);
 
+    assert(args->last_index != 0);
+    assert(args->last_term != 0);
+
     *rejected = args->last_index;
     *async = false;
 
@@ -958,7 +961,7 @@ int replicationInstallSnapshot(struct raft *r,
 
     /* If we already have all entries in the snapshot, this is a no-op */
     local_term = TrailTermOf(&r->trail, args->last_index);
-    if (local_term != 0 && local_term >= args->last_term) {
+    if (local_term == args->last_term) {
         infof("have all entries");
         *rejected = 0;
         return 0;
