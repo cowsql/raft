@@ -925,7 +925,6 @@ respond:
 
 int replicationInstallSnapshot(struct raft *r,
                                const struct raft_install_snapshot *args,
-                               raft_index *rejected,
                                bool *async)
 {
     struct raft_snapshot_metadata metadata;
@@ -936,7 +935,6 @@ int replicationInstallSnapshot(struct raft *r,
     assert(args->last_index != 0);
     assert(args->last_term != 0);
 
-    *rejected = args->last_index;
     *async = false;
 
     /* If we are installing a snapshot, ignore the request, the leader will
@@ -956,7 +954,6 @@ int replicationInstallSnapshot(struct raft *r,
     /* If our last snapshot is more up-to-date, this is a no-op */
     if (TrailSnapshotIndex(&r->trail) >= args->last_index) {
         infof("have more recent snapshot");
-        *rejected = 0;
         return 0;
     }
 
@@ -964,7 +961,6 @@ int replicationInstallSnapshot(struct raft *r,
     local_term = TrailTermOf(&r->trail, args->last_index);
     if (local_term == args->last_term) {
         infof("have all entries");
-        *rejected = 0;
         return 0;
     }
 

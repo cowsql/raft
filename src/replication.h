@@ -76,7 +76,6 @@ int replicationAppend(struct raft *r,
 
 int replicationInstallSnapshot(struct raft *r,
                                const struct raft_install_snapshot *args,
-                               raft_index *rejected,
                                bool *async);
 
 /* Called when handling a RAFT_PERSISTED_ENTRIES event. */
