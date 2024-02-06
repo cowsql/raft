@@ -19,6 +19,12 @@ struct step
 {
     raft_id id;              /* Target server ID. */
     struct raft_event event; /* Event to fire. */
+    union {
+        struct
+        {
+            struct raft_entry *batch;
+        } entries;
+    };
     queue queue;
 };
 
@@ -415,8 +421,8 @@ static void serverCancelEntries(struct test_server *s, struct step *step)
     (void)s;
 
     if (n > 0) {
-        raft_free(event->persisted_entries.batch[0].batch);
-        raft_free(event->persisted_entries.batch);
+        raft_free(step->entries.batch[0].batch);
+        raft_free(step->entries.batch);
     }
 }
 
@@ -616,7 +622,7 @@ static void serverProcessEntries(struct test_server *s,
         serverAddEntry(s, &entries[i]);
     }
 
-    copyEntries(entries, &event->persisted_entries.batch, n);
+    copyEntries(entries, &step->entries.batch, n);
 
     if (n > 0) {
         munit_assert_ptr_not_null(entries[0].batch);
@@ -954,7 +960,7 @@ static void serverFillInstallSnapshot(struct test_server *s,
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    struct raft_entry *entries = event->persisted_entries.batch;
+    struct raft_entry *entries = step->entries.batch;
     raft_index index = event->persisted_entries.index;
     unsigned n = event->persisted_entries.n;
     unsigned i;
@@ -971,8 +977,8 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     munit_assert_int(rv, ==, 0);
 
     if (n > 0) {
-        raft_free(event->persisted_entries.batch[0].batch);
-        raft_free(event->persisted_entries.batch);
+        raft_free(step->entries.batch[0].batch);
+        raft_free(step->entries.batch);
     }
 }
 

@@ -491,7 +491,6 @@ struct raft_event
         struct
         {
             raft_index index;
-            struct raft_entry *batch;
             unsigned n;
         } persisted_entries;
         struct
