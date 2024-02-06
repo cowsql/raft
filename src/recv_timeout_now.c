@@ -57,6 +57,12 @@ int recvTimeoutNow(struct raft *r,
         return 0;
     }
 
+    /* Ignore the request if we're still persisting entries or installing a
+     * snapshot. */
+    if (r->last_stored < local_last_index || r->snapshot.installing) {
+        return 0;
+    }
+
     /* Convert to candidate and start a new election. */
     infof("convert to candidate, start election for term %llu",
           r->current_term + 1);
