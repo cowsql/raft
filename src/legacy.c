@@ -265,7 +265,6 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     event.type = RAFT_PERSISTED_SNAPSHOT;
     event.persisted_snapshot.metadata = req->metadata;
     event.persisted_snapshot.offset = req->offset;
-    event.persisted_snapshot.chunk = req->chunk;
     event.persisted_snapshot.last = req->last;
 
     /* If we successfully persisted the snapshot, keep the snapshot data around,

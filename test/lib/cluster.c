@@ -25,6 +25,10 @@ struct step
             struct raft_entry *batch;
             unsigned n;
         } entries;
+        struct
+        {
+            struct raft_buffer chunk;
+        } snapshot;
     };
     queue queue;
 };
@@ -427,7 +431,7 @@ static void serverCancelSnapshot(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     (void)s;
 
-    raft_free(event->persisted_snapshot.chunk.base);
+    raft_free(step->snapshot.chunk.base);
     raft_configuration_close(&event->persisted_snapshot.metadata.configuration);
 }
 
@@ -651,12 +655,13 @@ static void serverProcessSnapshot(struct test_server *s,
     munit_assert_uint(s->log.n, ==, 0);
     s->log.start = metadata->index + 1;
 
+    step->snapshot.chunk = *chunk;
+
     step->event.time = s->cluster->time + s->disk_latency;
     step->event.type = RAFT_PERSISTED_SNAPSHOT;
 
     step->event.persisted_snapshot.metadata = *metadata;
     step->event.persisted_snapshot.offset = offset;
-    step->event.persisted_snapshot.chunk = *chunk;
     step->event.persisted_snapshot.last = last;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
@@ -991,7 +996,7 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     snapshot->metadata.configuration_index =
         event->persisted_snapshot.metadata.configuration_index;
 
-    snapshot->data = event->persisted_snapshot.chunk;
+    snapshot->data = step->snapshot.chunk;
 
     diskSetSnapshot(&s->disk, snapshot);
 

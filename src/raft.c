@@ -423,12 +423,11 @@ static int stepPersistedEntries(struct raft *r, raft_index index)
 static int stepPersistedSnapshot(struct raft *r,
                                  struct raft_snapshot_metadata *metadata,
                                  size_t offset,
-                                 struct raft_buffer *chunk,
                                  bool last)
 {
     int rv;
     infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
-    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last);
+    rv = replicationPersistSnapshotDone(r, metadata, offset, last);
     if (rv != 0) {
         return rv;
     }
@@ -526,7 +525,6 @@ int raft_step(struct raft *r,
         case RAFT_PERSISTED_SNAPSHOT:
             rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
                                        event->persisted_snapshot.offset,
-                                       &event->persisted_snapshot.chunk,
                                        event->persisted_snapshot.last);
             break;
         case RAFT_RECEIVE:

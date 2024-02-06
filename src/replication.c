@@ -869,7 +869,6 @@ err:
 int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_snapshot_metadata *metadata,
                                    size_t offset,
-                                   struct raft_buffer *chunk,
                                    bool last)
 {
     struct raft_append_entries_result result;
@@ -877,7 +876,6 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     (void)offset;
     (void)last;
-    (void)chunk;
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);

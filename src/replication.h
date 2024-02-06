@@ -86,7 +86,6 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index);
 int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_snapshot_metadata *metadata,
                                    size_t offset,
-                                   struct raft_buffer *chunk,
                                    bool last);
 
 /* Called when a RAFT_SNAPSHOT event is fired, signalling the completion of a
