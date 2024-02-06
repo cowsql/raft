@@ -386,33 +386,38 @@ static int stepStart(struct raft *r,
     return 0;
 }
 
-static int stepPersistedEntries(struct raft *r, raft_index index, unsigned n)
+static int stepPersistedEntries(struct raft *r, raft_index index)
 {
+    raft_index first_index;
     raft_index first_term = 0;
     raft_index last_term = 0;
+    unsigned n;
 
-    assert(n > 0);
+    assert(index > r->last_stored);
+
+    n = (unsigned)(index - r->last_stored);
+    first_index = index - n + 1;
 
     /* XXX: we discard our log immediately when starting to install a snapshot,
      * so we don't have information about the terms in that case. */
     if (!r->snapshot.installing) {
-        assert(TrailLastIndex(&r->trail) >= index + n - 1);
+        assert(TrailLastIndex(&r->trail) >= index);
 
-        first_term = TrailTermOf(&r->trail, index);
-        last_term = TrailTermOf(&r->trail, index + n - 1);
+        first_term = TrailTermOf(&r->trail, first_index);
+        last_term = TrailTermOf(&r->trail, index);
 
         assert(first_term > 0);
         assert(last_term > 0);
     }
 
     if (n == 1) {
-        infof("persisted 1 entry (%llu^%llu)", index, first_term);
+        infof("persisted 1 entry (%llu^%llu)", first_index, first_term);
     } else {
-        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, index, first_term,
-              index + n - 1, last_term);
+        infof("persisted %u entry (%llu^%llu..%llu^%llu)", n, first_index,
+              first_term, index, last_term);
     }
 
-    return replicationPersistEntriesDone(r, index, n);
+    return replicationPersistEntriesDone(r, index);
 }
 
 static int stepPersistedSnapshot(struct raft *r,
@@ -516,8 +521,7 @@ int raft_step(struct raft *r,
                            event->start.entries, event->start.n_entries);
             break;
         case RAFT_PERSISTED_ENTRIES:
-            rv = stepPersistedEntries(r, event->persisted_entries.index,
-                                      event->persisted_entries.n);
+            rv = stepPersistedEntries(r, event->persisted_entries.index);
             break;
         case RAFT_PERSISTED_SNAPSHOT:
             rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,

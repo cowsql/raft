@@ -490,8 +490,7 @@ struct raft_event
         } start;
         struct
         {
-            raft_index index;
-            unsigned n;
+            raft_index index; /* Highest index persisted */
         } persisted_entries;
         struct
         {

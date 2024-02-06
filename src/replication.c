@@ -291,26 +291,22 @@ int replicationHeartbeat(struct raft *r)
 /* Called after a successful append entries I/O request to update the index of
  * the last entry stored on disk. Return how many new entries that are still
  * present in our in-memory log were stored. */
-static void updateLastStored(struct raft *r,
-                             raft_index first_index,
-                             size_t n_entries)
+static void updateLastStored(struct raft *r, raft_index index)
 {
-    assert(r->last_stored == first_index - 1);
-    r->last_stored += n_entries;
+    assert(r->last_stored < index);
+    r->last_stored = index;
 }
 
 static void replicationQuorum(struct raft *r, const raft_index index);
 
 /* Invoked once a disk write request for new entries has been completed. */
-static int leaderPersistEntriesDone(struct raft *r,
-                                    raft_index index,
-                                    unsigned n)
+static int leaderPersistEntriesDone(struct raft *r, raft_index index)
 {
     size_t server_index;
 
     assert(r->state == RAFT_LEADER);
 
-    updateLastStored(r, index, n);
+    updateLastStored(r, index);
 
     /* Only update the next index if we are part of the current
      * configuration. The only case where this is not true is when we were
@@ -333,27 +329,23 @@ static int leaderPersistEntriesDone(struct raft *r,
     return 0;
 }
 
-static void followerPersistEntriesDone(struct raft *r,
-                                       raft_index index,
-                                       unsigned n);
+static void followerPersistEntriesDone(struct raft *r, raft_index index);
 
 /* Invoked once a disk write request for new entries has been completed. */
-int replicationPersistEntriesDone(struct raft *r, raft_index index, unsigned n)
+int replicationPersistEntriesDone(struct raft *r, raft_index index)
 {
     int rv;
 
-    assert(n > 0);
-
     switch (r->state) {
         case RAFT_LEADER:
-            rv = leaderPersistEntriesDone(r, index, n);
+            rv = leaderPersistEntriesDone(r, index);
             break;
         case RAFT_FOLLOWER:
-            followerPersistEntriesDone(r, index, n);
+            followerPersistEntriesDone(r, index);
             rv = 0;
             break;
         default:
-            updateLastStored(r, index, n);
+            updateLastStored(r, index);
             rv = 0;
             break;
     }
@@ -552,15 +544,11 @@ static void sendAppendEntriesResult(
     }
 }
 
-static void followerPersistEntriesDone(struct raft *r,
-                                       raft_index first_index,
-                                       unsigned n)
+static void followerPersistEntriesDone(struct raft *r, raft_index index)
 {
     struct raft_append_entries_result result;
 
     assert(r->state == RAFT_FOLLOWER);
-
-    assert(n > 0);
 
     result.term = r->current_term;
     result.version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
@@ -572,7 +560,7 @@ static void followerPersistEntriesDone(struct raft *r,
         return;
     }
 
-    updateLastStored(r, first_index, n);
+    updateLastStored(r, index);
 
     /* If we haven't received any AppendEntries request yet and so we have no
      * idea of what the leader's log contain, don't report anything. */

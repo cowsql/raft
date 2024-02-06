@@ -23,6 +23,7 @@ struct step
         struct
         {
             struct raft_entry *batch;
+            unsigned n;
         } entries;
     };
     queue queue;
@@ -415,15 +416,10 @@ static int serverStep(struct test_server *s, struct raft_event *event);
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
-    struct raft_event *event = &step->event;
-    unsigned n = event->persisted_entries.n;
-
     (void)s;
 
-    if (n > 0) {
-        raft_free(step->entries.batch[0].batch);
-        raft_free(step->entries.batch);
-    }
+    raft_free(step->entries.batch[0].batch);
+    raft_free(step->entries.batch);
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
@@ -623,6 +619,7 @@ static void serverProcessEntries(struct test_server *s,
     }
 
     copyEntries(entries, &step->entries.batch, n);
+    step->entries.n = n;
 
     if (n > 0) {
         munit_assert_ptr_not_null(entries[0].batch);
@@ -634,8 +631,7 @@ static void serverProcessEntries(struct test_server *s,
     event->time = s->cluster->time + s->disk_latency;
     event->type = RAFT_PERSISTED_ENTRIES;
 
-    event->persisted_entries.index = first_index;
-    event->persisted_entries.n = n;
+    event->persisted_entries.index = first_index + n - 1;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
@@ -962,12 +958,12 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     struct raft_entry *entries = step->entries.batch;
     raft_index index = event->persisted_entries.index;
-    unsigned n = event->persisted_entries.n;
+    unsigned n = step->entries.n;
     unsigned i;
     int rv;
 
     /* Possibly truncate stale entries. */
-    diskTruncateEntries(&s->disk, index);
+    diskTruncateEntries(&s->disk, index - n + 1);
 
     for (i = 0; i < n; i++) {
         diskAddEntry(&s->disk, &entries[i]);
