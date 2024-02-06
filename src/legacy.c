@@ -262,6 +262,8 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     struct raft *r = req->r;
     struct raft_event event;
 
+    r->legacy.snapshot_install = false;
+
     event.type = RAFT_PERSISTED_SNAPSHOT;
     event.persisted_snapshot.metadata = req->metadata;
     event.persisted_snapshot.offset = req->offset;
@@ -317,6 +319,7 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     struct legacyPersistSnapshot *req;
     int rv;
 
+    assert(!r->legacy.snapshot_install);
     assert(r->legacy.snapshot_pending == NULL);
 
     req = raft_malloc(sizeof *req);
@@ -336,6 +339,8 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     req->snapshot.configuration_index = req->metadata.configuration_index;
     req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
+
+    r->legacy.snapshot_install = true;
 
     /* If we're taking a snapshot, put this install on hold until it's
      * completed. */
