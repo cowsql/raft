@@ -31,11 +31,10 @@ int recvAppendEntries(struct raft *r,
     assert(address != NULL);
 
     result->rejected = args->prev_log_index;
-    result->last_log_index = TrailLastIndex(&r->trail);
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = MESSAGE__FEATURE_CAPACITY;
 
-    recvEnsureMatchingTerms(r, args->term, &match);
+    match = recvEnsureMatchingTerms(r, args->term);
 
     /* From Figure 3.1:
      *
@@ -94,6 +93,7 @@ int recvAppendEntries(struct raft *r,
      * date. */
     rv = recvUpdateLeader(r, id, address);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         return rv;
     }
 

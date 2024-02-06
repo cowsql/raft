@@ -65,9 +65,9 @@ int recvRequestVote(struct raft *r,
     /* If this is a pre-vote request, don't actually increment our term or
      * persist the vote. */
     if (args->pre_vote) {
-        recvCheckMatchingTerms(r, args->term, &match);
+        match = recvCheckMatchingTerms(r, args->term);
     } else {
-        recvEnsureMatchingTerms(r, args->term, &match);
+        match = recvEnsureMatchingTerms(r, args->term);
     }
 
     /* Reject the request if we are installing a snapshot.

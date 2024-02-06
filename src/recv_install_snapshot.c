@@ -28,7 +28,7 @@ int recvInstallSnapshot(struct raft *r,
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = MESSAGE__FEATURE_CAPACITY;
 
-    recvEnsureMatchingTerms(r, args->term, &match);
+    match = recvEnsureMatchingTerms(r, args->term);
 
     if (match < 0) {
         infof("local term is higher (%llu vs %llu) -> reject", r->current_term,

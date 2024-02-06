@@ -93,28 +93,37 @@ void recvBumpCurrentTerm(struct raft *r, raft_term term)
         /* Also convert to follower. */
         convertToFollower(r);
     }
+
+    /* Reset the match index, because we don't know anything about the leader of
+     * this new term yet. */
+    r->follower_state.match = 0;
 }
 
-void recvCheckMatchingTerms(struct raft *r, raft_term term, int *match)
+int recvCheckMatchingTerms(const struct raft *r, raft_term term)
 {
+    int match;
+
     if (term < r->current_term) {
-        *match = -1;
+        match = -1;
     } else if (term > r->current_term) {
-        *match = 1;
+        match = 1;
     } else {
-        *match = 0;
+        match = 0;
     }
+
+    return match;
 }
 
-void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
+int recvEnsureMatchingTerms(struct raft *r, raft_term term)
 {
+    int match;
+
     assert(r != NULL);
-    assert(match != NULL);
 
-    recvCheckMatchingTerms(r, term, match);
+    match = recvCheckMatchingTerms(r, term);
 
-    if (*match == -1) {
-        return;
+    if (match == -1) {
+        goto out;
     }
 
     /* From Figure 3.1:
@@ -131,9 +140,12 @@ void recvEnsureMatchingTerms(struct raft *r, raft_term term, int *match)
      *   If a candidate or leader discovers that its term is out of date, it
      *   immediately reverts to follower state.
      */
-    if (*match == 1) {
+    if (match == 1) {
         recvBumpCurrentTerm(r, term);
     }
+
+out:
+    return match;
 }
 
 int recvUpdateLeader(struct raft *r, const raft_id id, const char *address)

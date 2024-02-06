@@ -37,7 +37,7 @@ int recvAppendEntriesResult(struct raft *r,
         return 0;
     }
 
-    recvEnsureMatchingTerms(r, result->term, &match);
+    match = recvEnsureMatchingTerms(r, result->term);
 
     if (match < 0) {
         infof("local term is higher (%llu vs %llu) -> ignore", r->current_term,

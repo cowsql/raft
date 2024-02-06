@@ -19,6 +19,13 @@ struct step
 {
     raft_id id;              /* Target server ID. */
     struct raft_event event; /* Event to fire. */
+    union {
+        struct
+        {
+            struct raft_entry *batch;
+            unsigned n;
+        } entries;
+    };
     queue queue;
 };
 
@@ -409,15 +416,10 @@ static int serverStep(struct test_server *s, struct raft_event *event);
 
 static void serverCancelEntries(struct test_server *s, struct step *step)
 {
-    struct raft_event *event = &step->event;
-    unsigned n = event->persisted_entries.n;
-
     (void)s;
 
-    if (n > 0) {
-        raft_free(event->persisted_entries.batch[0].batch);
-        raft_free(event->persisted_entries.batch);
-    }
+    raft_free(step->entries.batch[0].batch);
+    raft_free(step->entries.batch);
 }
 
 static void serverCancelSnapshot(struct test_server *s, struct step *step)
@@ -616,7 +618,8 @@ static void serverProcessEntries(struct test_server *s,
         serverAddEntry(s, &entries[i]);
     }
 
-    copyEntries(entries, &event->persisted_entries.batch, n);
+    copyEntries(entries, &step->entries.batch, n);
+    step->entries.n = n;
 
     if (n > 0) {
         munit_assert_ptr_not_null(entries[0].batch);
@@ -628,8 +631,7 @@ static void serverProcessEntries(struct test_server *s,
     event->time = s->cluster->time + s->disk_latency;
     event->type = RAFT_PERSISTED_ENTRIES;
 
-    event->persisted_entries.index = first_index;
-    event->persisted_entries.n = n;
+    event->persisted_entries.index = first_index + n - 1;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
@@ -954,14 +956,14 @@ static void serverFillInstallSnapshot(struct test_server *s,
 static void serverCompleteEntries(struct test_server *s, struct step *step)
 {
     struct raft_event *event = &step->event;
-    struct raft_entry *entries = event->persisted_entries.batch;
+    struct raft_entry *entries = step->entries.batch;
     raft_index index = event->persisted_entries.index;
-    unsigned n = event->persisted_entries.n;
+    unsigned n = step->entries.n;
     unsigned i;
     int rv;
 
     /* Possibly truncate stale entries. */
-    diskTruncateEntries(&s->disk, index);
+    diskTruncateEntries(&s->disk, index - n + 1);
 
     for (i = 0; i < n; i++) {
         diskAddEntry(&s->disk, &entries[i]);
@@ -971,8 +973,8 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
     munit_assert_int(rv, ==, 0);
 
     if (n > 0) {
-        raft_free(event->persisted_entries.batch[0].batch);
-        raft_free(event->persisted_entries.batch);
+        raft_free(step->entries.batch[0].batch);
+        raft_free(step->entries.batch);
     }
 }
 

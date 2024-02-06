@@ -28,7 +28,7 @@ void configurationClose(struct raft_configuration *c);
  *     @role is not one of ROLE_STANDBY, ROLE_VOTER or ROLE_SPARE.
  *
  * RAFT_NOMEM
- *     A copy of @address could not me made or the @c->servers could not
+ *     A copy of @address could not be made or the @c->servers could not
  *     be extended
  */
 int configurationAdd(struct raft_configuration *c,

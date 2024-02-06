@@ -15,7 +15,11 @@ static void randomize(struct raft_fixture *f, unsigned i, int what)
             }
             break;
         case RAFT_FIXTURE_DISK:
-            raft_fixture_set_disk_latency(f, i, munit_rand_int_range(10, 25));
+            /* XXX: Don't randomize disk latency like this, because we don't
+             * want io->append() requests to complete out of order. */
+            /*
+              raft_fixture_set_disk_latency(f, i, munit_rand_int_range(10, 25));
+             */
             break;
         case RAFT_FIXTURE_NETWORK:
             raft_fixture_set_network_latency(f, i,

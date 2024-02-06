@@ -80,10 +80,7 @@ int replicationInstallSnapshot(struct raft *r,
                                bool *async);
 
 /* Called when handling a RAFT_PERSISTED_ENTRIES event. */
-int replicationPersistEntriesDone(struct raft *r,
-                                  raft_index index,
-                                  struct raft_entry *entries,
-                                  unsigned n);
+int replicationPersistEntriesDone(struct raft *r, raft_index index);
 
 /* Called when handling RAFT_PERSISTED_SNAPSHOT event. */
 int replicationPersistSnapshotDone(struct raft *r,

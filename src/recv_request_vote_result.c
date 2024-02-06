@@ -30,9 +30,9 @@ int recvRequestVoteResult(struct raft *r,
      * peer would bump to if the request it receives was an actual request, and
      * that term is typically our current term plus one). */
     if (r->candidate_state.in_pre_vote) {
-        recvCheckMatchingTerms(r, result->term, &match);
+        match = recvCheckMatchingTerms(r, result->term);
     } else {
-        recvEnsureMatchingTerms(r, result->term, &match);
+        match = recvEnsureMatchingTerms(r, result->term);
     }
 
     /* Ignore responses if we are not candidate anymore */
