@@ -441,7 +441,7 @@ static void dropReceiveEvent(struct step *step)
 {
     struct raft_event *event = &step->event;
     switch (event->receive.message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             if (event->receive.message->append_entries.n_entries > 0) {
                 struct raft_entry *entries =
                     event->receive.message->append_entries.entries;
@@ -449,7 +449,7 @@ static void dropReceiveEvent(struct step *step)
                 raft_free(entries);
             }
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             raft_configuration_close(
                 &event->receive.message->install_snapshot.conf);
             raft_free(event->receive.message->install_snapshot.data.base);
@@ -699,11 +699,11 @@ static void serverProcessMessages(struct test_server *s,
         event->receive.message->server_address = s->address;
 
         switch (message->type) {
-            case RAFT_IO_APPEND_ENTRIES:
+            case RAFT_APPEND_ENTRIES:
                 serverFillAppendEntries(
                     s, &event->receive.message->append_entries);
                 break;
-            case RAFT_IO_INSTALL_SNAPSHOT:
+            case RAFT_INSTALL_SNAPSHOT:
                 serverFillInstallSnapshot(
                     s, &event->receive.message->install_snapshot);
                 break;
@@ -1054,7 +1054,7 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     rv = serverStep(s, event);
     munit_assert_int(rv, ==, 0);
 
-    if (event->receive.message->type == RAFT_IO_APPEND_ENTRIES) {
+    if (event->receive.message->type == RAFT_APPEND_ENTRIES) {
         raft_free(event->receive.message->append_entries.entries);
     }
 

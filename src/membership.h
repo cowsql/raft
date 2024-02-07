@@ -9,9 +9,13 @@
  * differentiate between items in the legacy.requests queue. */
 #define RAFT_TRANSFER_ (RAFT_CHANGE + 1)
 
-/* Helper returning an error if the configuration can't be changed, either
- * because this node is not the leader or because a configuration change is
- * already in progress. */
+/* Helper returning an error if the configuration can't be changed,
+ *
+ * Errors:
+ *
+ * RAFT_CANTCHANGE
+ *     A configuration change or a promotion are in progress.
+ */
 int membershipCanChangeConfiguration(struct raft *r);
 
 /* Populate the given configuration object with the most recent committed
@@ -59,7 +63,13 @@ int membershipUncommittedChange(struct raft *r,
 int membershipRollback(struct raft *r);
 
 /* Start the leadership transfer by sending a TimeoutNow message to the target
- * server. */
+ * server.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The TimeoutNow message could not be enqueued.
+ */
 int membershipLeadershipTransferStart(struct raft *r);
 
 #endif /* MEMBERSHIP_H_ */

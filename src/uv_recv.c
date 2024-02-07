@@ -91,10 +91,10 @@ static void uvServerDestroy(struct uvServer *s)
         /* This means we were interrupted while reading the header. */
         RaftHeapFree(s->header.base);
         switch (s->message.type) {
-            case RAFT_IO_APPEND_ENTRIES:
+            case RAFT_APPEND_ENTRIES:
                 RaftHeapFree(s->message.append_entries.entries);
                 break;
-            case RAFT_IO_INSTALL_SNAPSHOT:
+            case RAFT_INSTALL_SNAPSHOT:
                 configurationClose(&s->message.install_snapshot.conf);
                 break;
         }
@@ -286,14 +286,14 @@ static void uvServerReadCb(uv_stream_t *stream,
             assert(s->payload.len > 0);
 
             switch (s->message.type) {
-                case RAFT_IO_APPEND_ENTRIES:
+                case RAFT_APPEND_ENTRIES:
                     payload.base = s->payload.base;
                     payload.len = s->payload.len;
                     uvDecodeEntriesBatch(payload.base, 0,
                                          s->message.append_entries.entries,
                                          s->message.append_entries.n_entries);
                     break;
-                case RAFT_IO_INSTALL_SNAPSHOT:
+                case RAFT_INSTALL_SNAPSHOT:
                     s->message.install_snapshot.data.base = s->payload.base;
                     break;
                 default:

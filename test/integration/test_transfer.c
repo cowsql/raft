@@ -320,7 +320,12 @@ TEST(raft_transfer, AutoSelect, setUp, tearDown, 0, NULL)
         "           probe server 2 sending a heartbeat (no entries)\n"
         "           probe server 3 sending a heartbeat (no entries)\n"
         "[ 120] 1 > recv request vote result from server 3\n"
-        "           local server is leader -> ignore\n")
+        "           local server is leader -> ignore\n"
+        "[ 130] 2 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 130] 3 > recv append entries from server 1\n"
+        "           no new entries to persist\n"
+        "[ 140] 1 > recv append entries result from server 2\n");
 
     test_cluster_transfer(&f->cluster_, 1, 0);
 

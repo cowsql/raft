@@ -448,22 +448,22 @@ static int stepReceive(struct raft *r, struct raft_message *message)
     const char *desc;
 
     switch (message->type) {
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             desc = "request vote";
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             desc = "request vote result";
             break;
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             desc = "append entries";
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             desc = "append entries result";
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             desc = "install snapshot";
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             desc = "timeout now";
             break;
         default:

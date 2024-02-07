@@ -112,7 +112,7 @@ static void *setUp(const MunitParameter params[], void *user_data)
     raft_uv_set_connect_retry_delay(&f->io, 1);
     for (i = 0; i < N_MESSAGES; i++) {
         struct raft_message *message = &f->messages[i];
-        message->type = RAFT_IO_REQUEST_VOTE;
+        message->type = RAFT_REQUEST_VOTE;
         message->server_id = 1;
         message->server_address = f->server.address;
     }
@@ -168,7 +168,7 @@ TEST(send, parallel, setUp, tearDown, 0, NULL)
 TEST(send, voteResult, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    MESSAGE(0)->type = RAFT_IO_REQUEST_VOTE_RESULT;
+    MESSAGE(0)->type = RAFT_REQUEST_VOTE_RESULT;
     SEND(0);
     return MUNIT_OK;
 }
@@ -183,7 +183,7 @@ TEST(send, appendEntries, setUp, tearDown, 0, NULL)
     entries[1].buf.base = raft_malloc(8);
     entries[1].buf.len = 8;
 
-    MESSAGE(0)->type = RAFT_IO_APPEND_ENTRIES;
+    MESSAGE(0)->type = RAFT_APPEND_ENTRIES;
     MESSAGE(0)->append_entries.entries = entries;
     MESSAGE(0)->append_entries.n_entries = 2;
 
@@ -199,7 +199,7 @@ TEST(send, appendEntries, setUp, tearDown, 0, NULL)
 TEST(send, heartbeat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    MESSAGE(0)->type = RAFT_IO_APPEND_ENTRIES;
+    MESSAGE(0)->type = RAFT_APPEND_ENTRIES;
     MESSAGE(0)->append_entries.entries = NULL;
     MESSAGE(0)->append_entries.n_entries = 0;
     SEND(0);
@@ -210,7 +210,7 @@ TEST(send, heartbeat, setUp, tearDown, 0, NULL)
 TEST(send, appendEntriesResult, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
-    MESSAGE(0)->type = RAFT_IO_APPEND_ENTRIES_RESULT;
+    MESSAGE(0)->type = RAFT_APPEND_ENTRIES_RESULT;
     SEND(0);
     return MUNIT_OK;
 }
@@ -222,7 +222,7 @@ TEST(send, installSnapshot, setUp, tearDown, 0, NULL)
     struct raft_install_snapshot *p = &MESSAGE(0)->install_snapshot;
     int rv;
 
-    MESSAGE(0)->type = RAFT_IO_INSTALL_SNAPSHOT;
+    MESSAGE(0)->type = RAFT_INSTALL_SNAPSHOT;
 
     raft_configuration_init(&p->conf);
     rv = raft_configuration_add(&p->conf, 1, "1", RAFT_VOTER);
@@ -392,7 +392,7 @@ TEST(send, closeDuringWrite, setUp, tearDownDeps, 0, NULL)
     entry.buf.len = 1024 * 1024 * 8;
     entry.buf.base = raft_malloc(entry.buf.len);
 
-    MESSAGE(0)->type = RAFT_IO_APPEND_ENTRIES;
+    MESSAGE(0)->type = RAFT_APPEND_ENTRIES;
     MESSAGE(0)->append_entries.entries = &entry;
     MESSAGE(0)->append_entries.n_entries = 1;
 

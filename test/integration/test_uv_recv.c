@@ -43,7 +43,7 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
     unsigned i;
     munit_assert_int(m1->type, ==, m2->type);
     switch (m1->type) {
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             munit_assert_int(m1->request_vote.term, ==, m2->request_vote.term);
             munit_assert_int(m1->request_vote.candidate_id, ==,
                              m2->request_vote.candidate_id);
@@ -54,13 +54,13 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
             munit_assert_int(m1->request_vote.disrupt_leader, ==,
                              m2->request_vote.disrupt_leader);
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             munit_assert_int(m1->request_vote_result.term, ==,
                              m2->request_vote_result.term);
             munit_assert_int(m1->request_vote_result.vote_granted, ==,
                              m2->request_vote_result.vote_granted);
             break;
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             munit_assert_int(m1->append_entries.n_entries, ==,
                              m2->append_entries.n_entries);
             for (i = 0; i < m1->append_entries.n_entries; i++) {
@@ -78,7 +78,7 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
                 raft_free(m1->append_entries.entries);
             }
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             munit_assert_int(m1->append_entries_result.term, ==,
                              m2->append_entries_result.term);
             munit_assert_int(m1->append_entries_result.rejected, ==,
@@ -86,7 +86,7 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
             munit_assert_int(m1->append_entries_result.last_log_index, ==,
                              m2->append_entries_result.last_log_index);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             munit_assert_int(m1->install_snapshot.conf.n, ==,
                              m2->install_snapshot.conf.n);
             for (i = 0; i < m1->install_snapshot.conf.n; i++) {
@@ -105,7 +105,7 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
             raft_configuration_close(&m1->install_snapshot.conf);
             raft_free(m1->install_snapshot.data.base);
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             munit_assert_int(m1->timeout_now.term, ==, m2->timeout_now.term);
             munit_assert_int(m1->timeout_now.last_log_index, ==,
                              m2->timeout_now.last_log_index);
@@ -279,7 +279,7 @@ TEST(recv, first, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_REQUEST_VOTE;
+    message.type = RAFT_REQUEST_VOTE;
     message.request_vote.candidate_id = 2;
     message.request_vote.last_log_index = 123;
     message.request_vote.last_log_term = 2;
@@ -294,7 +294,7 @@ TEST(recv, second, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_REQUEST_VOTE;
+    message.type = RAFT_REQUEST_VOTE;
     message.request_vote.candidate_id = 2;
     message.request_vote.last_log_index = 123;
     message.request_vote.last_log_term = 2;
@@ -311,7 +311,7 @@ TEST(recv, requestVoteResult, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_REQUEST_VOTE_RESULT;
+    message.type = RAFT_REQUEST_VOTE_RESULT;
     message.request_vote_result.term = 3;
     message.request_vote_result.vote_granted = true;
     message.request_vote_result.pre_vote = false;
@@ -337,7 +337,7 @@ TEST(recv, appendEntries, setUp, tearDown, 0, NULL)
     entries[1].buf.base = data2;
     entries[1].buf.len = sizeof data2;
 
-    message.type = RAFT_IO_APPEND_ENTRIES;
+    message.type = RAFT_APPEND_ENTRIES;
     message.append_entries.entries = entries;
     message.append_entries.n_entries = 2;
 
@@ -352,7 +352,7 @@ TEST(recv, heartbeat, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_APPEND_ENTRIES;
+    message.type = RAFT_APPEND_ENTRIES;
     message.append_entries.entries = NULL;
     message.append_entries.n_entries = 0;
     PEER_SEND(&message);
@@ -365,7 +365,7 @@ TEST(recv, appendEntriesResult, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
+    message.type = RAFT_APPEND_ENTRIES_RESULT;
     message.append_entries_result.term = 3;
     message.append_entries_result.rejected = 0;
     message.append_entries_result.last_log_index = 123;
@@ -382,7 +382,7 @@ TEST(recv, installSnapshot, setUp, tearDown, 0, NULL)
     uint8_t snapshot_data[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     int rv;
 
-    message.type = RAFT_IO_INSTALL_SNAPSHOT;
+    message.type = RAFT_INSTALL_SNAPSHOT;
     message.install_snapshot.term = 2;
     message.install_snapshot.last_index = 123;
     message.install_snapshot.last_term = 1;
@@ -406,7 +406,7 @@ TEST(recv, timeoutNow, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
-    message.type = RAFT_IO_TIMEOUT_NOW;
+    message.type = RAFT_TIMEOUT_NOW;
     message.timeout_now.term = 3;
     message.timeout_now.last_log_index = 123;
     message.timeout_now.last_log_term = 2;

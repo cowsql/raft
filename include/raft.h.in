@@ -386,12 +386,12 @@ struct raft_timeout_now
  * Type codes for RPC messages.
  */
 enum {
-    RAFT_IO_APPEND_ENTRIES = 1,
-    RAFT_IO_APPEND_ENTRIES_RESULT,
-    RAFT_IO_REQUEST_VOTE,
-    RAFT_IO_REQUEST_VOTE_RESULT,
-    RAFT_IO_INSTALL_SNAPSHOT,
-    RAFT_IO_TIMEOUT_NOW
+    RAFT_APPEND_ENTRIES = 1,
+    RAFT_APPEND_ENTRIES_RESULT,
+    RAFT_REQUEST_VOTE,
+    RAFT_REQUEST_VOTE_RESULT,
+    RAFT_INSTALL_SNAPSHOT,
+    RAFT_TIMEOUT_NOW
 };
 
 /**
@@ -711,7 +711,9 @@ typedef void (*raft_close_cb)(struct raft *raft);
 
 struct raft_progress;
 
+#if !defined(RAFT__LEGACY_no)
 struct raft_log;
+#endif
 
 /**
  * Hold and drive the state of a single raft server in a cluster.
@@ -720,11 +722,11 @@ struct raft_log;
  */
 struct raft
 {
-#ifndef RAFT__LEGACY_no
+#if !defined(RAFT__LEGACY_no)
     void *data; /* Custom user data. */
 #endif
     struct raft_tracer *tracer; /* Tracer implementation. */
-#ifndef RAFT__LEGACY_no
+#if !defined(RAFT__LEGACY_no)
     struct raft_io *io;   /* Disk and network I/O implementation. */
     struct raft_fsm *fsm; /* User-defined FSM to apply commands to. */
 #endif
@@ -738,7 +740,9 @@ struct raft
     raft_term current_term; /* Latest term server has seen. */
     raft_id voted_for;      /* Candidate that received vote in current term. */
     union {
+#if !defined(RAFT__LEGACY_no)
         struct raft_log *unused; /* XXX: Legacy field. */
+#endif
         struct
         {
             unsigned short capacity; /* Guaranteed disk capacity */

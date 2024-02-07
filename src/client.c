@@ -15,44 +15,34 @@
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-/* This function is called when a new configuration entry is being submitted. It
- * updates the progress array and it switches the current configuration to the
- * new one. */
-static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
+/* Emit a trace info message summarizing the entries being submmitted. */
+static void clientEmitSubmissionMessage(const struct raft *r,
+                                        const raft_index index,
+                                        const struct raft_entry *entries,
+                                        const unsigned n)
 {
-    struct raft_configuration configuration;
-    int rv;
-
-    assert(entry->type == RAFT_CHANGE);
-
-    rv = configurationDecode(&entry->buf, &configuration);
-    if (rv != 0) {
-        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
-        goto err;
-    }
-
-    /* Rebuild the progress array if the new configuration has a different
-     * number of servers than the old one. */
-    if (configuration.n != r->configuration.n) {
-        rv = progressRebuildArray(r, &configuration);
-        if (rv != 0) {
-            assert(rv == RAFT_NOMEM);
-            goto err_after_decode;
+    if (n == 1) {
+        const char *type;
+        switch (entries[0].type) {
+            case RAFT_COMMAND:
+                type = "command";
+                break;
+            case RAFT_BARRIER:
+                type = "barrier";
+                break;
+            case RAFT_CHANGE:
+                type = "configuration";
+                break;
+            default:
+                type = "unknown";
+                break;
         }
+        infof("replicate 1 new %s entry (%llu^%llu)", type, index,
+              entries[0].term);
+    } else {
+        infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
+              entries[0].term, index + n - 1, entries[n - 1].term);
     }
-
-    /* Update the current configuration. */
-    raft_configuration_close(&r->configuration);
-    r->configuration = configuration;
-    r->configuration_uncommitted_index = TrailLastIndex(&r->trail);
-
-    return 0;
-
-err_after_decode:
-    configurationClose(&configuration);
-err:
-    assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
-    return rv;
 }
 
 /* Return true if the capacity of the majority of voter servers is within the
@@ -96,9 +86,50 @@ static bool clientCapacityIsWithinThreshold(const struct raft *r)
     return healthy > configurationVoterCount(&r->configuration) / 2;
 }
 
+/* This function is called when a new configuration entry is being submitted. It
+ * updates the progress array and it switches the current configuration to the
+ * new one. */
+static int clientSwitchConfiguration(struct raft *r,
+                                     const struct raft_entry *entry)
+{
+    struct raft_configuration configuration;
+    int rv;
+
+    assert(entry->type == RAFT_CHANGE);
+
+    rv = configurationDecode(&entry->buf, &configuration);
+    if (rv != 0) {
+        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
+        goto err;
+    }
+
+    /* Rebuild the progress array if the new configuration has a different
+     * number of servers than the old one. */
+    if (configuration.n != r->configuration.n) {
+        rv = progressRebuildArray(r, &configuration);
+        if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
+            goto err_after_decode;
+        }
+    }
+
+    /* Update the current configuration. */
+    raft_configuration_close(&r->configuration);
+    r->configuration = configuration;
+    r->configuration_uncommitted_index = TrailLastIndex(&r->trail);
+
+    return 0;
+
+err_after_decode:
+    configurationClose(&configuration);
+err:
+    assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
+    return rv;
+}
+
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
-    raft_index index;
+    const raft_index index = TrailLastIndex(&r->trail) + 1; /* 1st new entry */
     unsigned i;
     int rv;
 
@@ -119,39 +150,16 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
         goto err;
     }
 
-    /* Index of the first entry being appended. */
-    index = TrailLastIndex(&r->trail) + 1;
-
-    if (n == 1) {
-        const char *type;
-        switch (entries[0].type) {
-            case RAFT_COMMAND:
-                type = "command";
-                break;
-            case RAFT_BARRIER:
-                type = "barrier";
-                break;
-            case RAFT_CHANGE:
-                type = "configuration";
-                break;
-            default:
-                type = "unknown";
-                break;
-        }
-        infof("replicate 1 new %s entry (%llu^%llu)", type, index,
-              entries[0].term);
-    } else {
-        infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
-              entries[0].term, index + n - 1, entries[n - 1].term);
-    }
+    clientEmitSubmissionMessage(r, index, entries, n);
 
     for (i = 0; i < n; i++) {
-        struct raft_entry *entry = &entries[i];
+        const struct raft_entry *entry = &entries[i];
 
         if (entry->type == RAFT_CHANGE) {
             rv = membershipCanChangeConfiguration(r);
             if (rv != 0) {
-                return rv;
+                assert(rv == RAFT_CANTCHANGE);
+                goto err;
             }
         }
 
@@ -162,7 +170,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
         }
 
         if (entry->type == RAFT_CHANGE) {
-            rv = clientSubmitConfiguration(r, entry);
+            rv = clientSwitchConfiguration(r, entry);
             if (rv != 0) {
                 goto err_after_trail_append;
             }
@@ -181,7 +189,7 @@ err_after_trail_append:
     TrailTruncate(&r->trail, index);
 err:
     assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM ||
-           rv == RAFT_NOSPACE);
+           rv == RAFT_NOSPACE || rv == RAFT_CANTCHANGE);
     return rv;
 }
 
@@ -218,7 +226,7 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
 }
 
 /* Find a suitable voting follower. */
-static raft_id clientSelectTransferee(struct raft *r)
+static raft_id clientSelectTransferee(const struct raft *r)
 {
     const struct raft_server *transferee = NULL;
     unsigned i;
@@ -229,7 +237,7 @@ static raft_id clientSelectTransferee(struct raft *r)
             continue;
         }
         transferee = server;
-        if (progressIsUpToDate(r, i)) {
+        if (progressMatchIndex(r, i) == TrailLastIndex(&r->trail)) {
             break;
         }
     }
@@ -280,6 +288,7 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     if (progressMatchIndex(r, i) == TrailLastIndex(&r->trail)) {
         rv = membershipLeadershipTransferStart(r);
         if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
             r->leader_state.transferee = 0;
             goto err;
         }
@@ -290,7 +299,8 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     return 0;
 
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_NOTLEADER || rv == RAFT_NOTFOUND || rv == RAFT_BADID ||
+           rv == RAFT_NOMEM);
     return rv;
 }
 
