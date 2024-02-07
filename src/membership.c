@@ -191,10 +191,6 @@ int membershipLeadershipTransferStart(struct raft *r)
     server = configurationGet(&r->configuration, r->leader_state.transferee);
     assert(server != NULL);
 
-    if (server == NULL) {
-        return -1;
-    }
-
     message.type = RAFT_TIMEOUT_NOW;
     message.timeout_now.version = MESSAGE__TIMEOUT_NOW_VERSION;
     message.timeout_now.term = r->current_term;
@@ -207,6 +203,7 @@ int membershipLeadershipTransferStart(struct raft *r)
     infof("send timeout to %llu", server->id);
     rv = MessageEnqueue(r, &message);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
         ErrMsgPrintf(r->errmsg, "send timeout now to %llu", server->id);
         return rv;
     }

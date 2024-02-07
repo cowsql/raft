@@ -63,7 +63,13 @@ int membershipUncommittedChange(struct raft *r,
 int membershipRollback(struct raft *r);
 
 /* Start the leadership transfer by sending a TimeoutNow message to the target
- * server. */
+ * server.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     The TimeoutNow message could not be enqueued.
+ */
 int membershipLeadershipTransferStart(struct raft *r);
 
 #endif /* MEMBERSHIP_H_ */
