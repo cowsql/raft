@@ -336,6 +336,11 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index)
 {
     int rv;
 
+    /* We wait for all writes to be settled before transitioning to candidate
+     * state, and no new writes are issued as candidate, so the current state
+     * must be leader or follower */
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+
     switch (r->state) {
         case RAFT_LEADER:
             rv = leaderPersistEntriesDone(r, index);
@@ -345,8 +350,9 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index)
             rv = 0;
             break;
         default:
-            updateLastStored(r, index);
-            rv = 0;
+            /* We expect no write to complete during candidate state */
+            assert(0);
+            rv = RAFT_SHUTDOWN;
             break;
     }
 
@@ -475,7 +481,8 @@ int replicationUpdate(struct raft *r,
      * is now up-to-date and, if so, send it a TimeoutNow RPC (unless we
      * already did). */
     if (r->leader_state.transferee == server->id) {
-        if (progressIsUpToDate(r, i) && !r->leader_state.transferring) {
+        raft_index match_index = progressMatchIndex(r, i);
+        if (match_index == last_index && !r->leader_state.transferring) {
             rv = membershipLeadershipTransferStart(r);
             if (rv != 0) {
                 r->leader_state.transferee = 0;
@@ -869,7 +876,6 @@ err:
 int replicationPersistSnapshotDone(struct raft *r,
                                    struct raft_snapshot_metadata *metadata,
                                    size_t offset,
-                                   struct raft_buffer *chunk,
                                    bool last)
 {
     struct raft_append_entries_result result;
@@ -877,7 +883,6 @@ int replicationPersistSnapshotDone(struct raft *r,
 
     (void)offset;
     (void)last;
-    (void)chunk;
 
     /* We avoid converting to candidate state while installing a snapshot. */
     assert(r->state == RAFT_FOLLOWER);
@@ -920,7 +925,6 @@ respond:
 
 int replicationInstallSnapshot(struct raft *r,
                                const struct raft_install_snapshot *args,
-                               raft_index *rejected,
                                bool *async)
 {
     struct raft_snapshot_metadata metadata;
@@ -928,7 +932,9 @@ int replicationInstallSnapshot(struct raft *r,
 
     assert(r->state == RAFT_FOLLOWER);
 
-    *rejected = args->last_index;
+    assert(args->last_index != 0);
+    assert(args->last_term != 0);
+
     *async = false;
 
     /* If we are installing a snapshot, ignore the request, the leader will
@@ -942,21 +948,19 @@ int replicationInstallSnapshot(struct raft *r,
     if (r->snapshot.installing) {
         *async = true;
         infof("already taking or installing snapshot");
-        return RAFT_BUSY;
+        return 0;
     }
 
     /* If our last snapshot is more up-to-date, this is a no-op */
     if (TrailSnapshotIndex(&r->trail) >= args->last_index) {
         infof("have more recent snapshot");
-        *rejected = 0;
         return 0;
     }
 
     /* If we already have all entries in the snapshot, this is a no-op */
     local_term = TrailTermOf(&r->trail, args->last_index);
-    if (local_term != 0 && local_term >= args->last_term) {
+    if (local_term == args->last_term) {
         infof("have all entries");
-        *rejected = 0;
         return 0;
     }
 

@@ -23,8 +23,6 @@ int recvInstallSnapshot(struct raft *r,
 
     assert(address != NULL);
 
-    result->rejected = args->last_index;
-    result->last_log_index = TrailLastIndex(&r->trail);
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = MESSAGE__FEATURE_CAPACITY;
 
@@ -52,7 +50,7 @@ int recvInstallSnapshot(struct raft *r,
     r->election_timer_start = r->now;
     r->update->flags |= RAFT_UPDATE_TIMEOUT;
 
-    rv = replicationInstallSnapshot(r, args, &result->rejected, &async);
+    rv = replicationInstallSnapshot(r, args, &async);
     if (rv != 0) {
         return rv;
     }
@@ -61,13 +59,20 @@ int recvInstallSnapshot(struct raft *r,
         return 0;
     }
 
-    if (result->rejected == 0) {
-        /* Echo back to the leader the point that we reached. */
-        result->last_log_index = args->last_index;
+    /* If we got here it mess that we either have a more recent snapshot than
+     * the one being sent, or that we already have all snapshot entries in our
+     * log. */
+    assert(TrailLastIndex(&r->trail) >= args->last_index);
+
+    /* Echo back to the leader the point that we reached. */
+    result->last_log_index = args->last_index;
+    if (r->last_stored < result->last_log_index) {
+        result->last_log_index = r->last_stored;
     }
 
 reply:
     result->term = r->current_term;
+    result->rejected = 0;
 
     /* Free the snapshot data. */
     raft_configuration_close(&args->conf);

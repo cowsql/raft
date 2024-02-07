@@ -135,6 +135,12 @@ static void legacyPersistEntriesCb(struct raft_io_append *append, int status)
         goto out;
     }
 
+    /* If we're installing a snapshot discard these entries because they are
+     * supposed to be truncated. */
+    if (r->legacy.snapshot_install) {
+        goto out;
+    }
+
     /* Check which of these entries is still in our in-memory log */
     for (i = 0; i < req->n; i++) {
         struct raft_entry *entry = &req->entries[i];
@@ -262,10 +268,11 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
     struct raft *r = req->r;
     struct raft_event event;
 
+    r->legacy.snapshot_install = false;
+
     event.type = RAFT_PERSISTED_SNAPSHOT;
     event.persisted_snapshot.metadata = req->metadata;
     event.persisted_snapshot.offset = req->offset;
-    event.persisted_snapshot.chunk = req->chunk;
     event.persisted_snapshot.last = req->last;
 
     /* If we successfully persisted the snapshot, keep the snapshot data around,
@@ -318,6 +325,7 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     struct legacyPersistSnapshot *req;
     int rv;
 
+    assert(!r->legacy.snapshot_install);
     assert(r->legacy.snapshot_pending == NULL);
 
     req = raft_malloc(sizeof *req);
@@ -337,6 +345,8 @@ static int legacyHandleUpdateSnapshot(struct raft *r,
     req->snapshot.configuration_index = req->metadata.configuration_index;
     req->snapshot.bufs = &req->chunk;
     req->snapshot.n_bufs = 1;
+
+    r->legacy.snapshot_install = true;
 
     /* If we're taking a snapshot, put this install on hold until it's
      * completed. */

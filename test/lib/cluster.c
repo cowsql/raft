@@ -25,6 +25,10 @@ struct step
             struct raft_entry *batch;
             unsigned n;
         } entries;
+        struct
+        {
+            struct raft_buffer chunk;
+        } snapshot;
     };
     queue queue;
 };
@@ -409,6 +413,7 @@ static void serverInit(struct test_server *s,
     s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
+    s->snapshot_install = false;
     s->running = false;
 }
 
@@ -427,7 +432,7 @@ static void serverCancelSnapshot(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     (void)s;
 
-    raft_free(event->persisted_snapshot.chunk.base);
+    raft_free(step->snapshot.chunk.base);
     raft_configuration_close(&event->persisted_snapshot.metadata.configuration);
 }
 
@@ -644,6 +649,10 @@ static void serverProcessSnapshot(struct test_server *s,
 {
     struct step *step = munit_malloc(sizeof *step);
 
+    munit_assert_false(s->snapshot_install);
+
+    s->snapshot_install = true;
+
     step->id = s->raft.id;
 
     /* Update the in-memory log */
@@ -651,12 +660,13 @@ static void serverProcessSnapshot(struct test_server *s,
     munit_assert_uint(s->log.n, ==, 0);
     s->log.start = metadata->index + 1;
 
+    step->snapshot.chunk = *chunk;
+
     step->event.time = s->cluster->time + s->disk_latency;
     step->event.type = RAFT_PERSISTED_SNAPSHOT;
 
     step->event.persisted_snapshot.metadata = *metadata;
     step->event.persisted_snapshot.offset = offset;
-    step->event.persisted_snapshot.chunk = *chunk;
     step->event.persisted_snapshot.last = last;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
@@ -969,8 +979,10 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
         diskAddEntry(&s->disk, &entries[i]);
     }
 
-    rv = serverStep(s, event);
-    munit_assert_int(rv, ==, 0);
+    if (!s->snapshot_install) {
+        rv = serverStep(s, event);
+        munit_assert_int(rv, ==, 0);
+    }
 
     if (n > 0) {
         raft_free(step->entries.batch[0].batch);
@@ -984,6 +996,8 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     int rv;
 
+    s->snapshot_install = false;
+
     snapshot->metadata.index = event->persisted_snapshot.metadata.index;
     snapshot->metadata.term = event->persisted_snapshot.metadata.term;
     confCopy(&event->persisted_snapshot.metadata.configuration,
@@ -991,7 +1005,7 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     snapshot->metadata.configuration_index =
         event->persisted_snapshot.metadata.configuration_index;
 
-    snapshot->data = event->persisted_snapshot.chunk;
+    snapshot->data = step->snapshot.chunk;
 
     diskSetSnapshot(&s->disk, snapshot);
 

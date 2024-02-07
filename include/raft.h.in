@@ -496,7 +496,6 @@ struct raft_event
         {
             struct raft_snapshot_metadata metadata;
             size_t offset;
-            struct raft_buffer chunk;
             bool last;
         } persisted_snapshot;
         struct
@@ -609,21 +608,22 @@ struct raft; /* Forward declaration. */
         uint64_t reserved[32]; \
     }
 
-#define RAFT__EXTENSIONS_LEGACY                                              \
-    /* Fields used by the v0 compatibility code */                           \
-    struct                                                                   \
-    {                                                                        \
-        void *requests[2];              /* Completed client requests */      \
-        void (*step_cb)(struct raft *); /* Invoked after raft_step() */      \
-        unsigned short prev_state;      /* Used to detect lost leadership */ \
-        bool closing;                   /* True when shutting down */        \
-        void *pending[2];               /* Pending client requests */        \
-        struct raft_change *change;     /* Pending membership change */      \
-        raft_index snapshot_index;      /* Last persisted snapshot */        \
-        struct raft_buffer snapshot_chunk; /* Cache of snapshot data */      \
-        bool snapshot_taking;              /* True when taking a snapshot */ \
-        void *snapshot_pending;            /* Pending install snapshot */    \
-        struct raft_log *log;              /* Cache on-disk log */           \
+#define RAFT__EXTENSIONS_LEGACY                                                \
+    /* Fields used by the v0 compatibility code */                             \
+    struct                                                                     \
+    {                                                                          \
+        void *requests[2];              /* Completed client requests */        \
+        void (*step_cb)(struct raft *); /* Invoked after raft_step() */        \
+        unsigned short prev_state;      /* Used to detect lost leadership */   \
+        bool closing;                   /* True when shutting down */          \
+        void *pending[2];               /* Pending client requests */          \
+        struct raft_change *change;     /* Pending membership change */        \
+        raft_index snapshot_index;      /* Last persisted snapshot */          \
+        struct raft_buffer snapshot_chunk; /* Cache of snapshot data */        \
+        bool snapshot_taking;              /* True when taking a snapshot */   \
+        bool snapshot_install;             /* True if installing a snapshot */ \
+        void *snapshot_pending;            /* Pending install snapshot */      \
+        struct raft_log *log;              /* Cache on-disk log */             \
     } legacy;
 #endif /* RAFT__LEGACY_no */
 

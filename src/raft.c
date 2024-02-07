@@ -104,6 +104,9 @@ int raft_init(struct raft *r,
     r->commit_index = 0;
     r->last_stored = 0;
     r->state = RAFT_FOLLOWER;
+    r->follower_state.current_leader.id = 0;
+    r->follower_state.current_leader.address = NULL;
+    r->follower_state.match = 0;
     r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
     r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.installing = false;
@@ -152,6 +155,7 @@ int raft_init(struct raft *r,
         r->legacy.change = NULL;
         r->legacy.snapshot_index = 0;
         r->legacy.snapshot_taking = false;
+        r->legacy.snapshot_install = false;
         r->legacy.snapshot_pending = NULL;
         r->transfer = NULL;
         r->legacy.log = logInit();
@@ -389,26 +393,24 @@ static int stepStart(struct raft *r,
 static int stepPersistedEntries(struct raft *r, raft_index index)
 {
     raft_index first_index;
-    raft_index first_term = 0;
-    raft_index last_term = 0;
+    raft_index first_term;
+    raft_index last_term;
     unsigned n;
 
+    /* The newly peristed index must be greater than our previous last stored
+     * mark. */
     assert(index > r->last_stored);
 
     n = (unsigned)(index - r->last_stored);
     first_index = index - n + 1;
 
-    /* XXX: we discard our log immediately when starting to install a snapshot,
-     * so we don't have information about the terms in that case. */
-    if (!r->snapshot.installing) {
-        assert(TrailLastIndex(&r->trail) >= index);
+    assert(TrailLastIndex(&r->trail) >= index);
 
-        first_term = TrailTermOf(&r->trail, first_index);
-        last_term = TrailTermOf(&r->trail, index);
+    first_term = TrailTermOf(&r->trail, first_index);
+    last_term = TrailTermOf(&r->trail, index);
 
-        assert(first_term > 0);
-        assert(last_term > 0);
-    }
+    assert(first_term > 0);
+    assert(last_term > 0);
 
     if (n == 1) {
         infof("persisted 1 entry (%llu^%llu)", first_index, first_term);
@@ -423,12 +425,17 @@ static int stepPersistedEntries(struct raft *r, raft_index index)
 static int stepPersistedSnapshot(struct raft *r,
                                  struct raft_snapshot_metadata *metadata,
                                  size_t offset,
-                                 struct raft_buffer *chunk,
                                  bool last)
 {
     int rv;
+
+    /* We wait for all writes to be settled before transitioning to candidate
+     * state, and no new writes are issued as candidate, so the current state
+     * must be leader or follower */
+    assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+
     infof("persisted snapshot (%llu^%llu)", metadata->index, metadata->term);
-    rv = replicationPersistSnapshotDone(r, metadata, offset, chunk, last);
+    rv = replicationPersistSnapshotDone(r, metadata, offset, last);
     if (rv != 0) {
         return rv;
     }
@@ -526,7 +533,6 @@ int raft_step(struct raft *r,
         case RAFT_PERSISTED_SNAPSHOT:
             rv = stepPersistedSnapshot(r, &event->persisted_snapshot.metadata,
                                        event->persisted_snapshot.offset,
-                                       &event->persisted_snapshot.chunk,
                                        event->persisted_snapshot.last);
             break;
         case RAFT_RECEIVE:
