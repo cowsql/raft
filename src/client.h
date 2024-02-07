@@ -10,6 +10,10 @@
  * RAFT_NOTLEADER
  *     The server is not leader, or a leadership transfer is in progress.
  *
+ * RAFT_SPACE
+ *     Not enough servers to form a majority are reporting to have remaining
+ *     capacity over the configured threshold.
+ *
  * RAFT_MALFORMED
  *     The submitted entry is of type RAFT_CHANGE, but the encoded configuration
  *     is invalid.

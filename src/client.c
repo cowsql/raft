@@ -96,6 +96,36 @@ static bool clientCapacityIsWithinThreshold(const struct raft *r)
     return healthy > configurationVoterCount(&r->configuration) / 2;
 }
 
+/* Emit a trace info message summarizing the entries being submmitted. */
+static void clientSubmitEmitMessage(const struct raft *r,
+                                    const raft_index index,
+                                    const struct raft_entry *entries,
+                                    const unsigned n)
+{
+    if (n == 1) {
+        const char *type;
+        switch (entries[0].type) {
+            case RAFT_COMMAND:
+                type = "command";
+                break;
+            case RAFT_BARRIER:
+                type = "barrier";
+                break;
+            case RAFT_CHANGE:
+                type = "configuration";
+                break;
+            default:
+                type = "unknown";
+                break;
+        }
+        infof("replicate 1 new %s entry (%llu^%llu)", type, index,
+              entries[0].term);
+    } else {
+        infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
+              entries[0].term, index + n - 1, entries[n - 1].term);
+    }
+}
+
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
     raft_index index;
@@ -122,28 +152,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
     /* Index of the first entry being appended. */
     index = TrailLastIndex(&r->trail) + 1;
 
-    if (n == 1) {
-        const char *type;
-        switch (entries[0].type) {
-            case RAFT_COMMAND:
-                type = "command";
-                break;
-            case RAFT_BARRIER:
-                type = "barrier";
-                break;
-            case RAFT_CHANGE:
-                type = "configuration";
-                break;
-            default:
-                type = "unknown";
-                break;
-        }
-        infof("replicate 1 new %s entry (%llu^%llu)", type, index,
-              entries[0].term);
-    } else {
-        infof("replicate %u new entries (%llu^%llu..%llu^%llu)", n, index,
-              entries[0].term, index + n - 1, entries[n - 1].term);
-    }
+    clientSubmitEmitMessage(r, index, entries, n);
 
     for (i = 0; i < n; i++) {
         struct raft_entry *entry = &entries[i];
