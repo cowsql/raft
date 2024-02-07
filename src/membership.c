@@ -43,7 +43,7 @@ int membershipCanChangeConfiguration(struct raft *r)
     return 0;
 
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_CANTCHANGE);
     ErrMsgFromCode(r->errmsg, rv);
     return rv;
 }

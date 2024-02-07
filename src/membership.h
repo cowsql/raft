@@ -9,9 +9,13 @@
  * differentiate between items in the legacy.requests queue. */
 #define RAFT_TRANSFER_ (RAFT_CHANGE + 1)
 
-/* Helper returning an error if the configuration can't be changed, either
- * because this node is not the leader or because a configuration change is
- * already in progress. */
+/* Helper returning an error if the configuration can't be changed,
+ *
+ * Errors:
+ *
+ * RAFT_CANTCHANGE
+ *     A configuration change or a promotion are in progress.
+ */
 int membershipCanChangeConfiguration(struct raft *r);
 
 /* Populate the given configuration object with the most recent committed
