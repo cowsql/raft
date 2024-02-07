@@ -237,7 +237,7 @@ static raft_id clientSelectTransferee(struct raft *r)
             continue;
         }
         transferee = server;
-        if (progressIsUpToDate(r, i)) {
+        if (progressMatchIndex(r, i) == TrailLastIndex(&r->trail)) {
             break;
         }
     }
