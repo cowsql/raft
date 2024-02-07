@@ -226,7 +226,7 @@ void ClientCatchUp(struct raft *r, raft_id server_id)
 }
 
 /* Find a suitable voting follower. */
-static raft_id clientSelectTransferee(struct raft *r)
+static raft_id clientSelectTransferee(const struct raft *r)
 {
     const struct raft_server *transferee = NULL;
     unsigned i;
@@ -288,6 +288,7 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     if (progressMatchIndex(r, i) == TrailLastIndex(&r->trail)) {
         rv = membershipLeadershipTransferStart(r);
         if (rv != 0) {
+            assert(rv == RAFT_NOMEM);
             r->leader_state.transferee = 0;
             goto err;
         }
@@ -298,7 +299,8 @@ int ClientTransfer(struct raft *r, raft_id server_id)
     return 0;
 
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_NOTLEADER || rv == RAFT_NOTFOUND || rv == RAFT_BADID ||
+           rv == RAFT_NOMEM);
     return rv;
 }
 
