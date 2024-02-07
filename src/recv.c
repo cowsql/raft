@@ -25,25 +25,25 @@ int recvMessage(struct raft *r, struct raft_message *message)
     int rv = 0;
 
     switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             rv = recvAppendEntries(r, id, address, &message->append_entries);
             if (rv != 0) {
                 entryBatchesDestroy(message->append_entries.entries,
                                     message->append_entries.n_entries);
             }
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             rv = recvAppendEntriesResult(r, id, address,
                                          &message->append_entries_result);
             break;
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             rv = recvRequestVote(r, id, address, &message->request_vote);
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             rv = recvRequestVoteResult(r, id, address,
                                        &message->request_vote_result);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             rv =
                 recvInstallSnapshot(r, id, address, &message->install_snapshot);
             /* Already installing a snapshot, wait for it and ignore this one */
@@ -53,7 +53,7 @@ int recvMessage(struct raft *r, struct raft_message *message)
                 rv = 0;
             }
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             rv = recvTimeoutNow(r, id, address, &message->timeout_now);
             break;
         default:

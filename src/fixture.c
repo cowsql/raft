@@ -401,11 +401,11 @@ static void ioFlushSend(struct io *io, struct send *send)
 
     *dst = *src;
     switch (dst->type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             /* Make a copy of the entries being sent */
             copyAppendEntries(&src->append_entries, &dst->append_entries);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             copyInstallSnapshot(&src->install_snapshot, &dst->install_snapshot);
             break;
     }
@@ -428,13 +428,13 @@ static void ioDestroyTransmit(struct transmit *transmit)
     struct raft_message *message;
     message = &transmit->message;
     switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             if (message->append_entries.entries != NULL) {
                 raft_free(message->append_entries.entries[0].batch);
                 raft_free(message->append_entries.entries);
             }
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             raft_configuration_close(&message->install_snapshot.conf);
             raft_free(message->install_snapshot.data.base);
             break;
@@ -1706,12 +1706,12 @@ void raft_fixture_depose(struct raft_fixture *f)
 
     /* Prevent all servers from sending append entries results, so the
      * leader will eventually step down. */
-    dropAllExcept(f, RAFT_IO_APPEND_ENTRIES_RESULT, true, leader_i);
+    dropAllExcept(f, RAFT_APPEND_ENTRIES_RESULT, true, leader_i);
 
     raft_fixture_step_until_has_no_leader(f, ELECTION_TIMEOUT * 3);
     assert(f->leader_id == 0);
 
-    dropAllExcept(f, RAFT_IO_APPEND_ENTRIES_RESULT, false, leader_i);
+    dropAllExcept(f, RAFT_APPEND_ENTRIES_RESULT, false, leader_i);
 }
 
 struct step_apply

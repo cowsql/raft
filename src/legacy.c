@@ -28,13 +28,13 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
     (void)status;
 
     switch (req->message.type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             logRelease(r->legacy.log,
                        req->message.append_entries.prev_log_index + 1,
                        req->message.append_entries.entries,
                        req->message.append_entries.n_entries);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             configurationClose(&req->message.install_snapshot.conf);
             raft_free(req->message.install_snapshot.data.base);
             break;
@@ -81,13 +81,13 @@ static int legacySendMessage(struct raft *r, struct raft_message *message)
     req->send.data = req;
 
     switch (req->message.type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             rv = legacyFillAppendEntries(r, &req->message.append_entries);
             if (rv != 0) {
                 return rv;
             }
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             rv = legacyLoadSnapshot(req);
             if (rv != 0) {
                 return rv;
@@ -98,7 +98,7 @@ static int legacySendMessage(struct raft *r, struct raft_message *message)
     rv = r->io->send(r->io, &req->send, &req->message, legacySendMessageCb);
     if (rv != 0) {
         switch (req->message.type) {
-            case RAFT_IO_APPEND_ENTRIES:
+            case RAFT_APPEND_ENTRIES:
                 legacyAbortAppendEntries(r, &req->message.append_entries);
                 break;
         }
@@ -1621,11 +1621,11 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
 
     if (r->legacy.closing) {
         switch (message->type) {
-            case RAFT_IO_APPEND_ENTRIES:
+            case RAFT_APPEND_ENTRIES:
                 entryBatchesDestroy(message->append_entries.entries,
                                     message->append_entries.n_entries);
                 break;
-            case RAFT_IO_INSTALL_SNAPSHOT:
+            case RAFT_INSTALL_SNAPSHOT:
                 raft_configuration_close(&message->install_snapshot.conf);
                 raft_free(message->install_snapshot.data.base);
                 break;
@@ -1640,7 +1640,7 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
     rv = LegacyForwardToRaftIo(r, &event);
 
     switch (message->type) {
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             if (message->append_entries.n_entries > 0) {
                 if (rv != 0) {
                     raft_free(message->append_entries.entries[0].batch);

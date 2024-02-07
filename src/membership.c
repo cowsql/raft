@@ -195,7 +195,7 @@ int membershipLeadershipTransferStart(struct raft *r)
         return -1;
     }
 
-    message.type = RAFT_IO_TIMEOUT_NOW;
+    message.type = RAFT_TIMEOUT_NOW;
     message.timeout_now.version = MESSAGE__TIMEOUT_NOW_VERSION;
     message.timeout_now.term = r->current_term;
     message.timeout_now.last_log_index = TrailLastIndex(&r->trail);

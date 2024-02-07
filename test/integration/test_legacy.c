@@ -121,8 +121,8 @@ TEST(legacy, snapshotBlocksCandidate, setUp, tearDown, 0, NULL)
 
     /* Wait a while and check that the leader has sent a snapshot */
     CLUSTER_STEP_UNTIL_ELAPSED(500);
-    munit_assert_int(CLUSTER_N_SEND(0, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
-    munit_assert_int(CLUSTER_N_RECV(2, RAFT_IO_INSTALL_SNAPSHOT), ==, 1);
+    munit_assert_int(CLUSTER_N_SEND(0, RAFT_INSTALL_SNAPSHOT), ==, 1);
+    munit_assert_int(CLUSTER_N_RECV(2, RAFT_INSTALL_SNAPSHOT), ==, 1);
 
     /* Disconnect the servers again so that heartbeats, etc. won't arrive */
     CLUSTER_SATURATE_BOTHWAYS(0, 2);

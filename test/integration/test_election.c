@@ -477,7 +477,7 @@ TEST(election, RejectIfNotVoter, setUp, tearDown, 0, NULL)
 
     CLUSTER_TRACE("[   0] 2 > term 1, 1 entry (1^1)\n");
 
-    message.type = RAFT_IO_REQUEST_VOTE;
+    message.type = RAFT_REQUEST_VOTE;
     message.server_id = 1;
     message.server_address = "1";
     message.request_vote.version = 2;

@@ -163,7 +163,7 @@ reply:
 
     result->capacity = r->capacity;
 
-    message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
+    message.type = RAFT_APPEND_ENTRIES_RESULT;
     message.server_id = id;
     message.server_address = address;
 

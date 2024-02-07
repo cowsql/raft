@@ -209,27 +209,27 @@ int uvEncodeMessage(const struct raft_message *message,
      * buffer for it. */
     header.len = RAFT_IO_UV__PREAMBLE_SIZE;
     switch (message->type) {
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             header.len += sizeofRequestVote();
             version = message->request_vote.version;
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             header.len += sizeofRequestVoteResult();
             version = message->request_vote_result.version;
             break;
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             header.len += sizeofAppendEntries(&message->append_entries);
             version = message->append_entries.version;
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             header.len += sizeofAppendEntriesResult();
             version = message->append_entries_result.version;
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             header.len += sizeofInstallSnapshot(&message->install_snapshot);
             version = message->install_snapshot.version;
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             header.len += sizeofTimeoutNow();
             version = message->timeout_now.version;
             break;
@@ -255,22 +255,22 @@ int uvEncodeMessage(const struct raft_message *message,
 
     /* Encode the request header. */
     switch (message->type) {
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             encodeRequestVote(&message->request_vote, cursor);
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             encodeRequestVoteResult(&message->request_vote_result, cursor);
             break;
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             encodeAppendEntries(&message->append_entries, cursor);
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             encodeAppendEntriesResult(&message->append_entries_result, cursor);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             encodeInstallSnapshot(&message->install_snapshot, cursor);
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             encodeTimeoutNow(&message->timeout_now, cursor);
             break;
     };
@@ -278,12 +278,12 @@ int uvEncodeMessage(const struct raft_message *message,
     *n_bufs = 1;
 
     /* For AppendEntries request we also send the entries payload. */
-    if (message->type == RAFT_IO_APPEND_ENTRIES) {
+    if (message->type == RAFT_APPEND_ENTRIES) {
         *n_bufs += message->append_entries.n_entries;
     }
 
     /* For InstallSnapshot request we also send the snapshot payload. */
-    if (message->type == RAFT_IO_INSTALL_SNAPSHOT) {
+    if (message->type == RAFT_INSTALL_SNAPSHOT) {
         *n_bufs += 1;
     }
 
@@ -294,7 +294,7 @@ int uvEncodeMessage(const struct raft_message *message,
 
     (*bufs)[0] = header;
 
-    if (message->type == RAFT_IO_APPEND_ENTRIES) {
+    if (message->type == RAFT_APPEND_ENTRIES) {
         unsigned i;
         for (i = 0; i < message->append_entries.n_entries; i++) {
             const struct raft_entry *entry =
@@ -304,7 +304,7 @@ int uvEncodeMessage(const struct raft_message *message,
         }
     }
 
-    if (message->type == RAFT_IO_INSTALL_SNAPSHOT) {
+    if (message->type == RAFT_INSTALL_SNAPSHOT) {
         (*bufs)[1].base = message->install_snapshot.data.base;
         (*bufs)[1].len = message->install_snapshot.data.len;
     }
@@ -581,29 +581,29 @@ int uvDecodeMessage(uint8_t type,
 
     /* Decode the header. */
     switch (type) {
-        case RAFT_IO_REQUEST_VOTE:
+        case RAFT_REQUEST_VOTE:
             decodeRequestVote(version, header, &message->request_vote);
             break;
-        case RAFT_IO_REQUEST_VOTE_RESULT:
+        case RAFT_REQUEST_VOTE_RESULT:
             decodeRequestVoteResult(version, header,
                                     &message->request_vote_result);
             break;
-        case RAFT_IO_APPEND_ENTRIES:
+        case RAFT_APPEND_ENTRIES:
             rv = decodeAppendEntries(version, header, &message->append_entries);
             for (i = 0; i < message->append_entries.n_entries; i++) {
                 *payload_len += message->append_entries.entries[i].buf.len;
             }
             break;
-        case RAFT_IO_APPEND_ENTRIES_RESULT:
+        case RAFT_APPEND_ENTRIES_RESULT:
             decodeAppendEntriesResult(version, header,
                                       &message->append_entries_result);
             break;
-        case RAFT_IO_INSTALL_SNAPSHOT:
+        case RAFT_INSTALL_SNAPSHOT:
             rv = decodeInstallSnapshot(version, header,
                                        &message->install_snapshot);
             *payload_len += message->install_snapshot.data.len;
             break;
-        case RAFT_IO_TIMEOUT_NOW:
+        case RAFT_TIMEOUT_NOW:
             decodeTimeoutNow(header, &message->timeout_now);
             break;
         default:

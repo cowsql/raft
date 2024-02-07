@@ -103,7 +103,7 @@ static int sendAppendEntries(struct raft *r,
 
     args->version = MESSAGE__APPEND_ENTRIES_VERSION;
 
-    message.type = RAFT_IO_APPEND_ENTRIES;
+    message.type = RAFT_APPEND_ENTRIES;
     message.server_id = server->id;
     message.server_address = server->address;
 
@@ -138,7 +138,7 @@ static int sendSnapshot(struct raft *r, const unsigned i)
 
     server = &r->configuration.servers[i];
 
-    message.type = RAFT_IO_INSTALL_SNAPSHOT;
+    message.type = RAFT_INSTALL_SNAPSHOT;
     message.server_id = server->id;
     message.server_address = server->address;
 
@@ -538,7 +538,7 @@ static void sendAppendEntriesResult(
         infof("send success result to %llu", id);
     }
 
-    message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
+    message.type = RAFT_APPEND_ENTRIES_RESULT;
     message.append_entries_result = *result;
 
     message.server_id = id;
