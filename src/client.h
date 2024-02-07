@@ -10,6 +10,10 @@
  * RAFT_NOTLEADER
  *     The server is not leader, or a leadership transfer is in progress.
  *
+ * RAFT_CANTCHANGE
+ *     A configuration entry is being submitted, but a configuration change
+ *     is already in progress.
+ *
  * RAFT_SPACE
  *     Not enough servers to form a majority are reporting to have remaining
  *     capacity over the configured threshold.

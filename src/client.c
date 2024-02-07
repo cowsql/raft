@@ -18,7 +18,8 @@
 /* This function is called when a new configuration entry is being submitted. It
  * updates the progress array and it switches the current configuration to the
  * new one. */
-static int clientSubmitConfiguration(struct raft *r, struct raft_entry *entry)
+static int clientSubmitConfiguration(struct raft *r,
+                                     const struct raft_entry *entry)
 {
     struct raft_configuration configuration;
     int rv;
@@ -128,7 +129,7 @@ static void clientSubmitEmitMessage(const struct raft *r,
 
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
-    raft_index index;
+    const raft_index index = TrailLastIndex(&r->trail) + 1; /* 1st new entry */
     unsigned i;
     int rv;
 
@@ -149,18 +150,16 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
         goto err;
     }
 
-    /* Index of the first entry being appended. */
-    index = TrailLastIndex(&r->trail) + 1;
-
     clientSubmitEmitMessage(r, index, entries, n);
 
     for (i = 0; i < n; i++) {
-        struct raft_entry *entry = &entries[i];
+        const struct raft_entry *entry = &entries[i];
 
         if (entry->type == RAFT_CHANGE) {
             rv = membershipCanChangeConfiguration(r);
             if (rv != 0) {
-                return rv;
+                assert(rv == RAFT_CANTCHANGE);
+                goto err;
             }
         }
 
@@ -190,7 +189,7 @@ err_after_trail_append:
     TrailTruncate(&r->trail, index);
 err:
     assert(rv == RAFT_NOTLEADER || rv == RAFT_MALFORMED || rv == RAFT_NOMEM ||
-           rv == RAFT_NOSPACE);
+           rv == RAFT_NOSPACE || rv == RAFT_CANTCHANGE);
     return rv;
 }
 
