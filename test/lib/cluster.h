@@ -185,7 +185,17 @@
 /* Return the struct raft object with the given ID. */
 #define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
 
-/* Set the network latency of outgoing messages of server I. */
+/* Set the snapshot threshold of the server with the given ID. */
+#define CLUSTER_SET_SNAPSHOT_THRESHOLD(ID, THRESHOLD) \
+    test_cluster_set_snapshot_threshold(&f->cluster_, ID, THRESHOLD)
+
+/* Set the trailing entries to keep after taking a snapshot on the server with
+ * the given ID. */
+#define CLUSTER_SET_SNAPSHOT_TRAILING(ID, TRAILING) \
+    test_cluster_set_snapshot_trailing(&f->cluster_, ID, TRAILING)
+
+/* Set the network latency for outgoing messages sent by the server with the
+ * given ID. */
 #define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
     test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
 

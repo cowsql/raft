@@ -728,7 +728,7 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
         last_snapshot_index = s->disk.snapshot->metadata.index;
     }
 
-    if (raft_commit_index(r) - last_snapshot_index < r->snapshot.threshold) {
+    if (raft_commit_index(r) - last_snapshot_index < s->snapshot.threshold) {
         return;
     }
 
@@ -750,7 +750,7 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
     event->snapshot.metadata.configuration_index =
         r->configuration_committed_index;
 
-    event->snapshot.trailing = r->snapshot.trailing;
+    event->snapshot.trailing = s->snapshot.trailing;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }

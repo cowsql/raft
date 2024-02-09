@@ -1095,8 +1095,8 @@ TEST(election, StayFollowerIfInstallingSnapshot, setUp, tearDown, 0, NULL)
     unsigned id;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Bootstrap a cluster with 3 servers. */
     for (id = 1; id <= 3; id++) {

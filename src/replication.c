@@ -1056,7 +1056,7 @@ int replicationSnapshot(struct raft *r,
         configurationClose(&metadata->configuration);
     }
 
-    TrailSnapshot(&r->trail, metadata->index, r->snapshot.trailing);
+    TrailSnapshot(&r->trail, metadata->index, trailing);
 
     return 0;
 }
