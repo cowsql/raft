@@ -8,6 +8,8 @@
 #define DEFAULT_ELECTION_TIMEOUT 100
 #define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
+#define DEFAULT_SNAPSHOT_THRESHOLD 64
+#define DEFAULT_SNAPSHOT_TRAILING 32
 #define DEFAULT_DISK_LATENCY 10
 #define DEFAULT_DISK_SIZE 256 /* In bytes */
 
@@ -413,6 +415,8 @@ static void serverInit(struct test_server *s,
     s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
+    s->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
+    s->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     s->snapshot.installing = false;
     s->running = false;
 }

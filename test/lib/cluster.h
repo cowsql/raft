@@ -233,7 +233,9 @@ struct test_server
     char address[8];              /* Server address */
     struct
     {
-        bool installing; /* True if installing a snapshot */
+        unsigned threshold; /* Number of entries before taking a snapshot. */
+        unsigned trailing;  /* Number of entries to leave after a snapshot. */
+        bool installing;    /* True if installing a snapshot */
     } snapshot;
     bool running; /* Whether the server is running */
 
