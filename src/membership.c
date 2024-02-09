@@ -48,21 +48,6 @@ err:
     return rv;
 }
 
-int membershipFetchLastCommittedConfiguration(struct raft *r,
-                                              struct raft_configuration *conf)
-{
-    int rv;
-
-    assert(r->configuration_committed_index > 0);
-    rv = configurationCopy(&r->configuration_committed, conf);
-    if (rv != 0) {
-        assert(rv == RAFT_NOMEM);
-        return rv;
-    }
-
-    return 0;
-}
-
 bool membershipUpdateCatchUpRound(struct raft *r)
 {
     unsigned server_index;
@@ -178,12 +163,11 @@ int membershipRollback(struct raft *r)
           r->configuration_uncommitted_index,
           TrailTermOf(&r->trail, r->configuration_uncommitted_index));
 
-    /* Fetch the last committed configuration entry. */
-    assert(r->configuration_committed_index != 0);
-
     /* Replace the current configuration with the last committed one. */
+    assert(r->configuration_committed_index > 0);
+
     configurationClose(&r->configuration);
-    rv = membershipFetchLastCommittedConfiguration(r, &r->configuration);
+    rv = configurationCopy(&r->configuration_committed, &r->configuration);
     if (rv != 0) {
         assert(rv == RAFT_NOMEM);
         return rv;

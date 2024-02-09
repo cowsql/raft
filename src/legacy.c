@@ -603,7 +603,8 @@ static void legacyTakeSnapshot(struct raft *r)
     }
     req->r = r;
 
-    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
+    rv =
+        configurationCopy(&r->configuration_committed, &metadata.configuration);
     if (rv != 0) {
         goto abort_after_req_alloc;
     }
