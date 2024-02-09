@@ -136,7 +136,8 @@ int membershipUncommittedChange(struct raft *r,
 
     rv = configurationDecode(&entry->buf, &configuration);
     if (rv != 0) {
-        goto err;
+        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
+        return rv;
     }
 
     raft_configuration_close(&r->configuration);
@@ -145,10 +146,6 @@ int membershipUncommittedChange(struct raft *r,
     r->configuration_uncommitted_index = index;
 
     return 0;
-
-err:
-    assert(rv != 0);
-    return rv;
 }
 
 int membershipRollback(struct raft *r)

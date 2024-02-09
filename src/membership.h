@@ -40,11 +40,21 @@ int membershipFetchLastCommittedConfiguration(struct raft *r,
 bool membershipUpdateCatchUpRound(struct raft *r);
 
 /* Update the local configuration replacing it with the content of the given
- * RAFT_CHANGE entry, which has just been received in as part of an
- * AppendEntries RPC request. The uncommitted configuration index will be
- * updated accordingly.
+ * RAFT_CHANGE entry, which has just been received in as part of a RAFT_SUBMIT
+ * event on a leader or a RAFT_RECEIVE event of an AppendEntries message on a
+ * follower. The uncommitted configuration index will be updated accordingly.
  *
- * It must be called only by followers. */
+ * It must be called only by followers or leaders.
+ *
+ * Errors:
+ *
+ * RAFT_NOMEM
+ *     A new raft_configuration object to hold the decoded configuration could
+ *     not be allocated.
+ *
+ * RAFT_MALFORMED
+ *     The entry data does not contain a valid encoded configuration.
+ */
 int membershipUncommittedChange(struct raft *r,
                                 const raft_index index,
                                 const struct raft_entry *entry);
