@@ -1243,6 +1243,22 @@ void test_cluster_set_network_latency(struct test_cluster *c,
     server->network_latency = latency;
 }
 
+void test_cluster_set_snapshot_threshold(struct test_cluster *c,
+                                         raft_id id,
+                                         unsigned threshold)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->snapshot.threshold = threshold;
+}
+
+void test_cluster_set_snapshot_trailing(struct test_cluster *c,
+                                        raft_id id,
+                                        unsigned trailing)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->snapshot.trailing = trailing;
+}
+
 void test_cluster_set_disk_latency(struct test_cluster *c,
                                    raft_id id,
                                    unsigned latency)

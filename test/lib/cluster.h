@@ -309,6 +309,16 @@ void test_cluster_set_election_timeout(struct test_cluster *c,
                                        unsigned timeout,
                                        unsigned delta);
 
+/* Set the threshold for taking snapshots on the given server. */
+void test_cluster_set_snapshot_threshold(struct test_cluster *c,
+                                         raft_id id,
+                                         unsigned threshold);
+
+/* Set the number of entries to leave after a snapshot. */
+void test_cluster_set_snapshot_trailing(struct test_cluster *c,
+                                        raft_id id,
+                                        unsigned trailing);
+
 /* Set the network latency of messages sent by the given server. */
 void test_cluster_set_network_latency(struct test_cluster *c,
                                       raft_id id,
