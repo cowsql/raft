@@ -86,47 +86,6 @@ static bool clientCapacityIsWithinThreshold(const struct raft *r)
     return healthy > configurationVoterCount(&r->configuration) / 2;
 }
 
-/* This function is called when a new configuration entry is being submitted. It
- * updates the progress array and it switches the current configuration to the
- * new one. */
-static int clientSwitchConfiguration(struct raft *r,
-                                     const struct raft_entry *entry)
-{
-    struct raft_configuration configuration;
-    int rv;
-
-    assert(entry->type == RAFT_CHANGE);
-
-    rv = configurationDecode(&entry->buf, &configuration);
-    if (rv != 0) {
-        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
-        goto err;
-    }
-
-    /* Rebuild the progress array if the new configuration has a different
-     * number of servers than the old one. */
-    if (configuration.n != r->configuration.n) {
-        rv = progressRebuildArray(r, &configuration);
-        if (rv != 0) {
-            assert(rv == RAFT_NOMEM);
-            goto err_after_decode;
-        }
-    }
-
-    /* Update the current configuration. */
-    raft_configuration_close(&r->configuration);
-    r->configuration = configuration;
-    r->configuration_uncommitted_index = TrailLastIndex(&r->trail);
-
-    return 0;
-
-err_after_decode:
-    configurationClose(&configuration);
-err:
-    assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
-    return rv;
-}
-
 int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
 {
     const raft_index index = TrailLastIndex(&r->trail) + 1; /* 1st new entry */
@@ -170,7 +129,7 @@ int ClientSubmit(struct raft *r, struct raft_entry *entries, unsigned n)
         }
 
         if (entry->type == RAFT_CHANGE) {
-            rv = clientSwitchConfiguration(r, entry);
+            rv = membershipUncommittedChange(r, index + i, entry);
             if (rv != 0) {
                 goto err_after_trail_append;
             }

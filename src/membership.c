@@ -130,13 +130,26 @@ int membershipUncommittedChange(struct raft *r,
     int rv;
 
     assert(r != NULL);
-    assert(r->state == RAFT_FOLLOWER);
+    assert(r->state == RAFT_FOLLOWER || r->state == RAFT_LEADER);
     assert(entry != NULL);
     assert(entry->type == RAFT_CHANGE);
 
     rv = configurationDecode(&entry->buf, &configuration);
     if (rv != 0) {
+        assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
         goto err;
+    }
+
+    if (r->state == RAFT_LEADER) {
+        /* Rebuild the progress array if the new configuration has a different
+         * number of servers than the old one. */
+        if (configuration.n != r->configuration.n) {
+            rv = progressRebuildArray(r, &configuration);
+            if (rv != 0) {
+                assert(rv == RAFT_NOMEM);
+                goto err_after_decode;
+            }
+        }
     }
 
     raft_configuration_close(&r->configuration);
@@ -146,8 +159,10 @@ int membershipUncommittedChange(struct raft *r,
 
     return 0;
 
+err_after_decode:
+    configurationClose(&configuration);
 err:
-    assert(rv != 0);
+    assert(rv == RAFT_NOMEM || rv == RAFT_MALFORMED);
     return rv;
 }
 

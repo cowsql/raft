@@ -807,11 +807,9 @@ int replicationAppend(struct raft *r,
      *   commitIndex, set commitIndex = min(leaderCommit, index of last new
      *   entry).
      */
-    if (args->leader_commit > r->commit_index &&
-        r->last_stored >= r->commit_index) {
-        raft_index last_index =
-            min(r->last_stored, args->prev_log_index + args->n_entries);
-        r->commit_index = min(args->leader_commit, last_index);
+    if (args->leader_commit > r->commit_index) {
+        raft_index last_new_entry = args->prev_log_index + args->n_entries;
+        r->commit_index = min(args->leader_commit, last_new_entry);
         r->update->flags |= RAFT_UPDATE_COMMIT_INDEX;
     }
 
