@@ -624,6 +624,8 @@ struct raft; /* Forward declaration. */
         bool snapshot_install;             /* True if installing a snapshot */ \
         void *snapshot_pending;            /* Pending install snapshot */      \
         struct raft_log *log;              /* Cache on-disk log */             \
+        unsigned snapshot_threshold;       /* N. of entries before snapshot */ \
+        unsigned snapshot_trailing;        /* N. of entries to retain */       \
     } legacy;
 #endif /* RAFT__LEGACY_no */
 
@@ -690,11 +692,13 @@ struct raft_io_snapshot_put
     raft_io_snapshot_put_cb cb; /* Request callback */
 };
 
-#define RAFT__SNAPSHOT_FIELDS_V0          \
-    struct                                \
-    {                                     \
-        struct raft_snapshot _pending;    \
-        struct raft_io_snapshot_put _put; \
+#define RAFT__SNAPSHOT_FIELDS_V0                                    \
+    struct                                                          \
+    {                                                               \
+        unsigned _threshold; /* N. of entries before snapshot */    \
+        unsigned _trailing;  /* N. of trailing entries to retain */ \
+        struct raft_snapshot _pending;                              \
+        struct raft_io_snapshot_put _put;                           \
     }
 #endif /* RAFT__LEGACY_no */
 
@@ -938,8 +942,6 @@ struct raft
      */
     struct
     {
-        unsigned threshold; /* N. of entries before snapshot */
-        unsigned trailing;  /* N. of trailing entries to retain */
         union {
             RAFT__SNAPSHOT_FIELDS_V0;
             RAFT__SNAPSHOT_FIELDS_V1;
@@ -1108,19 +1110,6 @@ RAFT_API void raft_set_install_snapshot_timeout(struct raft *r, unsigned msecs);
 RAFT_API void raft_set_pre_vote(struct raft *r, bool enabled);
 
 /**
- * Number of outstanding log entries before starting a new snapshot. The default
- * is 1024.
- */
-RAFT_API void raft_set_snapshot_threshold(struct raft *r, unsigned n);
-
-/**
- * Number of outstanding log entries to keep in the log after a snapshot has
- * been taken. This avoids sending snapshots when a follower is behind by just a
- * few entries. The default is 128.
- */
-RAFT_API void raft_set_snapshot_trailing(struct raft *r, unsigned n);
-
-/**
  * Set the maximum number of a catch-up rounds to try when replicating entries
  * to a stand-by server that is being promoted to voter, before giving up and
  * failing the configuration change. The default is 10.
@@ -1181,11 +1170,6 @@ RAFT_API void raft_leader(struct raft *r, raft_id *id, const char **address);
  * Return the index of the last entry that was appended to the local log.
  */
 RAFT_API raft_index raft_last_index(struct raft *r);
-
-/**
- * Return the index of the last entry that was applied to the local FSM.
- */
-RAFT_API raft_index raft_last_applied(struct raft *r);
 
 /**
  * Generate a pseudo-random number between @min and @max, using @state as
@@ -1610,6 +1594,25 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
+
+/**
+ * Return the index of the last entry that was applied to the local FSM.
+ */
+RAFT_API raft_index raft_last_applied(struct raft *r);
+
+/**
+ * Number of outstanding log entries before starting a new snapshot. The default
+ * is 1024.
+ */
+RAFT_API void raft_set_snapshot_threshold(struct raft *r, unsigned n);
+
+/**
+ * Number of outstanding log entries to keep in the log after a snapshot has
+ * been taken. This avoids sending snapshots when a follower is behind by just a
+ * few entries. The default is 128.
+ */
+RAFT_API void raft_set_snapshot_trailing(struct raft *r, unsigned n);
+
 #endif
 
 #undef RAFT__REQUEST
