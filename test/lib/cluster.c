@@ -8,6 +8,8 @@
 #define DEFAULT_ELECTION_TIMEOUT 100
 #define DEFAULT_HEARTBEAT_TIMEOUT 50
 #define DEFAULT_NETWORK_LATENCY 10
+#define DEFAULT_SNAPSHOT_THRESHOLD 64
+#define DEFAULT_SNAPSHOT_TRAILING 32
 #define DEFAULT_DISK_LATENCY 10
 #define DEFAULT_DISK_SIZE 256 /* In bytes */
 
@@ -413,7 +415,9 @@ static void serverInit(struct test_server *s,
     s->cluster = cluster;
     s->network_latency = DEFAULT_NETWORK_LATENCY;
     s->disk_latency = DEFAULT_DISK_LATENCY;
-    s->snapshot_install = false;
+    s->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
+    s->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
+    s->snapshot.installing = false;
     s->running = false;
 }
 
@@ -649,9 +653,9 @@ static void serverProcessSnapshot(struct test_server *s,
 {
     struct step *step = munit_malloc(sizeof *step);
 
-    munit_assert_false(s->snapshot_install);
+    munit_assert_false(s->snapshot.installing);
 
-    s->snapshot_install = true;
+    s->snapshot.installing = true;
 
     step->id = s->raft.id;
 
@@ -724,7 +728,7 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
         last_snapshot_index = s->disk.snapshot->metadata.index;
     }
 
-    if (raft_commit_index(r) - last_snapshot_index < r->snapshot.threshold) {
+    if (raft_commit_index(r) - last_snapshot_index < s->snapshot.threshold) {
         return;
     }
 
@@ -746,7 +750,7 @@ static void serverMaybeTakeSnapshot(struct test_server *s)
     event->snapshot.metadata.configuration_index =
         r->configuration_committed_index;
 
-    event->snapshot.trailing = r->snapshot.trailing;
+    event->snapshot.trailing = s->snapshot.trailing;
 
     QUEUE_PUSH(&s->cluster->steps, &step->queue);
 }
@@ -979,7 +983,7 @@ static void serverCompleteEntries(struct test_server *s, struct step *step)
         diskAddEntry(&s->disk, &entries[i]);
     }
 
-    if (!s->snapshot_install) {
+    if (!s->snapshot.installing) {
         rv = serverStep(s, event);
         munit_assert_int(rv, ==, 0);
     }
@@ -996,7 +1000,7 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
     struct raft_event *event = &step->event;
     int rv;
 
-    s->snapshot_install = false;
+    s->snapshot.installing = false;
 
     snapshot->metadata.index = event->persisted_snapshot.metadata.index;
     snapshot->metadata.term = event->persisted_snapshot.metadata.term;
@@ -1237,6 +1241,22 @@ void test_cluster_set_network_latency(struct test_cluster *c,
 {
     struct test_server *server = clusterGetServer(c, id);
     server->network_latency = latency;
+}
+
+void test_cluster_set_snapshot_threshold(struct test_cluster *c,
+                                         raft_id id,
+                                         unsigned threshold)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->snapshot.threshold = threshold;
+}
+
+void test_cluster_set_snapshot_trailing(struct test_cluster *c,
+                                        raft_id id,
+                                        unsigned trailing)
+{
+    struct test_server *server = clusterGetServer(c, id);
+    server->snapshot.trailing = trailing;
 }
 
 void test_cluster_set_disk_latency(struct test_cluster *c,

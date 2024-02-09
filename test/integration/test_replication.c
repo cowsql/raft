@@ -1941,8 +1941,8 @@ TEST(replication, StaleRejectedIndexSnapshot, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Set very low threshold and trailing entries number. */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 3);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 3 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Bootstrap and start a cluster with 1 voter and 1 stand-by. Server 1 has
      * an additional entry. */

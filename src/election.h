@@ -37,11 +37,6 @@ void electionUpdateRandomizedTimeout(struct raft *r);
  * Must be called in follower or candidate state. */
 void electionResetTimer(struct raft *r);
 
-/* Return true if the election timer has expired.
- *
- * Must be called in follower or candidate state. */
-bool electionTimerExpired(struct raft *r);
-
 /* Return the time at which the election timer will expire next.
  *
  * Must be called in follower or candidate state. */

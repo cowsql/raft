@@ -32,8 +32,11 @@
 #define DEFAULT_ELECTION_TIMEOUT 1000          /* One second */
 #define DEFAULT_HEARTBEAT_TIMEOUT 100          /* One tenth of a second */
 #define DEFAULT_INSTALL_SNAPSHOT_TIMEOUT 30000 /* 30 seconds */
+
+#if !defined(RAFT__LEGACY_no)
 #define DEFAULT_SNAPSHOT_THRESHOLD 1024
 #define DEFAULT_SNAPSHOT_TRAILING 2048
+#endif
 
 /* Number of milliseconds after which a server promotion will be aborted if the
  * server hasn't caught up with the logs yet. */
@@ -107,8 +110,6 @@ int raft_init(struct raft *r,
     r->follower_state.current_leader.id = 0;
     r->follower_state.current_leader.address = NULL;
     r->follower_state.match = 0;
-    r->snapshot.threshold = DEFAULT_SNAPSHOT_THRESHOLD;
-    r->snapshot.trailing = DEFAULT_SNAPSHOT_TRAILING;
     r->snapshot.installing = false;
     memset(r->errmsg, 0, sizeof r->errmsg);
     r->pre_vote = false;
@@ -159,6 +160,8 @@ int raft_init(struct raft *r,
         r->legacy.snapshot_pending = NULL;
         r->transfer = NULL;
         r->legacy.log = logInit();
+        r->legacy.snapshot_threshold = DEFAULT_SNAPSHOT_THRESHOLD;
+        r->legacy.snapshot_trailing = DEFAULT_SNAPSHOT_TRAILING;
         if (r->legacy.log == NULL) {
             goto err_after_address_alloc;
         }
@@ -727,16 +730,6 @@ void raft_set_install_snapshot_timeout(struct raft *r, const unsigned msecs)
 void raft_set_pre_vote(struct raft *r, bool enabled)
 {
     r->pre_vote = enabled;
-}
-
-void raft_set_snapshot_threshold(struct raft *r, unsigned n)
-{
-    r->snapshot.threshold = n;
-}
-
-void raft_set_snapshot_trailing(struct raft *r, unsigned n)
-{
-    r->snapshot.trailing = n;
 }
 
 void raft_set_max_catch_up_rounds(struct raft *r, unsigned n)

@@ -32,8 +32,8 @@ TEST(snapshot, Install, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Don't let server 2 time out (just for terser traces). */
     raft_set_election_timeout(CLUSTER_RAFT(2), 200);
@@ -107,8 +107,8 @@ TEST(snapshot, InstallTimeout, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Don't let server 2 time out (just for terser traces). */
     raft_set_election_timeout(CLUSTER_RAFT(2), 200);
@@ -191,8 +191,8 @@ TEST(snapshot, SkipOffline, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Bootstrap and start a cluster with 1 voter and 1 stand-by. Just start
      * server 1. */
@@ -312,8 +312,8 @@ TEST(snapshot, ReceiveAppendEntriesWhileInstalling, setUp, tearDown, 0, NULL)
     unsigned id;
 
     /* Set a very low threshold and trailing entries number on server 1. */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 1);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 1 /* n. entries */);
 
     raft_set_install_snapshot_timeout(CLUSTER_RAFT(1), 100);
 
@@ -460,8 +460,8 @@ TEST(snapshot, InstallDuringEntriesWrite, setUp, tearDown, 0, NULL)
     int rv;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 3);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 3 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Don't let server 2 time out (just for terser traces). */
     raft_set_election_timeout(CLUSTER_RAFT(2), 200);
@@ -540,8 +540,8 @@ TEST(snapshot, NewTermWhileInstalling, setUp, tearDown, 0, NULL)
     unsigned id;
 
     /* Set very low threshold and trailing entries number */
-    raft_set_snapshot_threshold(CLUSTER_RAFT(1), 2);
-    raft_set_snapshot_trailing(CLUSTER_RAFT(1), 0);
+    CLUSTER_SET_SNAPSHOT_THRESHOLD(1 /* ID */, 2 /* n. entries */);
+    CLUSTER_SET_SNAPSHOT_TRAILING(1 /* ID */, 0 /* n. entries */);
 
     /* Bootstrap and start a cluster with 3 voters. */
     for (id = 1; id <= 3; id++) {

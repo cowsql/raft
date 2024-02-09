@@ -50,13 +50,6 @@ void electionResetTimer(struct raft *r)
     r->update->flags |= RAFT_UPDATE_TIMEOUT;
 }
 
-bool electionTimerExpired(struct raft *r)
-{
-    struct followerOrCandidateState *state = getFollowerOrCandidateState(r);
-    raft_time now = r->now;
-    return now - r->election_timer_start >= state->randomized_election_timeout;
-}
-
 raft_time electionTimerExpiration(const struct raft *r)
 {
     struct followerOrCandidateState *state;

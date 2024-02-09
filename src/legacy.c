@@ -511,12 +511,12 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
         return;
     }
 
-    logSnapshot(r->legacy.log, metadata.index, r->snapshot.trailing);
+    logSnapshot(r->legacy.log, metadata.index, r->legacy.snapshot_trailing);
 
     event.type = RAFT_SNAPSHOT;
     memset(&event.reserved, 0, sizeof event.reserved);
     event.snapshot.metadata = metadata;
-    event.snapshot.trailing = 0;
+    event.snapshot.trailing = r->legacy.snapshot_trailing;
     LegacyForwardToRaftIo(r, &event);
 
     if (r->legacy.snapshot_pending != NULL) {
@@ -536,8 +536,8 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     int rv;
     assert(!r->snapshot.installing);
     req->put.data = req;
-    rv = r->io->snapshot_put(r->io, r->snapshot.trailing, &req->put, snapshot,
-                             takeSnapshotCb);
+    rv = r->io->snapshot_put(r->io, r->legacy.snapshot_trailing, &req->put,
+                             snapshot, takeSnapshotCb);
     return rv;
 }
 
@@ -563,7 +563,7 @@ static bool legacyShouldTakeSnapshot(const struct raft *r)
 
     /* If we didn't reach the threshold yet, do nothing. */
     if (r->commit_index - r->legacy.log->snapshot.last_index <
-        r->snapshot.threshold) {
+        r->legacy.snapshot_threshold) {
         return false;
     }
 
@@ -603,7 +603,8 @@ static void legacyTakeSnapshot(struct raft *r)
     }
     req->r = r;
 
-    rv = membershipFetchLastCommittedConfiguration(r, &metadata.configuration);
+    rv =
+        configurationCopy(&r->configuration_committed, &metadata.configuration);
     if (rv != 0) {
         goto abort_after_req_alloc;
     }
@@ -1767,6 +1768,16 @@ out:
 raft_index raft_last_applied(struct raft *r)
 {
     return r->last_applied;
+}
+
+void raft_set_snapshot_threshold(struct raft *r, unsigned n)
+{
+    r->legacy.snapshot_threshold = n;
+}
+
+void raft_set_snapshot_trailing(struct raft *r, unsigned n)
+{
+    r->legacy.snapshot_trailing = n;
 }
 
 #undef tracef

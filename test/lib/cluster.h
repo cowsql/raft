@@ -185,7 +185,17 @@
 /* Return the struct raft object with the given ID. */
 #define CLUSTER_RAFT(ID) test_cluster_raft(&f->cluster_, ID)
 
-/* Set the network latency of outgoing messages of server I. */
+/* Set the snapshot threshold of the server with the given ID. */
+#define CLUSTER_SET_SNAPSHOT_THRESHOLD(ID, THRESHOLD) \
+    test_cluster_set_snapshot_threshold(&f->cluster_, ID, THRESHOLD)
+
+/* Set the trailing entries to keep after taking a snapshot on the server with
+ * the given ID. */
+#define CLUSTER_SET_SNAPSHOT_TRAILING(ID, TRAILING) \
+    test_cluster_set_snapshot_trailing(&f->cluster_, ID, TRAILING)
+
+/* Set the network latency for outgoing messages sent by the server with the
+ * given ID. */
 #define CLUSTER_SET_NETWORK_LATENCY(ID, MSECS) \
     test_cluster_set_network_latency(&f->cluster_, ID, MSECS)
 
@@ -231,8 +241,13 @@ struct test_server
     unsigned network_latency;     /* Network latency */
     unsigned disk_latency;        /* Disk latency */
     char address[8];              /* Server address */
-    bool snapshot_install;        /* True if installing a snapshot */
-    bool running;                 /* Whether the server is running */
+    struct
+    {
+        unsigned threshold; /* Number of entries before taking a snapshot. */
+        unsigned trailing;  /* Number of entries to leave after a snapshot. */
+        bool installing;    /* True if installing a snapshot */
+    } snapshot;
+    bool running; /* Whether the server is running */
 
     struct
     {
@@ -303,6 +318,16 @@ void test_cluster_set_election_timeout(struct test_cluster *c,
                                        raft_id id,
                                        unsigned timeout,
                                        unsigned delta);
+
+/* Set the threshold for taking snapshots on the given server. */
+void test_cluster_set_snapshot_threshold(struct test_cluster *c,
+                                         raft_id id,
+                                         unsigned threshold);
+
+/* Set the number of entries to leave after a snapshot. */
+void test_cluster_set_snapshot_trailing(struct test_cluster *c,
+                                        raft_id id,
+                                        unsigned trailing);
 
 /* Set the network latency of messages sent by the given server. */
 void test_cluster_set_network_latency(struct test_cluster *c,
