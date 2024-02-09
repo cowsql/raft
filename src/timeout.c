@@ -45,7 +45,7 @@ static int timeoutFollower(struct raft *r)
      *   If election timeout elapses without receiving AppendEntries RPC from
      *   current leader or granting vote to candidate, convert to candidate.
      */
-    if (electionTimerExpired(r)) {
+    if (r->now >= electionTimerExpiration(r)) {
         raft_index last_index = TrailLastIndex(&r->trail);
         const char *pre_vote_text = r->pre_vote ? "pre-" : "";
         if (server->role != RAFT_VOTER) {
@@ -92,7 +92,7 @@ static int timeoutCandidate(struct raft *r)
      *   happens, each candidate will time out and start a new election by
      *   incrementing its term and initiating another round of RequestVote RPCs
      */
-    if (electionTimerExpired(r)) {
+    if (r->now >= electionTimerExpiration(r)) {
         infof("stay candidate, start election for term %llu",
               r->current_term + 1);
         electionStart(r);
