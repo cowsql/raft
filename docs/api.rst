@@ -7,5 +7,6 @@ API reference
    :maxdepth: 1
 
    core
-   fsm
+   events
+   updates
    io

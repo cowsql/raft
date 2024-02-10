@@ -1,9 +1,17 @@
+html {
+    font-size: 100%;
+}
+
 h1 {
-    font-size: 2.0em;
+    font-size: 1.5em;
 }
 
 h2 {
-    font-size: 1.5em;
+    font-size: 1.2em;
+}
+
+h3 {
+    font-size: 1.0em;
 }
 
 /* Delete toc at the bottom of the page. */
@@ -19,4 +27,8 @@ h2 {
 /* Hide ads. TODO: is there a way to disable them altogether? */
 #furo-sidebar-ad-placement {
     display: none;
+}
+
+.sidebar-container {
+    width: 20em;
 }
