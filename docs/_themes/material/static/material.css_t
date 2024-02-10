@@ -24,13 +24,11 @@ body, html {
 
 body, input {
     color: rgba(0,0,0,.87);
-    font-family: "Source Sans Pro","Helvetica Neue",Helvetica,Arial,sans-serif;
-    font-feature-settings: "kern","liga";
 }
 
 body {
     position: relative;
-    font-size: .5rem;
+    font-size: .7rem;
     margin: 0;
 }
 
@@ -411,7 +409,7 @@ input {
     padding-top: .6rem;
 }
 
-#toc.section {
+#toc {
     display: none;
 }
 
