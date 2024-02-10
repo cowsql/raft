@@ -1,6 +1,6 @@
 [![tests](https://github.com/cowsql/raft/actions/workflows/tests.yml/badge.svg)](https://github.com/cowsql/raft/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/cowsql/raft/branch/main/graph/badge.svg)](https://codecov.io/gh/cowsql/raft) [![Documentation Status](https://readthedocs.org/projects/raft/badge/?version=latest)](https://raft.readthedocs.io/en/latest/?badge=latest) [![Coverity](https://scan.coverity.com/projects/28929/badge.svg)](https://scan.coverity.com/projects/cowsql-raft)
 
-Fully asynchronous C implementation of the Raft consensus protocol.
+Production grade asynchronous C implementation of the Raft consensus protocol.
 
 Documentation
 -------------
