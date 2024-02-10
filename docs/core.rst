@@ -3,8 +3,47 @@
 :c:struct:`raft` --- Core engine
 ================================
 
-The raft server struct is the central part of C-Raft. It holds and drive the
-state of a single raft server in a cluster.
+The :c:struct:`raft` struct is the central part of C-Raft. It holds and drive
+the state of a single Raft server in a cluster.
+
+It is purely a finite state machine, and it doesn't perform any I/O or system
+calls.
+
+The :c:func:`raft_step()` function is used to advance the state of a
+:c:struct:`raft` state machine, for example:
+
+.. code-block:: C
+
+   /* A RequestVote RPC message has been received from the network. We inform
+    * struct raft about that by passing a struct raft_event to raft_step(). */
+   struct raft raft;
+   struct raft_event event;
+   struct raft_update update;
+
+   event.type = RAFT_RECEIVE;
+   event.receive.message = ...; /* Fill with the content of the message */
+
+   raft_step(&raft, &event, &update);
+
+   /* The struct raft_update object contains information about what to do
+    * next, for example it might contain new messages to be sent. */
+   if (update.flags & RAFT_UPDATE_MESSAGES) {
+       unsigned i;
+       for (unsigned i = 0; i < update.messages.n; i++) {
+           /* Send the message contained in update.messages.batch[i] */
+       }
+   }
+
+Whenever an event occur, the user must call :c:func:`raft_step()`, and process
+the resulting updates.
+
+See the `External events`_ section for details about what events to pass to the
+step function in order to drive the state machine forward, and `State updates`_
+for details about how state updates should be processed after calling the step
+function.
+
+.. _External events: ./events.html
+.. _State updates: ./updates.html
 
 Data types
 ----------
@@ -17,18 +56,9 @@ Data types
 
    Hold the value of a raft server ID. Guaranteed to be at least 64-bit long.
 
-.. c:type:: void (*raft_close_cb)(struct raft *r)
-
-    Type definition for callback passed to :c:func:`raft_close`.
-
 
 Public members
 ^^^^^^^^^^^^^^
-
-.. c:member:: void* data
-
-    Space for user-defined arbitrary data. C-Raft does not use and does not
-    touch this field.
 
 .. c:member:: raft_id id
 
@@ -37,22 +67,15 @@ Public members
 API
 ---
 
-.. c:function:: int raft_init(struct raft *r, struct raft_io *io, struct raft_fsm *fsm, raft_id id, const char *address)
+.. c:function:: int raft_init(struct raft *r, raft_id id, const char *address)
 
-    Initialize a raft server object.
+    Initialize a raft state machine.
 
-.. c:function:: int raft_close(struct raft* r, raft_close_cb cb)
+.. c:function:: int raft_close(struct raft* r)
 
-    Close a raft server object, releasing all used resources.
+    Close a raft state machine, releasing all memory it uses.
 
-    The memory of the object itself can be released only once the given close
-    callback has been invoked.
+.. c:function:: int raft_step(struct raft* r, struct raft_event *event, struct raft_update *update)
 
-.. c:function:: int raft_start(struct raft* r)
+   Advance the state of the given raft state machine.
 
-   Start a raft server.
-
-   The initial term, vote, snapshot and entries will be loaded from disk using
-   the :c:func:`raft_io->load()` method. The instance will start as follower, unless
-   it's the only voting server in the cluster, in which case it will
-   automatically elect itself and become leader.

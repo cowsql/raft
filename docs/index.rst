@@ -1,3 +1,6 @@
+.. meta::
+   :hide-toc: true
+
 C-Raft
 ======
 
@@ -57,9 +60,9 @@ toc
 ~~~
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
 
-   self
    quick-start
    api
    disk-format
