@@ -60,6 +60,6 @@ toc
    :maxdepth: 1
 
    self
-   getting-started
+   quick-start
    api
    disk-format
