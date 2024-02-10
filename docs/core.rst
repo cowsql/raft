@@ -1,7 +1,7 @@
-.. _server:
+.. _core:
 
-:c:type:`struct raft` --- Raft server
-=====================================
+:c:type:`struct raft` --- Raft core
+===================================
 
 The raft server struct is the central part of C-Raft. It holds and drive the
 state of a single raft server in a cluster.
