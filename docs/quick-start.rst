@@ -68,7 +68,6 @@ counter:
 You can compile and run it with:
 
 .. code-block:: bash
-   :linenos:
 
    cc main.c -o main -lraft -luv && ./main
 

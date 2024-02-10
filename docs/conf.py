@@ -2,15 +2,15 @@
 master_doc = 'index'
 
 # General information about the project.
-project = u'C-Raft documentation'
-copyright = u'2019-present, Canonical'
+project = u'C-Raft'
+copyright = u'2023-present, Free Ekanayaka'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = u'0.9'
+version = u'0.22.0'
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -23,7 +23,8 @@ release = version
 # a list of builtin themes.
 #html_theme = 'material'
 # html_theme = 'material'
-html_theme = 'material'
+#html_theme = 'furo'
+html_theme = 'furo'
 html_theme_path = ['_themes']
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -36,7 +37,7 @@ html_theme_path = ['_themes']
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = 'C-Raft documentation'
+html_title = 'C-Raft'
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 html_short_title = 'C-Raft'
@@ -53,7 +54,11 @@ html_short_title = 'C-Raft'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-#html_static_path = ['_static']
+html_static_path = ['_static']
+
+html_css_files = [
+    'css/custom.css',
+]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'raft'
