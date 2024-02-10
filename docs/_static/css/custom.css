@@ -1,0 +1,17 @@
+h1 {
+    font-size: 2.0em;
+}
+
+h2 {
+    font-size: 1.5em;
+}
+
+/* Delete toc at the bottom of the page. */
+#toc {
+    display: none;
+}
+
+/* Delete toc in right sidebar. */
+.toc-tree ul li ul li ul {
+    display: none;
+}

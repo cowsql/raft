@@ -6,6 +6,6 @@ API reference
 .. toctree::
    :maxdepth: 1
 
-   server
+   core
    fsm
    io
