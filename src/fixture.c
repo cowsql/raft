@@ -408,6 +408,8 @@ static void ioFlushSend(struct io *io, struct send *send)
         case RAFT_INSTALL_SNAPSHOT:
             copyInstallSnapshot(&src->install_snapshot, &dst->install_snapshot);
             break;
+        default:
+            break;
     }
 
     /* tracef("io: flush: %s", describeMessage(&send->message)); */
@@ -437,6 +439,8 @@ static void ioDestroyTransmit(struct transmit *transmit)
         case RAFT_INSTALL_SNAPSHOT:
             raft_configuration_close(&message->install_snapshot.conf);
             raft_free(message->install_snapshot.data.base);
+            break;
+        default:
             break;
     }
     raft_free(transmit);

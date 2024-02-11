@@ -344,7 +344,7 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
     }
 }
 
-static void decodeRequestVote(int version,
+static void decodeRequestVote(unsigned char version,
                               const uv_buf_t *buf,
                               struct raft_request_vote *p)
 {
@@ -377,7 +377,7 @@ static void decodeRequestVote(int version,
     }
 }
 
-static void decodeRequestVoteResult(int version,
+static void decodeRequestVoteResult(unsigned char version,
                                     const uv_buf_t *buf,
                                     struct raft_request_vote_result *p)
 {
@@ -466,7 +466,7 @@ err:
     return rv;
 }
 
-static int decodeAppendEntries(int version,
+static int decodeAppendEntries(unsigned char version,
                                const uv_buf_t *buf,
                                struct raft_append_entries *args)
 {
@@ -492,7 +492,7 @@ static int decodeAppendEntries(int version,
     return 0;
 }
 
-static void decodeAppendEntriesResult(int version,
+static void decodeAppendEntriesResult(unsigned char version,
                                       const uv_buf_t *buf,
                                       struct raft_append_entries_result *p)
 {
@@ -522,7 +522,7 @@ static void decodeAppendEntriesResult(int version,
     }
 }
 
-static int decodeInstallSnapshot(int version,
+static int decodeInstallSnapshot(unsigned char version,
                                  const uv_buf_t *buf,
                                  struct raft_install_snapshot *args)
 {

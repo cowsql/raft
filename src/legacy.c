@@ -38,6 +38,8 @@ static void legacySendMessageCb(struct raft_io_send *send, int status)
             configurationClose(&req->message.install_snapshot.conf);
             raft_free(req->message.install_snapshot.data.base);
             break;
+        default:
+            break;
     }
 
     raft_free(req);
@@ -93,6 +95,8 @@ static int legacySendMessage(struct raft *r, struct raft_message *message)
                 return rv;
             }
             return 0;
+        default:
+            break;
     }
 
     rv = r->io->send(r->io, &req->send, &req->message, legacySendMessageCb);
@@ -100,6 +104,8 @@ static int legacySendMessage(struct raft *r, struct raft_message *message)
         switch (req->message.type) {
             case RAFT_APPEND_ENTRIES:
                 legacyAbortAppendEntries(r, &req->message.append_entries);
+                break;
+            default:
                 break;
         }
         raft_free(req);
@@ -1630,6 +1636,8 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
                 raft_configuration_close(&message->install_snapshot.conf);
                 raft_free(message->install_snapshot.data.base);
                 break;
+            default:
+                break;
         }
         return;
     }
@@ -1648,6 +1656,8 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
                 }
                 raft_free(message->append_entries.entries);
             }
+            break;
+        default:
             break;
     }
 

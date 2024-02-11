@@ -257,7 +257,7 @@ RAFT_API unsigned long long raft_digest(const char *text, unsigned long long n);
 /**
  * Log entry types.
  */
-enum {
+enum raft_entry_type {
     RAFT_COMMAND = 1, /* Command for the application FSM. */
     RAFT_BARRIER,     /* Wait for all previous commands to be applied. */
     RAFT_CHANGE       /* Raft configuration change. */
@@ -289,10 +289,10 @@ enum {
  */
 struct raft_entry
 {
-    raft_term term;         /* Term in which the entry was created. */
-    unsigned short type;    /* Type (FSM command, barrier, config change). */
-    struct raft_buffer buf; /* Entry data. */
-    void *batch;            /* Batch that buf's memory points to, if any. */
+    raft_term term;            /* Term in which the entry was created. */
+    enum raft_entry_type type; /* Type (FSM command, barrier, config change). */
+    struct raft_buffer buf;    /* Entry data. */
+    void *batch;               /* Batch that buf's memory points to, if any. */
 };
 
 /**
