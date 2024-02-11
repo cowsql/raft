@@ -454,7 +454,7 @@ struct raft_snapshot_metadata
 /**
  * Type codes of events to be passed to raft_step().
  */
-enum {
+enum raft_event_type {
     RAFT_START = 1, /* Initial event starting the engine with persisted data. */
     RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
@@ -474,7 +474,7 @@ enum {
 struct raft_event
 {
     raft_time time;
-    unsigned char type;
+    enum raft_event_type type;
     unsigned char unused;
     unsigned short capacity;
     unsigned char reserved[4];
