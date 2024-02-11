@@ -489,7 +489,7 @@ static int ensureCapacity(struct raft_log *l)
 
 int logAppend(struct raft_log *l,
               const raft_term term,
-              const unsigned short type,
+              const enum raft_entry_type type,
               const struct raft_buffer *buf,
               void *batch)
 {

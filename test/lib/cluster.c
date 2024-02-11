@@ -458,6 +458,8 @@ static void dropReceiveEvent(struct step *step)
                 &event->receive.message->install_snapshot.conf);
             raft_free(event->receive.message->install_snapshot.data.base);
             break;
+        default:
+            break;
     }
 
     free(event->receive.message);
@@ -509,7 +511,7 @@ static void serverCancelPending(struct test_server *s)
             struct step *current;
             struct raft_message *message;
             current = QUEUE_DATA(head, struct step, queue);
-            munit_assert_int(current->event.type, ==, RAFT_RECEIVE);
+            munit_assert_uint(current->event.type, ==, RAFT_RECEIVE);
             message = current->event.receive.message;
             if (message->server_id /* sender */ == s->raft.id) {
                 step = current;
@@ -710,6 +712,8 @@ static void serverProcessMessages(struct test_server *s,
             case RAFT_INSTALL_SNAPSHOT:
                 serverFillInstallSnapshot(
                     s, &event->receive.message->install_snapshot);
+                break;
+            default:
                 break;
         }
 
@@ -1381,7 +1385,7 @@ static void clusterEnqueueReceives(struct test_cluster *c)
         struct raft_message *message;
         head = QUEUE_HEAD(&c->send);
         step = QUEUE_DATA(head, struct step, queue);
-        munit_assert_int(step->event.type, ==, RAFT_RECEIVE);
+        munit_assert_uint(step->event.type, ==, RAFT_RECEIVE);
         QUEUE_REMOVE(&step->queue);
         message = step->event.receive.message;
 

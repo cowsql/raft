@@ -257,7 +257,7 @@ RAFT_API unsigned long long raft_digest(const char *text, unsigned long long n);
 /**
  * Log entry types.
  */
-enum {
+enum raft_entry_type {
     RAFT_COMMAND = 1, /* Command for the application FSM. */
     RAFT_BARRIER,     /* Wait for all previous commands to be applied. */
     RAFT_CHANGE       /* Raft configuration change. */
@@ -289,10 +289,10 @@ enum {
  */
 struct raft_entry
 {
-    raft_term term;         /* Term in which the entry was created. */
-    unsigned short type;    /* Type (FSM command, barrier, config change). */
-    struct raft_buffer buf; /* Entry data. */
-    void *batch;            /* Batch that buf's memory points to, if any. */
+    raft_term term;            /* Term in which the entry was created. */
+    enum raft_entry_type type; /* Type (FSM command, barrier, config change). */
+    struct raft_buffer buf;    /* Entry data. */
+    void *batch;               /* Batch that buf's memory points to, if any. */
 };
 
 /**
@@ -302,7 +302,7 @@ struct raft_entry
  */
 struct raft_request_vote
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Candidate's term. */
     raft_id candidate_id;      /* ID of the server requesting the vote. */
     raft_index last_log_index; /* Index of candidate's last log entry. */
@@ -316,7 +316,7 @@ struct raft_request_vote
  */
 struct raft_request_vote_result
 {
-    int version;
+    unsigned char version;
     raft_term term;    /* Receiver's current term (candidate updates itself). */
     bool vote_granted; /* True means candidate received vote. */
     bool pre_vote;     /* The response to a pre-vote RequestVote or not. */
@@ -332,7 +332,7 @@ struct raft_request_vote_result
  */
 struct raft_append_entries
 {
-    int version;
+    unsigned char version;
     raft_term term;             /* Leader's term. */
     raft_index prev_log_index;  /* Index of log entry preceeding new ones. */
     raft_term prev_log_term;    /* Term of entry at prev_log_index. */
@@ -346,7 +346,7 @@ struct raft_append_entries
  */
 struct raft_append_entries_result
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Receiver's current_term. */
     raft_index rejected;       /* If non-zero, the index that was rejected. */
     raft_index last_log_index; /* Receiver's last log entry index, as hint. */
@@ -359,7 +359,7 @@ struct raft_append_entries_result
  */
 struct raft_install_snapshot
 {
-    int version;
+    unsigned char version;
     raft_term term;                 /* Leader's term. */
     raft_index last_index;          /* Index of last entry in the snapshot. */
     raft_term last_term;            /* Term of last_index. */
@@ -376,7 +376,7 @@ struct raft_install_snapshot
  */
 struct raft_timeout_now
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Leader's term. */
     raft_index last_log_index; /* Index of leader's last log entry. */
     raft_index last_log_term;  /* Term of log entry at last_log_index. */
@@ -385,7 +385,7 @@ struct raft_timeout_now
 /**
  * Type codes for RPC messages.
  */
-enum {
+enum raft_message_type {
     RAFT_APPEND_ENTRIES = 1,
     RAFT_APPEND_ENTRIES_RESULT,
     RAFT_REQUEST_VOTE,
@@ -423,10 +423,10 @@ enum {
  */
 struct raft_message
 {
-    unsigned short type;        /* RPC type code. */
-    raft_id server_id;          /* ID of sending or destination server. */
-    const char *server_address; /* Address of sending or destination server. */
-    union {                     /* Type-specific data */
+    enum raft_message_type type; /* RPC type code. */
+    raft_id server_id;           /* ID of sending or destination server. */
+    const char *server_address;  /* Address of sending or destination server. */
+    union {                      /* Type-specific data */
         struct raft_request_vote request_vote;
         struct raft_request_vote_result request_vote_result;
         struct raft_append_entries append_entries;
@@ -454,17 +454,17 @@ struct raft_snapshot_metadata
 /**
  * Type codes of events to be passed to raft_step().
  */
-enum {
-    RAFT_START = 1, /* Initial event starting the engine with persisted data. */
-    RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
+enum raft_event_type {
+    RAFT_START = 1, /* Initial event starting loading persisted data. */
+    RAFT_RECEIVE,   /* A message has been received from another server. */
+    RAFT_PERSISTED_ENTRIES,  /* Some entries have been persisted to disk. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
-    RAFT_RECEIVE,            /* A message has been received. */
     RAFT_CONFIGURATION, /* A new committed configuration must be applied. */
     RAFT_SNAPSHOT,      /* A snapshot has been taken. */
     RAFT_TIMEOUT,       /* The timeout has expired. */
     RAFT_SUBMIT,        /* New entries have been submitted. */
     RAFT_CATCH_UP,      /* Start catching-up a server. */
-    RAFT_TRANSFER       /* Submission of leadership trasfer request */
+    RAFT_TRANSFER       /* Start transferring leadership to another server. */
 };
 
 /**
@@ -474,7 +474,7 @@ enum {
 struct raft_event
 {
     raft_time time;
-    unsigned char type;
+    enum raft_event_type type;
     unsigned char unused;
     unsigned short capacity;
     unsigned char reserved[4];
@@ -490,6 +490,10 @@ struct raft_event
         } start;
         struct
         {
+            struct raft_message *message;
+        } receive;
+        struct
+        {
             raft_index index; /* Highest index persisted */
         } persisted_entries;
         struct
@@ -498,10 +502,6 @@ struct raft_event
             size_t offset;
             bool last;
         } persisted_snapshot;
-        struct
-        {
-            struct raft_message *message;
-        } receive;
         struct
         {
             raft_index index;

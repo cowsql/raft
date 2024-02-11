@@ -14,16 +14,6 @@ h3 {
     font-size: 1.0em;
 }
 
-/* Delete toc at the bottom of the page. */
-#toc {
-    display: none;
-}
-
-/* Delete toc in right sidebar. */
-.toc-tree ul li ul li ul {
-    display: none;
-}
-
 /* Hide ads. TODO: is there a way to disable them altogether? */
 #furo-sidebar-ad-placement {
     display: none;

@@ -107,7 +107,7 @@ const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
  */
 int logAppend(struct raft_log *l,
               raft_term term,
-              unsigned short type,
+              enum raft_entry_type type,
               const struct raft_buffer *buf,
               void *batch);
 

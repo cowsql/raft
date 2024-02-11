@@ -10,7 +10,12 @@ It is purely a finite state machine, and it doesn't perform any I/O or system
 calls.
 
 The :c:func:`raft_step()` function is used to advance the state of a
-:c:struct:`raft` state machine, for example:
+:c:struct:`raft` state machine, and is designed to be integrated in some
+external event loop or I/O layer that is in charge of receiving users requests,
+implementing network communication with other Raft servers, persisting data to
+disk.
+
+For example:
 
 .. code-block:: C
 
@@ -25,17 +30,17 @@ The :c:func:`raft_step()` function is used to advance the state of a
 
    raft_step(&raft, &event, &update);
 
-   /* The struct raft_update object contains information about what to do
-    * next, for example it might contain new messages to be sent. */
+   /* The struct raft_update object contains information about the next actions
+    * the I/O layer should perform, for example it might contain new messages to
+    * be sent. */
    if (update.flags & RAFT_UPDATE_MESSAGES) {
-       unsigned i;
        for (unsigned i = 0; i < update.messages.n; i++) {
            /* Send the message contained in update.messages.batch[i] */
        }
    }
 
-Whenever an event occur, the user must call :c:func:`raft_step()`, and process
-the resulting updates.
+Basically whenever an event occurs in the I/O layer, the :c:func:`raft_step()`
+function must be called and the resulting state updates should be performed.
 
 See the `External events`_ section for details about what events to pass to the
 step function in order to drive the state machine forward, and `State updates`_
@@ -52,15 +57,11 @@ Data types
 
     A single raft server in a cluster.
 
-.. c:type:: raft_id
-
-   Hold the value of a raft server ID. Guaranteed to be at least 64-bit long.
-
 
 Public members
 ^^^^^^^^^^^^^^
 
-.. c:member:: raft_id id
+.. c:member:: raft_id raft.id
 
     Server ID. Readonly.
 

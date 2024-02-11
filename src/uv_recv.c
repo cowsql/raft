@@ -97,6 +97,8 @@ static void uvServerDestroy(struct uvServer *s)
             case RAFT_INSTALL_SNAPSHOT:
                 configurationClose(&s->message.install_snapshot.conf);
                 break;
+            default:
+                break;
         }
     }
     if (s->payload.base != NULL) {
