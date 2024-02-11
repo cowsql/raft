@@ -385,7 +385,7 @@ struct raft_timeout_now
 /**
  * Type codes for RPC messages.
  */
-enum {
+enum raft_message_type {
     RAFT_APPEND_ENTRIES = 1,
     RAFT_APPEND_ENTRIES_RESULT,
     RAFT_REQUEST_VOTE,
@@ -423,10 +423,10 @@ enum {
  */
 struct raft_message
 {
-    unsigned short type;        /* RPC type code. */
-    raft_id server_id;          /* ID of sending or destination server. */
-    const char *server_address; /* Address of sending or destination server. */
-    union {                     /* Type-specific data */
+    enum raft_message_type type; /* RPC type code. */
+    raft_id server_id;           /* ID of sending or destination server. */
+    const char *server_address;  /* Address of sending or destination server. */
+    union {                      /* Type-specific data */
         struct raft_request_vote request_vote;
         struct raft_request_vote_result request_vote_result;
         struct raft_append_entries append_entries;
@@ -455,16 +455,16 @@ struct raft_snapshot_metadata
  * Type codes of events to be passed to raft_step().
  */
 enum raft_event_type {
-    RAFT_START = 1, /* Initial event starting the engine with persisted data. */
-    RAFT_PERSISTED_ENTRIES,  /* A batch of entries have been persisted. */
+    RAFT_START = 1, /* Initial event starting loading persisted data. */
+    RAFT_RECEIVE,   /* A message has been received from another server. */
+    RAFT_PERSISTED_ENTRIES,  /* Some entries have been persisted to disk. */
     RAFT_PERSISTED_SNAPSHOT, /* A snapshot has been persisted. */
-    RAFT_RECEIVE,            /* A message has been received. */
     RAFT_CONFIGURATION, /* A new committed configuration must be applied. */
     RAFT_SNAPSHOT,      /* A snapshot has been taken. */
     RAFT_TIMEOUT,       /* The timeout has expired. */
     RAFT_SUBMIT,        /* New entries have been submitted. */
     RAFT_CATCH_UP,      /* Start catching-up a server. */
-    RAFT_TRANSFER       /* Submission of leadership trasfer request */
+    RAFT_TRANSFER       /* Start transferring leadership to another server. */
 };
 
 /**
@@ -490,6 +490,10 @@ struct raft_event
         } start;
         struct
         {
+            struct raft_message *message;
+        } receive;
+        struct
+        {
             raft_index index; /* Highest index persisted */
         } persisted_entries;
         struct
@@ -498,10 +502,6 @@ struct raft_event
             size_t offset;
             bool last;
         } persisted_snapshot;
-        struct
-        {
-            struct raft_message *message;
-        } receive;
         struct
         {
             raft_index index;
