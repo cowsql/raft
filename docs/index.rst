@@ -1,10 +1,7 @@
-.. meta::
-   :hide-toc: true
-
 C-Raft
 ======
 
-C-Raft is a fully asynchronous C implementation of the Raft consensus protocol.
+Production grade asynchronous C implementation of the Raft consensus protocol.
 
 Design
 ------
