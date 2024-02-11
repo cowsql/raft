@@ -302,7 +302,7 @@ struct raft_entry
  */
 struct raft_request_vote
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Candidate's term. */
     raft_id candidate_id;      /* ID of the server requesting the vote. */
     raft_index last_log_index; /* Index of candidate's last log entry. */
@@ -316,7 +316,7 @@ struct raft_request_vote
  */
 struct raft_request_vote_result
 {
-    int version;
+    unsigned char version;
     raft_term term;    /* Receiver's current term (candidate updates itself). */
     bool vote_granted; /* True means candidate received vote. */
     bool pre_vote;     /* The response to a pre-vote RequestVote or not. */
@@ -332,7 +332,7 @@ struct raft_request_vote_result
  */
 struct raft_append_entries
 {
-    int version;
+    unsigned char version;
     raft_term term;             /* Leader's term. */
     raft_index prev_log_index;  /* Index of log entry preceeding new ones. */
     raft_term prev_log_term;    /* Term of entry at prev_log_index. */
@@ -346,7 +346,7 @@ struct raft_append_entries
  */
 struct raft_append_entries_result
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Receiver's current_term. */
     raft_index rejected;       /* If non-zero, the index that was rejected. */
     raft_index last_log_index; /* Receiver's last log entry index, as hint. */
@@ -359,7 +359,7 @@ struct raft_append_entries_result
  */
 struct raft_install_snapshot
 {
-    int version;
+    unsigned char version;
     raft_term term;                 /* Leader's term. */
     raft_index last_index;          /* Index of last entry in the snapshot. */
     raft_term last_term;            /* Term of last_index. */
@@ -376,7 +376,7 @@ struct raft_install_snapshot
  */
 struct raft_timeout_now
 {
-    int version;
+    unsigned char version;
     raft_term term;            /* Leader's term. */
     raft_index last_log_index; /* Index of leader's last log entry. */
     raft_index last_log_term;  /* Term of log entry at last_log_index. */
