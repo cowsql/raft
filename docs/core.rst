@@ -57,10 +57,6 @@ Data types
 
     A single raft server in a cluster.
 
-.. c:type:: raft_id
-
-   Hold the value of a raft server ID. Guaranteed to be at least 64-bit long.
-
 
 Public members
 ^^^^^^^^^^^^^^

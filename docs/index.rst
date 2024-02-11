@@ -53,9 +53,6 @@ full `license`_ text.
 
 .. _license: https://github.com/cowsql/raft/blob/main/LICENSE
 
-toc
-~~~
-
 .. toctree::
    :hidden:
    :maxdepth: 1
