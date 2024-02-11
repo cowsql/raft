@@ -24,7 +24,16 @@ release = version
 #html_theme = 'material'
 # html_theme = 'material'
 #html_theme = 'furo'
-html_theme = 'furo'
+try:
+    import furo
+    html_theme = 'furo'
+except:
+    try:
+        import alabaster
+        html_theme = 'alabaster'
+    except:
+        html_them = 'classic'
+
 html_theme_path = ['_themes']
 
 # Theme options are theme-specific and customize the look and feel of a theme
