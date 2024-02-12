@@ -53,6 +53,18 @@ function.
 Data types
 ----------
 
+.. c:enum:: raft_state
+
+    Type code for the possible states a :c:struct:`raft` struct can be in.
+
+    .. code-block:: C
+
+       enum raft_state {
+           RAFT_FOLLOWER = 1,
+           RAFT_CANDIDATE,
+           RAFT_LEADER
+       };
+
 .. c:struct:: raft
 
     A single raft server in a cluster.
@@ -80,3 +92,24 @@ API
 
    Advance the state of the given raft state machine.
 
+.. c:function:: raft_term raft_current_term(const struct raft *r)
+
+   Return the current term of this server.
+
+.. c:function:: raft_id raft_voted_for(const struct raft *r)
+
+   Return the ID of the server that this server has voted for, or :c:expr:0 if
+   it did not vote.
+
+.. c:function:: enum raft_state raft_state(struct raft *r)
+
+   Return the code of the current Raft state (follower/candidate/leader).
+
+.. c:function:: raft_index raft_commit_index(const struct raft *r);
+
+   Return the commit index of this server.
+
+.. c:function:: raft_time raft_timeout(const struct raft *r)
+
+   Return the time at which the next :c:macro:`RAFT_TIMEOUT` event should be
+   fired.
