@@ -1758,7 +1758,7 @@ bool raft_fixture_step_until_applied(struct raft_fixture *f,
 struct step_state
 {
     unsigned i;
-    int state;
+    enum raft_state state;
 };
 
 static bool hasState(struct raft_fixture *f, void *arg)
@@ -1774,7 +1774,7 @@ bool raft_fixture_step_until_state_is(struct raft_fixture *f,
                                       int state,
                                       unsigned max_msecs)
 {
-    struct step_state target = {i, state};
+    struct step_state target = {i, (enum raft_state)state};
     return raft_fixture_step_until(f, hasState, &target, max_msecs);
 }
 

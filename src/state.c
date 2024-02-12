@@ -4,7 +4,7 @@
 #include "queue.h"
 #include "trail.h"
 
-int raft_state(struct raft *r)
+enum raft_state raft_state(struct raft *r)
 {
     return r->state;
 }

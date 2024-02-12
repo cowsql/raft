@@ -3,15 +3,7 @@
 :c:struct:`raft_event` --- External events
 ==========================================
 
-The :c:struct:`raft_event` struct holds information about events such as:
-
-- a new message has been received from another server
-- disk I/O has been completed for persisting data
-- new entries have been submitted for replication
-
-Users of the core :c:struct:`raft` struct are responsible for implementing an
-I/O layer that manages the above events, filling :c:struct:`raft_event` objects
-as appropriate and passing them to the :c:func:`raft_step()` function.
+Information about new events that should be passed to :c:func:`raft_step()`,
 
 Data types
 ----------
@@ -37,8 +29,16 @@ Data types
 
 .. c:struct:: raft_event
 
-    Represents an external event (for example receiving an RPC message from another
-    server).
+    The :c:struct:`raft_event` struct holds information about events such as:
+
+    - a new message has been received from another server
+    - disk I/O has been completed for persisting data
+    - new entries have been submitted for replication
+
+    Users of the core :c:struct:`raft` struct are responsible for implementing
+    an I/O layer that watches for the above events, filling :c:struct:`raft_event`
+    objects as appropriate and passing them to the :c:func:`raft_step()`
+    function.
 
     Each :c:enum:`raft_event_type` has an associated sub-struct, whose fields
     are described separately in the sections below.

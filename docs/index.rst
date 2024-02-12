@@ -58,5 +58,5 @@ full `license`_ text.
    :maxdepth: 1
 
    quick-start
-   api
+   core
    disk-format
