@@ -568,7 +568,12 @@ struct raft_update
 /**
  * State codes.
  */
-enum { RAFT_UNAVAILABLE, RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER };
+enum raft_state {
+    RAFT_UNAVAILABLE,
+    RAFT_FOLLOWER,
+    RAFT_CANDIDATE,
+    RAFT_LEADER
+};
 
 /**
  * Data structure for efficiently keeping track of the indexes of all entries in
@@ -1153,7 +1158,7 @@ RAFT_API const char *raft_errmsg(struct raft *r);
 /**
  * Return the code of the current raft state (follower/candidate/leader).
  */
-RAFT_API int raft_state(struct raft *r);
+RAFT_API enum raft_state raft_state(struct raft *r);
 
 /**
  * Return the code of the current raft role (spare/standby/voter),
