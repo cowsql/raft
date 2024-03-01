@@ -7,8 +7,8 @@ on:
         description: "Keep BMC server"
         type: boolean
         default: false
-  schedule:
-    - cron: '12 4 * * *'
+  # schedule:
+  #   - cron: '12 4 * * *'
 
 jobs:
   github:
