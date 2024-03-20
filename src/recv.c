@@ -27,10 +27,6 @@ int recvMessage(struct raft *r, struct raft_message *message)
     switch (message->type) {
         case RAFT_APPEND_ENTRIES:
             rv = recvAppendEntries(r, id, address, &message->append_entries);
-            if (rv != 0) {
-                entryBatchesDestroy(message->append_entries.entries,
-                                    message->append_entries.n_entries);
-            }
             break;
         case RAFT_APPEND_ENTRIES_RESULT:
             rv = recvAppendEntriesResult(r, id, address,
