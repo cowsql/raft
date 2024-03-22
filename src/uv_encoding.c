@@ -237,7 +237,7 @@ int uvEncodeMessage(const struct raft_message *message,
             return RAFT_MALFORMED;
     };
 
-    header.base = raft_malloc(header.len);
+    header.base = raft_calloc(1, header.len);
     if (header.base == NULL) {
         goto oom;
     }

@@ -221,7 +221,7 @@ int convertToLeader(struct raft *r)
         r->barrier.type = RAFT_BARRIER;
         r->barrier.term = r->current_term;
         r->barrier.buf.len = 8;
-        r->barrier.buf.base = raft_malloc(r->barrier.buf.len);
+        r->barrier.buf.base = raft_calloc(1, r->barrier.buf.len);
 
         if (r->barrier.buf.base == NULL) {
             rv = RAFT_NOMEM;

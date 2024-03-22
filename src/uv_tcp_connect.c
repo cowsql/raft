@@ -57,7 +57,7 @@ static int uvTcpEncodeHandshake(raft_id id, const char *address, uv_buf_t *buf)
                sizeof(uint64_t) + /* Server ID. */
                sizeof(uint64_t) /* Size of the address buffer */;
     buf->len += address_len;
-    buf->base = RaftHeapMalloc(buf->len);
+    buf->base = RaftHeapCalloc(1, buf->len);
     if (buf->base == NULL) {
         return RAFT_NOMEM;
     }
