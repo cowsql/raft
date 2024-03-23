@@ -307,7 +307,7 @@ void configurationEncodeToBuf(const struct raft_configuration *c,
 
     assert(cursor <= end);
 
-    memset(cursor, 0, (size_t) (end - cursor));
+    memset(cursor, 0, (size_t)(end - cursor));
 }
 
 int configurationEncode(const struct raft_configuration *c,
