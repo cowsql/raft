@@ -96,8 +96,10 @@ int configurationCopy(const struct raft_configuration *src,
 size_t configurationEncodedSize(const struct raft_configuration *c);
 
 /* Encode the given configuration object to the given pre-allocated buffer,
- * which is assumed to be at least configurationEncodedSize(c) bytes. */
-void configurationEncodeToBuf(const struct raft_configuration *c, void *buf);
+ * which must be at least configurationEncodedSize(c) bytes. */
+void configurationEncodeToBuf(const struct raft_configuration *c,
+                              void *buf,
+                              size_t buf_len);
 
 /* Encode the given configuration object. The memory of the returned buffer is
  * allocated using raft_malloc(), and client code is responsible for releasing

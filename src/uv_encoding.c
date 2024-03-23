@@ -180,7 +180,7 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
     bytePut64(&cursor, p->conf_index); /* Configuration's index */
     bytePut64(&cursor, conf_size);     /* Length of configuration */
 
-    configurationEncodeToBuf(&p->conf, cursor); /* Configuration data */
+    configurationEncodeToBuf(&p->conf, cursor, conf_size); /* Configuration data */
     cursor = (uint8_t *)cursor + conf_size;
 
     bytePut64(&cursor, p->data.len); /* Length of snapshot data */
@@ -337,7 +337,10 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
         /* Message type (Either RAFT_COMMAND or RAFT_CHANGE) */
         bytePut8(&cursor, (uint8_t)entry->type);
 
-        cursor = (uint8_t *)cursor + 3; /* Unused */
+        /* Unused */
+        bytePut8(&cursor, 0);
+        bytePut8(&cursor, 0);
+        bytePut8(&cursor, 0);
 
         /* Size of the log entry data, little endian. */
         bytePut32(&cursor, (uint32_t)entry->buf.len);

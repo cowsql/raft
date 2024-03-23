@@ -282,9 +282,12 @@ size_t configurationEncodedSize(const struct raft_configuration *c)
     return bytePad64(n);
 }
 
-void configurationEncodeToBuf(const struct raft_configuration *c, void *buf)
+void configurationEncodeToBuf(const struct raft_configuration *c,
+                              void *buf,
+                              size_t buf_len)
 {
     uint8_t *cursor = buf;
+    uint8_t *end = cursor + buf_len;
     unsigned i;
 
     /* Encoding format version */
@@ -301,6 +304,10 @@ void configurationEncodeToBuf(const struct raft_configuration *c, void *buf)
         assert(server->role < 255);
         bytePut8(&cursor, (uint8_t)server->role);
     };
+
+    assert(cursor <= end);
+
+    memset(cursor, 0, (size_t) (end - cursor));
 }
 
 int configurationEncode(const struct raft_configuration *c,
@@ -321,7 +328,7 @@ int configurationEncode(const struct raft_configuration *c,
         goto err;
     }
 
-    configurationEncodeToBuf(c, buf->base);
+    configurationEncodeToBuf(c, buf->base, buf->len);
 
     return 0;
 

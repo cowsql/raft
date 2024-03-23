@@ -228,6 +228,8 @@ int convertToLeader(struct raft *r)
             goto err;
         }
 
+	*(uint64_t *) r->barrier.buf.base = 0;
+
         r->barrier.batch = r->barrier.buf.base;
 
         rv = ClientSubmit(r, &r->barrier, 1);

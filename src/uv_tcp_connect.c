@@ -52,11 +52,12 @@ struct uvTcpConnect
 static int uvTcpEncodeHandshake(raft_id id, const char *address, uv_buf_t *buf)
 {
     uint8_t *cursor;
-    size_t address_len = bytePad64(strlen(address) + 1);
+    size_t address_len = strlen(address) + 1;
+    size_t address_len_padded = bytePad64(address_len);
     buf->len = sizeof(uint64_t) + /* Protocol version. */
                sizeof(uint64_t) + /* Server ID. */
-               sizeof(uint64_t) /* Size of the address buffer */;
-    buf->len += address_len;
+               sizeof(uint64_t) + /* Size of the address buffer */
+               address_len_padded;
     buf->base = RaftHeapMalloc(buf->len);
     if (buf->base == NULL) {
         return RAFT_NOMEM;
@@ -64,8 +65,10 @@ static int uvTcpEncodeHandshake(raft_id id, const char *address, uv_buf_t *buf)
     cursor = (uint8_t *)buf->base;
     bytePut64(&cursor, UV__TCP_HANDSHAKE_PROTOCOL);
     bytePut64(&cursor, id);
-    bytePut64(&cursor, address_len);
-    strcpy((char *)cursor, address);
+    bytePut64(&cursor, address_len_padded);
+    memcpy(cursor, address, address_len);
+    cursor += address_len;
+    memset(cursor, 0, address_len_padded - address_len);
     return 0;
 }
 
