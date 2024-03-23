@@ -25,7 +25,7 @@ static size_t sizeofRequestVoteV1(void)
 
 static size_t sizeofRequestVote(void)
 {
-    return sizeofRequestVoteV1() + sizeof(uint64_t) /* Leadership transfer. */;
+    return sizeofRequestVoteV1() + sizeof(uint64_t) /* Flags. */;
 }
 
 static size_t sizeofRequestVoteResultV1(void)
@@ -180,7 +180,8 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
     bytePut64(&cursor, p->conf_index); /* Configuration's index */
     bytePut64(&cursor, conf_size);     /* Length of configuration */
 
-    configurationEncodeToBuf(&p->conf, cursor, conf_size); /* Configuration data */
+    configurationEncodeToBuf(&p->conf, cursor,
+                             conf_size); /* Configuration data */
     cursor = (uint8_t *)cursor + conf_size;
 
     bytePut64(&cursor, p->data.len); /* Length of snapshot data */
