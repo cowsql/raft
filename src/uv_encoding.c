@@ -180,7 +180,7 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
     bytePut64(&cursor, p->conf_index); /* Configuration's index */
     bytePut64(&cursor, conf_size);     /* Length of configuration */
 
-    configurationEncodeToBuf(&p->conf, cursor); /* Configuration data */
+    configurationEncodeToBuf(&p->conf, cursor, conf_size); /* Configuration data */
     cursor = (uint8_t *)cursor + conf_size;
 
     bytePut64(&cursor, p->data.len); /* Length of snapshot data */
