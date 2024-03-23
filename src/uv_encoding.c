@@ -25,7 +25,7 @@ static size_t sizeofRequestVoteV1(void)
 
 static size_t sizeofRequestVote(void)
 {
-    return sizeofRequestVoteV1() + sizeof(uint64_t) /* Leadership transfer. */;
+    return sizeofRequestVoteV1() + sizeof(uint64_t) /* Flags. */;
 }
 
 static size_t sizeofRequestVoteResultV1(void)
