@@ -237,7 +237,7 @@ int uvEncodeMessage(const struct raft_message *message,
             return RAFT_MALFORMED;
     };
 
-    header.base = raft_calloc(1, header.len);
+    header.base = raft_malloc(header.len);
     if (header.base == NULL) {
         goto oom;
     }
@@ -337,7 +337,10 @@ void uvEncodeBatchHeader(const struct raft_entry *entries,
         /* Message type (Either RAFT_COMMAND or RAFT_CHANGE) */
         bytePut8(&cursor, (uint8_t)entry->type);
 
-        cursor = (uint8_t *)cursor + 3; /* Unused */
+        /* Unused */
+        bytePut8(&cursor, 0);
+        bytePut8(&cursor, 0);
+        bytePut8(&cursor, 0);
 
         /* Size of the log entry data, little endian. */
         bytePut32(&cursor, (uint32_t)entry->buf.len);
