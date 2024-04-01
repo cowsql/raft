@@ -31,6 +31,7 @@ int recvInstallSnapshot(struct raft *r,
     if (match < 0) {
         infof("local term is higher (%llu vs %llu) -> reject", r->current_term,
               args->term);
+        result->last_log_index = 0;
         goto reply;
     }
 
