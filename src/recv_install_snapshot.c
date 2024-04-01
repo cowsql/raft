@@ -26,14 +26,12 @@ int recvInstallSnapshot(struct raft *r,
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = MESSAGE__FEATURE_CAPACITY;
 
-    /* Initialize field not set in rejection pathway */
-    result->last_log_index = 0;
-
     match = recvEnsureMatchingTerms(r, args->term);
 
     if (match < 0) {
         infof("local term is higher (%llu vs %llu) -> reject", r->current_term,
               args->term);
+        result->last_log_index = 0;
         goto reply;
     }
 
