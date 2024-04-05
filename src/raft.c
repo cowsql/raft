@@ -162,6 +162,7 @@ int raft_init(struct raft *r,
         r->legacy.log = logInit();
         r->legacy.snapshot_threshold = DEFAULT_SNAPSHOT_THRESHOLD;
         r->legacy.snapshot_trailing = DEFAULT_SNAPSHOT_TRAILING;
+        r->legacy.suggest_snapshot = NULL;
         if (r->legacy.log == NULL) {
             goto err_after_address_alloc;
         }
@@ -565,6 +566,11 @@ int raft_step(struct raft *r,
         case RAFT_TRANSFER:
             infof("transfer leadership to %llu", event->transfer.server_id);
             rv = ClientTransfer(r, event->transfer.server_id);
+            break;
+        case RAFT_SUGGEST_SNAPSHOT:
+            infof("suggesting transfer to be performed");
+            r->update->flags |= RAFT_UPDATE_SUGGEST_SNAPSHOT;
+            rv = 0;
             break;
         default:
             rv = RAFT_INVALID;

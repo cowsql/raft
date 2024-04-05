@@ -464,7 +464,8 @@ enum raft_event_type {
     RAFT_TIMEOUT,       /* The timeout has expired. */
     RAFT_SUBMIT,        /* New entries have been submitted. */
     RAFT_CATCH_UP,      /* Start catching-up a server. */
-    RAFT_TRANSFER       /* Start transferring leadership to another server. */
+    RAFT_TRANSFER,      /* Start transferring leadership to another server. */
+    RAFT_SUGGEST_SNAPSHOT /* Make a snapshot attempt whenever possible */
 };
 
 /**
@@ -564,6 +565,7 @@ struct raft_update
 #define RAFT_UPDATE_STATE 1 << 5
 #define RAFT_UPDATE_COMMIT_INDEX 1 << 6
 #define RAFT_UPDATE_TIMEOUT 1 << 7
+#define RAFT_UPDATE_SUGGEST_SNAPSHOT 1 << 8
 
 /**
  * State codes.
@@ -631,6 +633,7 @@ struct raft; /* Forward declaration. */
         struct raft_log *log;              /* Cache on-disk log */             \
         unsigned snapshot_threshold;       /* N. of entries before snapshot */ \
         unsigned snapshot_trailing;        /* N. of entries to retain */       \
+        struct raft_suggest_snapshot *suggest_snapshot; /* Pending snapshot */ \
     } legacy;
 #endif /* RAFT__LEGACY_no */
 
@@ -1385,8 +1388,10 @@ struct raft_fsm
  * has fired.
  */
 
-struct raft_change;   /* Forward declaration */
-struct raft_transfer; /* Forward declaration */
+/* Forward declarations */
+struct raft_change;
+struct raft_transfer;
+struct raft_suggest_snapshot;
 
 /**
  * Bootstrap this raft instance using the given configuration. The instance
@@ -1599,6 +1604,32 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
+
+/**
+ * Asynchronous request perform a snapshot.
+ */
+typedef void (*raft_suggest_snapshot_cb)(struct raft_suggest_snapshot *req, int status);
+struct raft_suggest_snapshot
+{
+    RAFT__REQUEST;
+    raft_suggest_snapshot_cb cb;      /* User callback */
+};
+
+/**
+ * Suggest that the server performs a snapshot. This may or may not be
+ * possible depending on the state of the server. The result of the operation
+ * will be reported to the callback function.
+ *
+ * The callback is called with a status of either 0, indicating that a snapshot
+ * was take, or with status #RAFT_CANCELED, indicating the the operation was
+ * not performed.
+ *
+ * If the function is called again before the callback has been called, the
+ * error #RAFT_BUSY will be returned.
+ */
+RAFT_API int raft_suggest_snapshot(struct raft *r,
+                                   struct raft_suggest_snapshot *req,
+                                   raft_suggest_snapshot_cb cb);
 
 /**
  * Return the index of the last entry that was applied to the local FSM.

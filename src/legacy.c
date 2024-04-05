@@ -547,7 +547,7 @@ static int putSnapshot(struct legacyTakeSnapshot *req)
     return rv;
 }
 
-static bool legacyShouldTakeSnapshot(const struct raft *r)
+static bool legacyShouldTakeSnapshot(const struct raft *r, bool ignore_threshold)
 {
     /* We currently support only synchronous FSMs, where entries are applied
      * synchronously as soon as we advance the commit index, so the two
@@ -569,7 +569,7 @@ static bool legacyShouldTakeSnapshot(const struct raft *r)
 
     /* If we didn't reach the threshold yet, do nothing. */
     if (r->commit_index - r->legacy.log->snapshot.last_index <
-        r->legacy.snapshot_threshold) {
+        r->legacy.snapshot_threshold && !ignore_threshold) {
         return false;
     }
 
@@ -1121,7 +1121,16 @@ static int legacyHandleEvent(struct raft *r,
         r->legacy.step_cb(r);
     }
 
-    if (legacyShouldTakeSnapshot(r)) {
+    if (update.flags & RAFT_UPDATE_SUGGEST_SNAPSHOT) {
+        assert(r->legacy.suggest_snapshot);
+        if (legacyShouldTakeSnapshot(r, true)) {
+            legacyTakeSnapshot(r);
+            r->legacy.suggest_snapshot->cb(r->legacy.suggest_snapshot, 0);
+        } else {
+            r->legacy.suggest_snapshot->cb(r->legacy.suggest_snapshot, RAFT_CANCELED);
+        }
+        r->legacy.suggest_snapshot = NULL;
+    } else if (legacyShouldTakeSnapshot(r, false)) {
         legacyTakeSnapshot(r);
     }
 
@@ -1573,6 +1582,37 @@ int raft_transfer(struct raft *r,
 
     assert(raft_transferee(r) != 0);
     legacyLeadershipTransferInit(r, req, raft_transferee(r), cb);
+
+    return 0;
+
+err:
+    assert(rv != 0);
+    return rv;
+}
+
+int raft_suggest_snapshot(struct raft *r,
+                          struct raft_suggest_snapshot *req,
+                          raft_suggest_snapshot_cb cb)
+{
+    struct raft_event event;
+    int rv;
+
+    if (r->legacy.suggest_snapshot) {
+        rv = RAFT_BUSY;
+        goto err;
+    }
+
+    event.time = r->io->time(r->io);
+    event.type = RAFT_SUGGEST_SNAPSHOT;
+
+    req->cb = cb;
+    r->legacy.suggest_snapshot = req;
+
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        r->legacy.suggest_snapshot = NULL;
+        goto err;
+    }
 
     return 0;
 
