@@ -1606,7 +1606,7 @@ RAFT_API int raft_transfer(struct raft *r,
                            raft_transfer_cb cb);
 
 /**
- * Asynchronous request perform a snapshot.
+ * Asynchronous request to perform a snapshot.
  */
 typedef void (*raft_suggest_snapshot_cb)(struct raft_suggest_snapshot *req, int status);
 struct raft_suggest_snapshot
@@ -1621,7 +1621,7 @@ struct raft_suggest_snapshot
  * will be reported to the callback function.
  *
  * The callback is called with a status of either 0, indicating that a snapshot
- * was take, or with status #RAFT_CANCELED, indicating the the operation was
+ * was taken, or with status #RAFT_CANCELED, indicating that the operation was
  * not performed.
  *
  * If the function is called again before the callback has been called, the

@@ -568,7 +568,7 @@ int raft_step(struct raft *r,
             rv = ClientTransfer(r, event->transfer.server_id);
             break;
         case RAFT_SUGGEST_SNAPSHOT:
-            infof("suggesting transfer to be performed");
+            infof("suggesting snapshot to be performed");
             r->update->flags |= RAFT_UPDATE_SUGGEST_SNAPSHOT;
             rv = 0;
             break;
