@@ -27,9 +27,12 @@
 #define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS) \
     RAFT__STATIC_ASSERT(1 == 1, "no-op")
 #else
-#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS)        \
-    RAFT__STATIC_ASSERT(sizeof(NEW_FIELDS) <= sizeof(OLD_FIELDS), \
-                        "ABI breakage")
+#define RAFT__ASSERT_COMPATIBILITY(OLD_FIELDS, NEW_FIELDS)                  \
+    typedef OLD_FIELDS old_fields_##OLD_FIELDS;                             \
+    typedef NEW_FIELDS new_fields_##NEW_FIELDS;                             \
+    RAFT__STATIC_ASSERT(                                                    \
+        sizeof(new_fields_##NEW_FIELDS) <= sizeof(old_fields_##OLD_FIELDS), \
+        "ABI breakage")
 #endif
 
 /**
