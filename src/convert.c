@@ -22,6 +22,12 @@ static void convertSetState(struct raft *r, unsigned short new_state)
 {
     r->state = new_state;
     r->update->flags |= RAFT_UPDATE_STATE;
+    if (r->state == RAFT_LEADER) {
+        r->voter_contacts = 1;
+        /* Note that we don't reset voter_contacts for follower nodes so the
+         * node that was previously a leader knows how many contacts it just
+         * had, assuming it is still online. */
+    }
 }
 
 /* Clear follower state. */
