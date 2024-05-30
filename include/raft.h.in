@@ -981,6 +981,9 @@ struct raft
     unsigned max_catch_up_rounds;
     unsigned max_catch_up_round_duration;
 
+    /* Current number of voting nodes we are in contact with */
+    int voter_contacts;
+
     /* Fields added after the v0.x ABI freeze, packed in the unused space. */
     union {
         RAFT__RESERVED;
@@ -1602,6 +1605,25 @@ RAFT_API int raft_transfer(struct raft *r,
                            struct raft_transfer *req,
                            raft_id id,
                            raft_transfer_cb cb);
+
+/**
+ * Return the number of voting servers that the leader has recently been in
+ * contact with. This can be used to help determine whether the cluster may be
+ * in a degraded/at risk state.
+ *
+ * In general this should only be called on the leader. This will return valid
+ * values >= 1, because a leader is always in contact with itself.
+ *
+ * The one exception to this is if your server is changing role away from being
+ * the leader, then calling this in the state callback will produce results
+ * that are up to date. Calling on a server that has never been a leader will
+ * return -1.
+ *
+ * Note that the value returned is only up to date as far as the most recent
+ * messages from the followers, and so should not be relied upon for absolute
+ * correctness.
+ */
+RAFT_API int raft_voter_contacts(struct raft *r);
 
 /**
  * Return the index of the last entry that was applied to the local FSM.
