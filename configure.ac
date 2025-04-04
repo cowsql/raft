@@ -96,6 +96,10 @@ AS_IF([test x"$have_zfs" = x"yes"],
    ],
    [])
 
+# Check if kernel >= 6.6 is available (for direct I/O support on tmpfs).
+AX_COMPARE_VERSION($(uname -r|cut -d . -f 1-2), [ge], [6.6],
+       [AC_DEFINE(RAFT_HAVE_TMPFS_WITH_DIRECT_IO)], [])
+
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T

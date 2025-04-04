@@ -270,10 +270,14 @@ SUITE(UvFsProbeCapabilities)
 TEST(UvFsProbeCapabilities, tmpfs, DirTmpfsSetUp, DirTearDown, 0, NULL)
 {
     const char *dir = data;
+    size_t direct_io = 0;
+#if defined(RAFT_HAVE_TMPFS_WITH_DIRECT_IO)
+    direct_io = 4096;
+#endif
     if (dir == NULL) {
         return MUNIT_SKIP;
     }
-    PROBE_CAPABILITIES(dir, 0, false);
+    PROBE_CAPABILITIES(dir, direct_io, false);
     return MUNIT_OK;
 }
 

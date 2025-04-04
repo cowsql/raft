@@ -64,63 +64,6 @@ jobs:
           VERBOSE=1 ASAN=-asan ./test/roles.sh
           VERBOSE=1 ASAN=-asan ./test/recover.sh
 
-  dqlite:
-    if: contains(github.event.pull_request.labels.*.name, 'downstream')
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Install apt deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq automake libtool gcc make libuv1-dev libsqlite3-dev
-
-      - name: Check out raft
-        uses: actions/checkout@v3
-        with:
-          ref: refs/pull/${{ github.event.number }}/head
-          path: raft
-
-      - name: Install raft
-        run: |
-          cd raft
-          autoreconf -i
-          ./configure --prefix=/usr --enable-debug --enable-uv --enable-sanitize --enable-backtrace
-          sudo make -j$(nproc) install
-
-      - name: Check out dqlite
-        uses: actions/checkout@v3
-        with:
-          repository: canonical/dqlite
-          ref: v1.16.0
-          path: dqlite
-
-      - name: Test and install dqlite
-        run: |
-          cd dqlite
-          autoreconf -i
-          ./configure --prefix=/usr --enable-debug --enable-sanitize --enable-backtrace
-          sudo make -j$(nproc) check || (cat ./test-suite.log && false)
-          sudo make install
-
-      - name: Install Go
-        uses: actions/setup-go@v4
-
-      - name: Check out go-dqlite
-        uses: actions/checkout@v3
-        with:
-          repository: canonical/go-dqlite
-          path: go-dqlite
-
-      - name: Test go-dqlite
-        env:
-          GO_DQLITE_MULTITHREAD: '1'
-        run: |
-          cd go-dqlite
-          go get -tags libsqlite3 -t ./...
-          go test -asan -v ./...
-          VERBOSE=1 ASAN=-asan ./test/dqlite-demo.sh
-          VERBOSE=1 ASAN=-asan ./test/roles.sh
-          VERBOSE=1 ASAN=-asan ./test/recover.sh
-
   incus:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
     runs-on: ubuntu-22.04
@@ -136,13 +79,52 @@ jobs:
       matrix:
         suite: ["cluster", "standalone"]
     steps:
+      - name: Performance tuning
+        run: |
+          set -eux
+          # optimize ext4 FSes for performance, not reliability
+          for fs in $(findmnt --noheading --type ext4 --list --uniq | awk '{print $1}'); do
+            # nombcache and data=writeback cannot be changed on remount
+            sudo mount -o remount,noatime,barrier=0,commit=6000 "${fs}" || true
+          done
+
+          # disable dpkg from calling sync()
+          echo "force-unsafe-io" | sudo tee /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+
+      - name: Reclaim some space
+        run: |
+          set -eux
+
+          sudo snap remove lxd --purge
+          # Purge older snap revisions that are disabled/superseded by newer revisions of the same snap
+          snap list --all | while read -r name _ rev _ _ notes _; do
+            [ "${notes}" = "disabled" ] && snap remove "${name}" --revision "${rev}" --purge
+          done || true
+
+          # This was inspired from https://github.com/easimon/maximize-build-space
+          df -h /
+          # dotnet
+          sudo rm -rf /usr/share/dotnet
+          # android
+          sudo rm -rf /usr/local/lib/android
+          # haskell
+          sudo rm -rf /opt/ghc
+          df -h /
+
+      - name: Remove docker
+        run: |
+          set -eux
+          sudo apt-get autopurge -y moby-containerd docker uidmap
+          sudo ip link delete docker0
+          sudo nft flush ruleset
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: lxc/incus
 
       - name: Install Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
 
       - name: Install dependencies
         run: |
@@ -150,17 +132,14 @@ jobs:
           sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
           sudo apt-get update
 
-          sudo snap remove lxd --purge
-          sudo snap remove core20 --purge || true
-          sudo apt-get autopurge moby-containerd docker uidmap -y
-          sudo ip link delete docker0
-          sudo nft flush ruleset
-
-          sudo systemctl mask lxc.service
-          sudo systemctl mask lxc-net.service
+          sudo systemctl mask lxc.service lxc-net.service
 
           sudo apt-get install --no-install-recommends -y \
+            apparmor \
+            bsdextrautils \
+            bzip2 \
             curl \
+            dosfstools \
             git \
             libacl1-dev \
             libcap-dev \
@@ -172,6 +151,7 @@ jobs:
             libtool \
             libudev-dev \
             libuv1-dev \
+            linux-modules-extra-$(uname -r) \
             automake \
             make \
             pkg-config\
@@ -201,25 +181,28 @@ jobs:
             xz-utils \
             zfsutils-linux
 
-          # reclaim some space
+          # Make sure all AppArmor profiles are loaded.
+          sudo systemctl start apparmor
+
+          # Reclaim some space
           sudo apt-get clean
 
           # Download minio.
-          curl -sSfL https://dl.min.io/server/minio/release/linux-amd64/archive/minio_20240116160738.0.0_amd64.deb --output /tmp/minio.deb
+          curl -sSfL https://dl.min.io/server/minio/release/linux-$(dpkg --print-architecture)/archive/minio_20240116160738.0.0_$(dpkg --print-architecture).deb --output /tmp/minio.deb
           sudo apt-get install /tmp/minio.deb --yes
 
           # Download MinIO client
-          curl -sSfL https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2024-01-16T16-06-34Z --output /tmp/mc
+          curl -sSfL https://dl.min.io/client/mc/release/linux-$(dpkg --print-architecture)/archive/mc.RELEASE.2024-01-16T16-06-34Z --output /tmp/mc
           sudo mv /tmp/mc /usr/local/bin/
           sudo chmod +x /usr/local/bin/mc
 
            # Download latest release of openfga server.
           mkdir -p "$(go env GOPATH)/bin"
-          curl -sSfL https://api.github.com/repos/openfga/openfga/releases/latest | jq -r '.assets | .[] | .browser_download_url | select(. | test("_linux_amd64.tar.gz$"))' | xargs -I {} curl -sSfL {} -o openfga.tar.gz
+          curl -sSfL https://api.github.com/repos/openfga/openfga/releases/latest | jq -r ".assets | .[] | .browser_download_url | select(. | test(\"_linux_$(dpkg --print-architecture).tar.gz$\"))" | xargs -I {} curl -sSfL {} -o openfga.tar.gz
           tar -xzf openfga.tar.gz -C "$(go env GOPATH)/bin/"
 
           # Download latest release of openfga cli.
-          curl -sSfL https://api.github.com/repos/openfga/cli/releases/latest | jq -r '.assets | .[] | .browser_download_url | select(. | test("_linux_amd64.tar.gz$"))' | xargs -I {} curl -sSfL {} -o fga.tar.gz
+          curl -sSfL https://api.github.com/repos/openfga/cli/releases/latest | jq -r ".assets | .[] | .browser_download_url | select(. | test(\"_linux_$(dpkg --print-architecture).tar.gz$\"))" | xargs -I {} curl -sSfL {} -o fga.tar.gz
           tar -xzf fga.tar.gz -C "$(go env GOPATH)/bin/"
 
       - name: Check out raft
