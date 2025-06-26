@@ -24,7 +24,7 @@
  * - The name resolve for the hostname is not sucessfull, close the TCP handle
  *   and fire the request callback.
  *
- * - The raft_uv_transport object gets closed, close the TCP handle and and fire
+ * - The raft_uv_transport object gets closed, close the TCP handle and fire
  *   the request callback with RAFT_CANCELED.
  *
  * - Either the TCP connect or the write request fails: close the TCP handle and
