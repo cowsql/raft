@@ -471,7 +471,7 @@ TEST(logAppend, one, setUp, tearDown, 0, NULL)
     return MUNIT_OK;
 }
 
-/* Append two entries to to an empty log. */
+/* Append two entries to an empty log. */
 TEST(logAppend, two, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
