@@ -589,7 +589,7 @@ raft_term raft_current_term(const struct raft *r)
     return r->current_term;
 }
 
-raft_term raft_voted_for(const struct raft *r)
+raft_id raft_voted_for(const struct raft *r)
 {
     return r->voted_for;
 }
