@@ -1015,21 +1015,13 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
 /**
  * Notify the raft engine of the given @event.
  *
- * The @commit_index output parameter will be filled with the index of the most
- * recent entry known to be committed.
+ * The @event parameter should be used to inform the raft engine of a new event
+ * that has occured in the I/O layer (e.g. a new message that has been received
+ * over the network).
  *
- * The @timeout output parameter will be filled with the time at which the next
- * timeout event should be fired. Any previously scheduled timeout that has not
- * yet been fired should be cancelled.
- *
- * The @tasks output parameter will point to an array of @n_tasks pending tasks
- * that should be performed.
- *
- * The memory of the @tasks array is guaranteed to be valid until the next call
- * to raft_step(), and must be freed by consuming code.
- *
- * Tasks of type #RAFT_PERSIST_TERM_AND_VOTE must be carried out synchronously
- * before any subsequent task (such as sending messages) is even started.
+ * The @update output parameter contains changes that user code should perform
+ * after the raft_step() call returns (e.g. new entries that must be persisted,
+ * new messages that must be sent, etc.).
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
