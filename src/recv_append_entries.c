@@ -157,7 +157,7 @@ reply:
     result->term = r->current_term;
 
     /* Free the entries batch, if any. */
-    if (args->n_entries) {
+    if (args->n_entries > 0) {
         assert(args->entries[0].batch != NULL);
         raft_free(args->entries[0].batch);
     }
@@ -177,7 +177,7 @@ reply:
 
 err:
     assert(rv != 0);
-    if (args->n_entries) {
+    if (args->n_entries > 0) {
         assert(args->entries[0].batch != NULL);
         raft_free(args->entries[0].batch);
     }
