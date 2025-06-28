@@ -3,8 +3,8 @@
 #include "heap.h"
 #include "queue.h"
 
-/* Ensure that the r->messages array has at least n_messages slots, and expand it
- * if needed.
+/* Ensure that the r->messages array has at least n_messages slots, and expand
+ * it if needed.
  *
  * Return NULL if no-memory is available. */
 static int messageEnsureQueueCapacity(struct raft *r, const unsigned n_messages)
