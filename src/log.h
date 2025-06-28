@@ -76,7 +76,7 @@ raft_index logLastIndex(struct raft_log *l);
 raft_term logLastTerm(struct raft_log *l);
 
 /* Get the term of the entry with the given index. Return #0 if @index is *
- * greater than the last index of the log, or if it's lower than oldest index we
+ * greater than the last index of the log, or if it's lower than the oldest index we
  * know the term of (either because it's outstanding or because it's the last
  * entry in the most recent snapshot). */
 raft_term logTermOf(struct raft_log *l, raft_index index);

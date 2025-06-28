@@ -15,7 +15,7 @@
 #define infof(...) Infof(r->tracer, "  " __VA_ARGS__)
 #define tracef(...) Tracef(r->tracer, __VA_ARGS__)
 
-/* Emit a trace info message summarizing the entries being submmitted. */
+/* Emit a trace info message summarizing the entries being submitted. */
 static void clientEmitSubmissionMessage(const struct raft *r,
                                         const raft_index index,
                                         const struct raft_entry *entries,

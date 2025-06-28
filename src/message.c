@@ -3,7 +3,7 @@
 #include "heap.h"
 #include "queue.h"
 
-/* Ensure that the r->messages array as at least n_messages slots, and expand it
+/* Ensure that the r->messages array has at least n_messages slots, and expand it
  * if needed.
  *
  * Return NULL if no-memory is available. */

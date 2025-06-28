@@ -16,7 +16,7 @@
 /* Maximum number of log entries. */
 #define MAX_LOG_ENTRIES 15
 
-/* Track the event to to fire in a cluster step. */
+/* Track the event to fire in a cluster step. */
 struct step
 {
     raft_id id;              /* Target server ID. */
