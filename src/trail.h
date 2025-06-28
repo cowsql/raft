@@ -30,9 +30,9 @@ raft_index TrailLastIndex(const struct raft_trail *t);
 raft_term TrailLastTerm(const struct raft_trail *t);
 
 /* Get the term of the entry with the given index. Return 0 if index is greater
- * than the last index of the log, or if it's lower than the oldest index we know
- * the term of (either because it's outstanding or because it's the last entry
- * in the most recent snapshot). */
+ * than the last index of the log, or if it's lower than the oldest index we
+ * know the term of (either because it's outstanding or because it's the last
+ * entry in the most recent snapshot). */
 raft_term TrailTermOf(const struct raft_trail *t, raft_index index);
 
 /* Record a new entry at TrailLastIndex() + 1, with the given term.
