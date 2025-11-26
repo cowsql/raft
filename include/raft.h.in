@@ -1022,6 +1022,153 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  * The @update output parameter contains changes that user code should perform
  * after the raft_step() call returns (e.g. new entries that must be persisted,
  * new messages that must be sent, etc.).
+ *
+ * Memory Ownership Model for raft_event Fields
+ * =============================================
+ *
+ * The caller must understand the memory ownership semantics for each event type
+ * to avoid memory leaks or use-after-free bugs. This section documents who owns
+ * the memory for each field in the raft_event union after raft_step() returns.
+ *
+ * RAFT_START Event
+ * ----------------
+ * - event->start.term: Scalar value (no ownership concerns)
+ * - event->start.voted_for: Scalar value (no ownership concerns)
+ * - event->start.metadata: PARTIAL OWNERSHIP TRANSFER. The nested configuration
+ *   field is transferred to raft (moved into r->configuration). The metadata
+ *   structure itself is NOT freed by raft and must be freed by the caller after
+ *   raft_step() returns, regardless of success or error. The caller must NOT
+ *   close the configuration field after the call, as it has been transferred.
+ * - event->start.start_index: Scalar value (no ownership concerns)
+ * - event->start.entries: OWNERSHIP TRANSFERRED to raft. On error, raft_step()
+ *   automatically frees the entries via entryBatchesDestroy(). On success, the
+ *   entries are consumed. The caller must NOT free the entries after calling
+ *   raft_step(), regardless of success or error. The entries must be allocated
+ *   such that all entries in a batch share the same batch pointer, and each
+ *   distinct batch pointer appears only once in the entries array for proper
+ *   cleanup.
+ * - event->start.n_entries: Scalar value (no ownership concerns)
+ *
+ * RAFT_RECEIVE Event
+ * ------------------
+ * - event->receive.message: The message structure itself is NOT owned by raft
+ *   (caller retains ownership), EXCEPT for the following nested fields which ARE
+ *   owned by raft after raft_step() is called, REGARDLESS of success or error:
+ *
+ *   For RAFT_APPEND_ENTRIES messages:
+ *     - message->append_entries.entries: OWNERSHIP TRANSFERRED immediately upon
+ *       calling raft_step(). The entries array and the batch memory referenced by
+ *       entries[].batch are owned by raft after the call. The caller must NOT free
+ *       this memory, even if raft_step() returns an error.
+ *
+ *   For RAFT_INSTALL_SNAPSHOT messages:
+ *     - message->install_snapshot.data.base: OWNERSHIP TRANSFERRED immediately upon
+ *       calling raft_step(). The snapshot data buffer is owned by raft after the
+ *       call. The caller must NOT free this memory, even if raft_step() returns an
+ *       error.
+ *     - message->install_snapshot.conf: OWNERSHIP TRANSFERRED immediately upon
+ *       calling raft_step(). The configuration is owned by raft after the call.
+ *       The caller must NOT close this configuration, even if raft_step() returns
+ *       an error.
+ *
+ *   All other message types: No nested ownership transfer; the message content
+ *   is copied or consumed during processing.
+ *
+ *   IMPORTANT: The ownership transfer happens immediately when raft_step() is
+ *   called, not based on the result. This means the caller must NEVER attempt to
+ *   free or clean up these transferred fields, regardless of whether raft_step()
+ *   succeeds or fails.
+ *
+ * RAFT_PERSISTED_ENTRIES Event
+ * ----------------------------
+ * - event->persisted_entries.index: Scalar value (no ownership concerns)
+ *
+ * RAFT_PERSISTED_SNAPSHOT Event
+ * -----------------------------
+ * - event->persisted_snapshot.metadata: Passed by value; the structure is copied.
+ *   The nested configuration is copied internally. Caller retains ownership of
+ *   the event structure.
+ * - event->persisted_snapshot.offset: Scalar value (no ownership concerns)
+ * - event->persisted_snapshot.last: Scalar value (no ownership concerns)
+ *
+ * RAFT_CONFIGURATION Event
+ * ------------------------
+ * - event->configuration.index: Scalar value (no ownership concerns)
+ * - event->configuration.conf: OWNERSHIP TRANSFERRED to raft. The configuration
+ *   will be consumed if needed or closed if not needed. The caller must NOT close
+ *   this configuration after calling raft_step(), regardless of success or error.
+ *
+ * RAFT_SNAPSHOT Event
+ * -------------------
+ * - event->snapshot.metadata: Passed by value; the structure is copied. The
+ *   nested configuration is NOT deeply copied - the caller must ensure the
+ *   configuration remains valid during the raft_step() call, but may free it
+ *   afterward. Caller retains ownership.
+ * - event->snapshot.trailing: Scalar value (no ownership concerns)
+ *
+ * RAFT_TIMEOUT Event
+ * ------------------
+ * No event-specific fields (no ownership concerns)
+ *
+ * RAFT_SUBMIT Event
+ * -----------------
+ * - event->submit.entries: OWNERSHIP TRANSFERRED to raft on success. On error,
+ *   the caller must free the entries. The entries must have their batch field
+ *   properly set (non-NULL) as raft expects batched entries. Each entry's buf.base
+ *   must point into the batch memory. On error, the caller is responsible for
+ *   freeing both the entries array and the referenced batches.
+ * - event->submit.n: Scalar value (no ownership concerns)
+ *
+ * RAFT_CATCH_UP Event
+ * -------------------
+ * - event->catch_up.server_id: Scalar value (no ownership concerns)
+ *
+ * RAFT_TRANSFER Event
+ * -------------------
+ * - event->transfer.server_id: Scalar value (no ownership concerns)
+ *
+ * Error Handling and Memory Cleanup
+ * ==================================
+ *
+ * When raft_step() returns an error:
+ * - For RAFT_START events: The caller must free the metadata structure itself
+ *   (but NOT the configuration field, which has been transferred). The entries
+ *   are automatically freed by raft_step() on error, so the caller must NOT
+ *   free them.
+ * - For RAFT_SUBMIT events: The caller must clean up entries using
+ *   entryBatchesDestroy() or equivalent.
+ * - For RAFT_RECEIVE events: Ownership of transferred nested fields (entries,
+ *   snapshot data, configurations) has ALREADY been transferred even on error,
+ *   so the caller must NOT free them.
+ * - For RAFT_CONFIGURATION events: Ownership has been transferred; the caller
+ *   must NOT close the configuration.
+ * - For all other events: No cleanup required by caller.
+ *
+ * The caller should check the return value and handle errors appropriately:
+ *
+ *   int rv = raft_step(r, &event, &update);
+ *   if (rv != 0) {
+ *       if (event.type == RAFT_START) {
+ *           // Clean up metadata structure (but not the configuration!)
+ *           if (event.start.metadata != NULL) {
+ *               raft_free(event.start.metadata);
+ *           }
+ *           // DO NOT free entries - raft_step already freed them on error
+ *       } else if (event.type == RAFT_SUBMIT) {
+ *           // Clean up entries on submit error
+ *           entryBatchesDestroy(event.submit.entries, event.submit.n);
+ *       }
+ *       // Handle other error cases...
+ *   } else {
+ *       // On success
+ *       if (event.type == RAFT_START) {
+ *           // Still need to free the metadata structure itself
+ *           if (event.start.metadata != NULL) {
+ *               raft_free(event.start.metadata);
+ *           }
+ *           // DO NOT free entries or configuration
+ *       }
+ *   }
  */
 RAFT_API int raft_step(struct raft *r,
                        struct raft_event *event,
