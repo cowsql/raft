@@ -70,7 +70,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ["cluster", "standalone_core"]
+        suite:
+          - cluster
+          - standalone_core
+          - standalone_container
+          - standalone_network
+          - standalone_storage
     steps:
       - name: Performance tuning
         run: |
