@@ -66,18 +66,16 @@ jobs:
 
   incus:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
-    runs-on: ubuntu-22.04
-    env:
-      CGO_LDFLAGS_ALLOW: "(-Wl,-wrap,pthread_create)|(-Wl,-z,now)"
-      INCUS_SHIFTFS_DISABLE: "true"
-      INCUS_VERBOSE: "1"
-      INCUS_OFFLINE: "1"
-      INCUS_TMPFS: "1"
-      INCUS_REQUIRED_TESTS: "test_storage_buckets"
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        suite: ["cluster", "standalone"]
+        suite:
+          - cluster
+          - standalone_core
+          - standalone_container
+          - standalone_network
+          - standalone_storage
     steps:
       - name: Performance tuning
         run: |
@@ -119,17 +117,19 @@ jobs:
           sudo nft flush ruleset
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: lxc/incus
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
 
       - name: Install dependencies
         run: |
           set -x
-          sudo add-apt-repository ppa:ubuntu-lxc/lxc-git-master -y --no-update
+          sudo add-apt-repository ppa:ubuntu-lxc/daily -y --no-update
           sudo apt-get update
 
           sudo systemctl mask lxc.service lxc-net.service
@@ -144,6 +144,7 @@ jobs:
             libacl1-dev \
             libcap-dev \
             libdbus-1-dev \
+            libelf-dev \
             liblxc-dev \
             libseccomp-dev \
             libselinux-dev \
@@ -153,6 +154,7 @@ jobs:
             libuv1-dev \
             linux-modules-extra-$(uname -r) \
             automake \
+            llvm \
             make \
             pkg-config\
             acl \
@@ -237,15 +239,35 @@ jobs:
           go mod download
 
       - name: Run Incus build
+        env:
+          CGO_LDFLAGS_ALLOW: "(-Wl,-wrap,pthread_create)|(-Wl,-z,now)"
         run: |
           make
 
+      - name: "Ensure offline mode (block image server)"
+        run: |
+          sudo nft add table inet filter
+          sudo nft add chain 'inet filter output { type filter hook output priority 10 ; }'
+          sudo nft add rule inet filter output ip daddr 45.45.148.8 reject
+          sudo nft add rule inet filter output ip6 daddr 2602:fc62:a:1::8 reject
+
       - name: "Run system tests"
+        env:
+          CGO_LDFLAGS_ALLOW: "(-Wl,-wrap,pthread_create)|(-Wl,-z,now)"
+          INCUS_CEPH_CLUSTER: "ceph"
+          INCUS_CEPH_CEPHFS: "cephfs"
+          INCUS_CEPH_CEPHOBJECT_RADOSGW: "http://127.0.0.1"
+          INCUS_LINSTOR_LOCAL_SATELLITE: "local"
+          INCUS_CONCURRENT: "1"
+          INCUS_VERBOSE: "1"
+          INCUS_OFFLINE: "1"
+          INCUS_TMPFS: "1"
+          INCUS_REQUIRED_TESTS: "test_storage_buckets"
         run: |
           chmod +x ~
           echo "root:1000000:1000000000" | sudo tee /etc/subuid /etc/subgid
           cd test
-          sudo --preserve-env=PATH,GOPATH,GITHUB_ACTIONS,INCUS_VERBOSE,INCUS_BACKEND,INCUS_OFFLINE,INCUS_SKIP_TESTS,INCUS_REQUIRED_TESTS,INCUS_SHIFTFS_DISABLE INCUS_BACKEND=dir ./main.sh ${{ matrix.suite }}
+          sudo --preserve-env=PATH,GOPATH,GITHUB_ACTIONS,INCUS_VERBOSE,INCUS_BACKEND,INCUS_CEPH_CLUSTER,INCUS_CEPH_CEPHFS,INCUS_CEPH_CEPHOBJECT_RADOSGW,INCUS_LINSTOR_LOCAL_SATELLITE,INCUS_LINSTOR_CLUSTER,INCUS_OFFLINE,INCUS_SKIP_TESTS,INCUS_REQUIRED_TESTS, INCUS_BACKEND=dir ./main.sh ${{ matrix.suite }}
 
   jepsen:
     if: contains(github.event.pull_request.labels.*.name, 'downstream')
