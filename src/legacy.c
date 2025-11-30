@@ -1748,10 +1748,10 @@ int raft_start(struct raft *r)
     event.start.entries = entries;
     event.start.n_entries = (unsigned)n_entries;
 
-    LegacyForwardToRaftIo(r, &event);
-
-    if (entries != NULL) {
-        raft_free(entries);
+    rv = LegacyForwardToRaftIo(r, &event);
+    if (rv != 0) {
+        tracef("start event failed %d", rv);
+        goto out;
     }
 
     /* Start the I/O backend. The tickCb function is expected to fire every
@@ -1764,6 +1764,13 @@ int raft_start(struct raft *r)
     }
 
 out:
+    if (entries != NULL) {
+        if (rv != 0) {
+            entryBatchesDestroy(entries, n_entries);
+        }
+        raft_free(entries);
+    }
+
     if (snapshot != NULL) {
         raft_configuration_close(&snapshot->configuration);
         raft_free(snapshot->bufs);
