@@ -1765,6 +1765,7 @@ int raft_start(struct raft *r)
 
 out:
     if (snapshot != NULL) {
+        raft_configuration_close(&snapshot->configuration);
         raft_free(snapshot->bufs);
         raft_free(snapshot);
     }

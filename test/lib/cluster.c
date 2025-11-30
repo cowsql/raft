@@ -873,6 +873,7 @@ static void serverStart(struct test_server *s)
     munit_assert_int(rv, ==, 0);
 
     if (event.start.metadata != NULL) {
+        raft_configuration_close(&event.start.metadata->configuration);
         free(event.start.metadata);
     }
 

@@ -120,10 +120,17 @@ err:
 
 int RestoreSnapshot(struct raft *r, struct raft_snapshot_metadata *metadata)
 {
+    struct raft_configuration configuration;
     int rv;
 
+    /* Make a copy of the given configuration. */
+    rv = configurationCopy(&metadata->configuration, &configuration);
+    if (rv != 0) {
+        return rv;
+    }
+
     configurationClose(&r->configuration);
-    r->configuration = metadata->configuration;
+    r->configuration = configuration;
     r->configuration_committed_index = metadata->configuration_index;
     r->configuration_uncommitted_index = 0;
 
