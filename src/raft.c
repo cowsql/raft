@@ -349,7 +349,6 @@ static int stepStart(struct raft *r,
         snapshot_term = metadata->term;
         rv = RestoreSnapshot(r, metadata);
         if (rv != 0) {
-            entryBatchesDestroy(entries, n_entries);
             return rv;
         }
     } else if (n_entries > 0) {
@@ -369,7 +368,6 @@ static int stepStart(struct raft *r,
     rv = RestoreEntries(r, snapshot_index, snapshot_term, start_index, entries,
                         n_entries);
     if (rv != 0) {
-        entryBatchesDestroy(entries, n_entries);
         return rv;
     }
 

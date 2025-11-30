@@ -900,18 +900,11 @@ int replicationPersistSnapshotDone(struct raft *r,
     rv = RestoreSnapshot(r, metadata);
     if (rv != 0) {
         tracef("restore snapshot %llu: %s", metadata->index, raft_strerror(rv));
-        goto discard;
+        result.rejected = metadata->index;
     }
 
-    goto respond;
-
-discard:
-    /* In case of error we must also free the snapshot data buffer and free the
-     * configuration. */
-    result.rejected = metadata->index;
     raft_configuration_close(&metadata->configuration);
 
-respond:
     if (r->state == RAFT_FOLLOWER) {
         result.last_log_index = r->last_stored;
         result.capacity = r->capacity;
