@@ -1034,19 +1034,24 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  * ----------------
  * - event->start.term: Scalar value (no ownership concerns)
  * - event->start.voted_for: Scalar value (no ownership concerns)
- * - event->start.metadata: PARTIAL OWNERSHIP TRANSFER. The nested configuration
- *   field is transferred to raft (moved into r->configuration). The metadata
- *   structure itself is NOT freed by raft and must be freed by the caller after
- *   raft_step() returns, regardless of success or error. The caller must NOT
- *   close the configuration field after the call, as it has been transferred.
+ * - event->start.metadata: Ownership fully remains with the caller, who can
+ *   free it (and any nested field) after the call to raft_step.
  * - event->start.start_index: Scalar value (no ownership concerns)
- * - event->start.entries: OWNERSHIP TRANSFERRED to raft. On error, raft_step()
- *   automatically frees the entries via entryBatchesDestroy(). On success, the
- *   entries are consumed. The caller must NOT free the entries after calling
- *   raft_step(), regardless of success or error. The entries must be allocated
- *   such that all entries in a batch share the same batch pointer, and each
- *   distinct batch pointer appears only once in the entries array for proper
- *   cleanup.
+ * - event->start.entries: PARTIAL OWNERSHIP TRANSFERRED. The ownership of the
+ *   event->start.entries pointer always remains with the caller. On success,
+ *   the entries themselves are consumed by the RAFT instance and must not be
+ *   freed. On error, ownership of the individual entries remain with the
+ *   caller. The entries must be allocated with raft_malloc (or another raft_*
+ *   allocation functions) such that all entries in a batch share the same
+ *   batch pointer, and each distinct batch pointer appears only once in the
+ *   entries array for proper cleanup. For instance if the entries array is
+ *   made of 4 entries, entries[0].batch should be set to the allocated memory
+ *   where the 4 entries are located, while entries[1,2,3].batch should be set
+ *   to NULL. entries[*].buf.base should point to memory inside the batch.
+ *   If successfully consumed by RAFT, raft_free will be called on
+ *   entries[0].batch when RAFT no longer needs these entries to be kept in
+ *   memory. Hence the caller must NOT free the entries after a successful call
+ *   to raft_step().
  * - event->start.n_entries: Scalar value (no ownership concerns)
  *
  * RAFT_RECEIVE Event
