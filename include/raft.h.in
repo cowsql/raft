@@ -1041,17 +1041,32 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  *   event->start.entries pointer always remains with the caller. On success,
  *   the entries themselves are consumed by the RAFT instance and must not be
  *   freed. On error, ownership of the individual entries remain with the
- *   caller. The entries must be allocated with raft_malloc (or another raft_*
- *   allocation functions) such that all entries in a batch share the same
- *   batch pointer, and each distinct batch pointer appears only once in the
- *   entries array for proper cleanup. For instance if the entries array is
- *   made of 4 entries, entries[0].batch should be set to the allocated memory
- *   where the 4 entries are located, while entries[1,2,3].batch should be set
- *   to NULL. entries[*].buf.base should point to memory inside the batch.
- *   If successfully consumed by RAFT, raft_free will be called on
- *   entries[0].batch when RAFT no longer needs these entries to be kept in
- *   memory. Hence the caller must NOT free the entries after a successful call
- *   to raft_step().
+ *   caller. If successfully consumed by RAFT, raft_free will be called on
+ *   entries[x].batch once per unique batch when RAFT no longer needs these
+ *   entries to be kept in memory. Hence the caller must NOT free the entries
+ *   after a successful call to raft_step().
+ *
+ *   The entries must be allocated with raft_malloc (or another raft_*
+ *   allocation functions). The batch pointer of each entry must point to the
+ *   base address of the allocated memory where the entry is located. As an
+ *   example, with 7 entries placed into two batches, the batch pointers may
+ *   look like the following:
+ *
+ *   entries[0].batch = <mem-location-1>; // Allocation for the first 4 entries
+ *   entries[1].batch = <mem-location-1>;
+ *   entries[2].batch = <mem-location-1>;
+ *   entries[3].batch = <mem-location-1>;
+ *   entries[4].batch = <mem-location-2>; // Allocation for the last 3 entries
+ *   entries[5].batch = <mem-location-2>;
+ *   entries[6].batch = <mem-location-2>;
+ *
+ *   Importantly, batch locations cannot alternate, e.g. the following would be
+ *   invalid:
+ *
+ *   entries[0].batch = <mem-location-1>;
+ *   entries[1].batch = <mem-location-2>;
+ *   entries[2].batch = <mem-location-1>;
+ *
  * - event->start.n_entries: Scalar value (no ownership concerns)
  *
  * RAFT_RECEIVE Event
@@ -1065,6 +1080,14 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  *       calling raft_step(). The entries array and the batch memory referenced by
  *       entries[].batch are owned by raft after the call. The caller must NOT free
  *       this memory, even if raft_step() returns an error.
+ *
+ *       IMPORTANT: Contrary to RAFT_START, RAFT_RECEIVE expects all the entries
+ *       to belong to a SINGLE batch, so all the entries' batch pointer must be
+ *       the same. This is because we expect RAFT_RECEIVE events to come from the
+ *       network and hence to have been placed in a single allocation. The batch
+ *       pointer does not need to point to the start of the first entry's data,
+ *       it simply must point to the address to pass to raft_free when it RAFT
+ *       will deallocate it.
  *
  *   For RAFT_INSTALL_SNAPSHOT messages:
  *     - message->install_snapshot.data.base: OWNERSHIP TRANSFERRED immediately upon
