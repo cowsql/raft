@@ -1076,10 +1076,12 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  *   owned by raft after raft_step() is called, REGARDLESS of success or error:
  *
  *   For RAFT_APPEND_ENTRIES messages:
- *     - message->append_entries.entries: OWNERSHIP TRANSFERRED immediately upon
- *       calling raft_step(). The entries array and the batch memory referenced by
- *       entries[].batch are owned by raft after the call. The caller must NOT free
- *       this memory, even if raft_step() returns an error.
+ *     - message->append_entries.entries: OWNERSHIP PARTIALLY TRANSFERRED upon
+ *       calling raft_step(). The caller retains ownership of the entries array.
+ *       The batch memory referenced by entries[].batch is owned by raft after
+ *       the call. The caller must NOT free this memory, even if raft_step()
+ *       succeeds. The ownership of the entries' memory is however left to the
+ *       caller in case of a failure of raft_step().
  *
  *       IMPORTANT: Contrary to RAFT_START, RAFT_RECEIVE expects all the entries
  *       to belong to a SINGLE batch, so all the entries' batch pointer must be
@@ -1090,14 +1092,11 @@ RAFT_API void raft_seed(struct raft *r, unsigned random);
  *       will deallocate it.
  *
  *   For RAFT_INSTALL_SNAPSHOT messages:
- *     - message->install_snapshot.data.base: OWNERSHIP TRANSFERRED immediately upon
- *       calling raft_step(). The snapshot data buffer is owned by raft after the
- *       call. The caller must NOT free this memory, even if raft_step() returns an
- *       error.
- *     - message->install_snapshot.conf: OWNERSHIP TRANSFERRED immediately upon
- *       calling raft_step(). The configuration is owned by raft after the call.
- *       The caller must NOT close this configuration, even if raft_step() returns
- *       an error.
+ *     - message->install_snapshot.data.base: OWNERSHIP TRANSFERRED, the snapshot
+ *       data buffer is owned by raft after a successful call to raft_step. The
+ *       caller must NOT free this memory, unless raft_step returns an error, in
+ *       which case the caller retains ownership of the memory.
+ *     - message->install_snapshot.conf: ownership is retained by the caller.
  *
  *   All other message types: No nested ownership transfer; the message content
  *   is copied or consumed during processing.
