@@ -30,6 +30,15 @@ int recvAppendEntries(struct raft *r,
     assert(args != NULL);
     assert(address != NULL);
 
+    /* Sanity check that all entries belong to the same batch */
+    if (args->n_entries > 0) {
+        unsigned i;
+        assert(args->entries[0].batch != NULL);
+        for (i = 1; i < args->n_entries; i++) {
+            assert(args->entries[i].batch == args->entries[i - 1].batch);
+        }
+    }
+
     result->rejected = args->prev_log_index;
     result->version = MESSAGE__APPEND_ENTRIES_RESULT_VERSION;
     result->features = MESSAGE__FEATURE_CAPACITY;
