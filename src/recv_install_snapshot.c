@@ -75,10 +75,6 @@ reply:
     result->term = r->current_term;
     result->rejected = 0;
 
-    /* Free the snapshot data. */
-    raft_configuration_close(&args->conf);
-    raft_free(args->data.base);
-
     result->capacity = r->capacity;
 
     message.type = RAFT_APPEND_ENTRIES_RESULT;
@@ -89,6 +85,9 @@ reply:
     if (rv != 0) {
         return rv;
     }
+
+    /* Free the snapshot data. */
+    raft_free(args->data.base);
 
     return 0;
 }
