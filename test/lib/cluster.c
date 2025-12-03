@@ -1064,8 +1064,16 @@ static void serverCompleteReceive(struct test_server *s, struct step *step)
     rv = serverStep(s, event);
     munit_assert_int(rv, ==, 0);
 
-    if (event->receive.message->type == RAFT_APPEND_ENTRIES) {
-        raft_free(event->receive.message->append_entries.entries);
+    switch (event->receive.message->type) {
+        case RAFT_APPEND_ENTRIES:
+            raft_free(event->receive.message->append_entries.entries);
+            break;
+        case RAFT_INSTALL_SNAPSHOT:
+            raft_configuration_close(
+                &event->receive.message->install_snapshot.conf);
+            break;
+        default:
+            break;
     }
 
     free(event->receive.message);

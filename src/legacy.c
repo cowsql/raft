@@ -1661,6 +1661,12 @@ static void recvCb(struct raft_io *io, struct raft_message *message)
                 raft_free(message->append_entries.entries);
             }
             break;
+        case RAFT_INSTALL_SNAPSHOT:
+            if (rv != 0) {
+                raft_free(message->install_snapshot.data.base);
+            }
+            raft_configuration_close(&message->install_snapshot.conf);
+            break;
         default:
             break;
     }
