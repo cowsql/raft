@@ -635,6 +635,7 @@ static void serverProcessEntries(struct test_server *s,
     if (n > 0) {
         munit_assert_ptr_not_null(entries[0].batch);
         raft_free(entries[0].batch);
+        raft_free(entries);
     }
 
     step->id = s->raft.id;

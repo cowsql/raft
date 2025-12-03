@@ -193,7 +193,8 @@ static int legacyHandleUpdateEntries(struct raft *r,
 
     req = raft_malloc(sizeof *req);
     if (req == NULL) {
-        return RAFT_NOMEM;
+        rv = RAFT_NOMEM;
+        goto err;
     }
     req->r = r;
     req->index = index;
@@ -208,27 +209,28 @@ static int legacyHandleUpdateEntries(struct raft *r,
         struct raft_entry entry;
         rv = entryCopy(&entries[i], &entry);
         if (rv != 0) {
-            goto err;
+            goto err_after_req_alloc;
         }
         rv = logAppend(r->legacy.log, entry.term, entry.type, &entry.buf, NULL);
         if (rv != 0) {
-            goto err;
+            goto err_after_req_alloc;
         }
     }
 
     assert(n > 0);
     assert(entries[0].batch != NULL);
     raft_free(entries[0].batch);
+    raft_free(entries);
 
     rv = r->io->truncate(r->io, index);
     if (rv != 0) {
-        goto err;
+        goto err_after_req_alloc;
     }
 
     rv = logAcquire(r->legacy.log, index, &acquired, &n_acquired);
     assert(n_acquired == n);
     if (rv != 0) {
-        goto err;
+        goto err_after_req_alloc;
     }
 
     req->entries = acquired;
@@ -243,10 +245,12 @@ static int legacyHandleUpdateEntries(struct raft *r,
 
 err_after_acquired:
     logRelease(r->legacy.log, index, acquired, n_acquired);
-err:
+err_after_req_alloc:
     logDiscard(r->legacy.log, index);
     raft_free(req);
     ErrMsgTransferf(r->io->errmsg, r->errmsg, "append %u entries", n);
+err:
+    assert(rv != 0);
     return rv;
 }
 

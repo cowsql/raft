@@ -116,11 +116,7 @@ int recvAppendEntries(struct raft *r,
      * should be in charge of serializing everything. */
     if (r->snapshot.installing && args->n_entries > 0) {
         infof("snapshot install in progress -> ignore");
-        if (args->n_entries > 0) {
-            assert(args->entries[0].batch != NULL);
-            raft_free(args->entries[0].batch);
-        }
-        return 0;
+        goto out;
     }
 
     rv = replicationAppend(r, args, &result->rejected, &async);
@@ -176,6 +172,7 @@ reply:
         goto err;
     }
 
+out:
     /* Free the entries batch, if any. */
     if (args->n_entries > 0) {
         assert(args->entries[0].batch != NULL);

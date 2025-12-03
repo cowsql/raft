@@ -363,13 +363,25 @@ int replicationPersistEntriesDone(struct raft *r, raft_index index)
     return 0;
 }
 
-static void persistEntries(struct raft *r,
-                           raft_index index,
-                           struct raft_entry entries[],
-                           unsigned n)
+static int persistEntries(struct raft *r,
+                          raft_index index,
+                          struct raft_entry entries[],
+                          unsigned n)
 {
+    struct raft_entry *batch;
+    unsigned i;
+
     assert(n > 0);
     assert(entries != NULL);
+
+    batch = raft_malloc(sizeof *batch * n);
+    if (batch == NULL) {
+        return RAFT_NOMEM;
+    }
+
+    for (i = 0; i < n; i++) {
+        batch[i] = entries[i];
+    }
 
     /* This must be the first time during this raft_step() call where we set new
      * entries to be persisted. */
@@ -378,8 +390,10 @@ static void persistEntries(struct raft *r,
     r->update->flags |= RAFT_UPDATE_ENTRIES;
 
     r->update->entries.index = index;
-    r->update->entries.batch = entries;
+    r->update->entries.batch = batch;
     r->update->entries.n = n;
+
+    return 0;
 }
 
 int replicationTrigger(struct raft *r,
@@ -387,7 +401,14 @@ int replicationTrigger(struct raft *r,
                        struct raft_entry *entries,
                        unsigned n)
 {
-    persistEntries(r, index, entries, n);
+    int rv;
+
+    rv = persistEntries(r, index, entries, n);
+    if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
+        return rv;
+    }
+
     return triggerAll(r);
 }
 
@@ -751,14 +772,18 @@ int replicationAppend(struct raft *r,
     match = checkLogMatchingProperty(r, args);
     if (match != 0) {
         assert(match == 1 || match == -1);
-        return match == 1 ? 0 : RAFT_SHUTDOWN;
+        if (match == 1) {
+            return 0;
+        }
+        rv = RAFT_SHUTDOWN;
+        goto err;
     }
 
     /* Check for conflicting entries. */
     rv = checkConflictingEntries(r, args, &i, &truncate);
     if (rv != 0) {
         assert(rv == RAFT_SHUTDOWN);
-        return rv;
+        goto err;
     }
 
     /* From Figure 3.1:
@@ -772,7 +797,7 @@ int replicationAppend(struct raft *r,
         rv = deleteConflictingEntries(r, truncate);
         if (rv != 0) {
             assert(rv == RAFT_NOMEM);
-            return rv;
+            goto err;
         }
     }
 
@@ -788,7 +813,7 @@ int replicationAppend(struct raft *r,
         struct raft_entry *entry = &args->entries[i + j];
         rv = TrailAppend(&r->trail, entry->term);
         if (rv != 0) {
-            goto err;
+            goto err_after_trail_append;
         }
     }
 
@@ -850,16 +875,20 @@ int replicationAppend(struct raft *r,
         if (entry->type == RAFT_CHANGE) {
             rv = membershipUncommittedChange(r, index, entry);
             if (rv != 0) {
-                goto err;
+                goto err_after_trail_append;
             }
         }
     }
 
-    persistEntries(r, index, entries, n_entries);
+    rv = persistEntries(r, index, entries, n_entries);
+    if (rv != 0) {
+        assert(rv == RAFT_NOMEM);
+        goto err_after_trail_append;
+    }
 
     return 0;
 
-err:
+err_after_trail_append:
     /* Release all entries added to the in-memory log, making
      * sure the in-memory log and disk don't diverge, leading
      * to future log entries not being persisted to disk. */
@@ -867,6 +896,7 @@ err:
         TrailTruncate(&r->trail, index);
     }
 
+err:
     assert(rv != 0);
     return rv;
 }
