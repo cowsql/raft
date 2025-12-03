@@ -165,12 +165,6 @@ int recvAppendEntries(struct raft *r,
 reply:
     result->term = r->current_term;
 
-    /* Free the entries batch, if any. */
-    if (args->n_entries > 0) {
-        assert(args->entries[0].batch != NULL);
-        raft_free(args->entries[0].batch);
-    }
-
     result->capacity = r->capacity;
 
     message.type = RAFT_APPEND_ENTRIES_RESULT;
@@ -182,14 +176,16 @@ reply:
         goto err;
     }
 
-    return 0;
-
-err:
-    assert(rv != 0);
+    /* Free the entries batch, if any. */
     if (args->n_entries > 0) {
         assert(args->entries[0].batch != NULL);
         raft_free(args->entries[0].batch);
     }
+
+    return 0;
+
+err:
+    assert(rv != 0);
     return rv;
 }
 
