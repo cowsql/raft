@@ -1010,8 +1010,8 @@ static void serverCompleteSnapshot(struct test_server *s, struct step *step)
 
     snapshot->metadata.index = event->persisted_snapshot.metadata.index;
     snapshot->metadata.term = event->persisted_snapshot.metadata.term;
-    confCopy(&event->persisted_snapshot.metadata.configuration,
-             &snapshot->metadata.configuration);
+    snapshot->metadata.configuration =
+        event->persisted_snapshot.metadata.configuration;
     snapshot->metadata.configuration_index =
         event->persisted_snapshot.metadata.configuration_index;
 
