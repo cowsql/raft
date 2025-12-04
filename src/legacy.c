@@ -529,6 +529,7 @@ static void takeSnapshotCb(struct raft_io_snapshot_put *put, int status)
     event.snapshot.metadata = metadata;
     event.snapshot.trailing = r->legacy.snapshot_trailing;
     LegacyForwardToRaftIo(r, &event);
+    raft_configuration_close(&metadata.configuration);
 
     if (r->legacy.snapshot_pending != NULL) {
         struct legacyPersistSnapshot *persist;

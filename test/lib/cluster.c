@@ -1104,10 +1104,7 @@ static void serverCompleteTakeSnapshot(struct test_server *s, struct step *step)
      * entry. */
     snapshot->metadata.index = event->snapshot.metadata.index;
     snapshot->metadata.term = event->snapshot.metadata.term;
-
-    confCopy(&event->snapshot.metadata.configuration,
-             &snapshot->metadata.configuration);
-
+    snapshot->metadata.configuration = event->snapshot.metadata.configuration;
     snapshot->data.len = 8;
     snapshot->data.base = munit_malloc(snapshot->data.len);
 

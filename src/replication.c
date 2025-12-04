@@ -1070,6 +1070,8 @@ int replicationSnapshot(struct raft *r,
                         struct raft_snapshot_metadata *metadata,
                         unsigned trailing)
 {
+    int rv;
+
     (void)trailing;
 
     /* Make also a copy of the index of the configuration contained in the
@@ -1078,9 +1080,11 @@ int replicationSnapshot(struct raft *r,
 
     if (metadata->configuration_index > r->configuration_committed_index) {
         configurationClose(&r->configuration_committed);
-        r->configuration_committed = metadata->configuration;
-    } else {
-        configurationClose(&metadata->configuration);
+        rv = configurationCopy(&metadata->configuration,
+                               &r->configuration_committed);
+        if (rv != 0) {
+            return rv;
+        }
     }
 
     TrailSnapshot(&r->trail, metadata->index, trailing);
