@@ -1116,6 +1116,10 @@ static int legacyHandleEvent(struct raft *r,
         return rv;
     }
 
+    if (event->type == RAFT_CONFIGURATION) {
+        raft_configuration_close(&event->configuration.conf);
+    }
+
     if (update.flags & RAFT_UPDATE_STATE) {
         legacyHandleStateUpdate(r);
     }

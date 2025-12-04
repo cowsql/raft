@@ -1090,6 +1090,8 @@ static void serverCompleteConfiguration(struct test_server *s,
     rv = serverStep(s, event);
     munit_assert_int(rv, ==, 0);
 
+    raft_configuration_close(&event->configuration.conf);
+
     /* The last call to raft_step() did not change the commit index. */
     munit_assert_ullong(raft_commit_index(r), ==, commit_index);
 }
