@@ -1090,6 +1090,8 @@ static void serverCompleteConfiguration(struct test_server *s,
     rv = serverStep(s, event);
     munit_assert_int(rv, ==, 0);
 
+    raft_configuration_close(&event->configuration.conf);
+
     /* The last call to raft_step() did not change the commit index. */
     munit_assert_ullong(raft_commit_index(r), ==, commit_index);
 }
@@ -1104,10 +1106,7 @@ static void serverCompleteTakeSnapshot(struct test_server *s, struct step *step)
      * entry. */
     snapshot->metadata.index = event->snapshot.metadata.index;
     snapshot->metadata.term = event->snapshot.metadata.term;
-
-    confCopy(&event->snapshot.metadata.configuration,
-             &snapshot->metadata.configuration);
-
+    snapshot->metadata.configuration = event->snapshot.metadata.configuration;
     snapshot->data.len = 8;
     snapshot->data.base = munit_malloc(snapshot->data.len);
 

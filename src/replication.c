@@ -1023,10 +1023,11 @@ int replicationApplyConfigurationChange(struct raft *r,
                                         struct raft_configuration *conf,
                                         raft_index index)
 {
+    int rv;
+
     assert(index > 0);
 
     if (r->configuration_uncommitted_index != index) {
-        configurationClose(conf);
         return 0;
     }
 
@@ -1036,8 +1037,12 @@ int replicationApplyConfigurationChange(struct raft *r,
      * index, since that uncommitted configuration is now committed. */
     r->configuration_uncommitted_index = 0;
     r->configuration_committed_index = index;
+
     configurationClose(&r->configuration_committed);
-    r->configuration_committed = *conf;
+    rv = configurationCopy(conf, &r->configuration_committed);
+    if (rv != 0) {
+        return rv;
+    }
 
     if (r->state == RAFT_LEADER) {
         const struct raft_server *server;
@@ -1070,6 +1075,8 @@ int replicationSnapshot(struct raft *r,
                         struct raft_snapshot_metadata *metadata,
                         unsigned trailing)
 {
+    int rv;
+
     (void)trailing;
 
     /* Make also a copy of the index of the configuration contained in the
@@ -1078,9 +1085,11 @@ int replicationSnapshot(struct raft *r,
 
     if (metadata->configuration_index > r->configuration_committed_index) {
         configurationClose(&r->configuration_committed);
-        r->configuration_committed = metadata->configuration;
-    } else {
-        configurationClose(&metadata->configuration);
+        rv = configurationCopy(&metadata->configuration,
+                               &r->configuration_committed);
+        if (rv != 0) {
+            return rv;
+        }
     }
 
     TrailSnapshot(&r->trail, metadata->index, trailing);
