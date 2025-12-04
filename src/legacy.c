@@ -295,6 +295,7 @@ static void legacyPersistSnapshotCb(struct raft_io_snapshot_put *put,
         r->legacy.snapshot_index = req->metadata.index;
         r->legacy.snapshot_chunk = req->chunk;
         LegacyForwardToRaftIo(r, &event);
+        raft_configuration_close(&req->metadata.configuration);
     } else {
         assert(r->legacy.closing);
         assert(status == RAFT_CANCELED);

@@ -933,8 +933,6 @@ int replicationPersistSnapshotDone(struct raft *r,
         result.rejected = metadata->index;
     }
 
-    raft_configuration_close(&metadata->configuration);
-
     if (r->state == RAFT_FOLLOWER) {
         result.last_log_index = r->last_stored;
         result.capacity = r->capacity;

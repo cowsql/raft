@@ -101,6 +101,52 @@ Start
             unsigned n_entries;                      /* Length of entries array */
        } start;
 
+    The memory of the :c:struct:`raft_event.start.metadata` structure and of its
+    nested fields all belongs to the caller of :c:func:`raft_step()`. The raft will
+    make a copy of any data that it needs to retain, so the caller can free the
+    :c:struct:`raft_event.start.metadata` structure after :c:func:`raft_step()`
+    returns.
+
+    Log entries passed via the :c:struct:`raft_event.start.entries` array should
+    be loaded from disk at startup. They can be loaded in one or more batches
+    (for example the persisted log entries could be distributed in multiple
+    files, and each batch might contain all the entries of a single file).
+
+    Each batch is expected to be a single contiguous region of allocated memory
+    containing the data of all log entries in that batch.
+
+    For example, if there are 7 log entries placed in two batches, the
+    :c:struct:`raft_entry` items in the :c:struct:`raft_event.start.entries`
+    array should look like:
+
+    .. code-block:: C
+
+       /* First batch */
+       entries[0].batch = <mem-location-1>; /* Allocation for the first 4 entries */
+       entries[0].buf.base = <mem-location-1> + <offset-1-relative-to-mem-location-1>;
+       entries[1].batch = <mem-location-1>;
+       entries[1].buf.base = <mem-location-1> + <offset-2-relative-to-mem-location-1>;
+       entries[2].batch = <mem-location-1>;
+       entries[2].buf.base = <mem-location-1> + <offset-3-relative-to-mem-location-1>;
+       entries[3].batch = <mem-location-1>;
+       entries[3].buf.base = <mem-location-1> + <offset-4-relative-to-mem-location-1>;
+       /* Second batch */
+       entries[4].batch = <mem-location-2>; /* Allocation for the last 3 entries */
+       entries[4].buf.base = <mem-location-2> + <offset-1-relative-to-mem-location-2>;
+       entries[5].batch = <mem-location-2>;
+       entries[5].buf.base = <mem-location-2> + <offset-2-relative-to-mem-location-2>;
+       entries[6].batch = <mem-location-2>;
+       entries[6].buf.base = <mem-location-2> + <offset-2-relative-to-mem-location-2>;
+
+    The batch pointer does not need to point to the start of the data of the
+    first entry in the batch (for example it might hold some extra metadata),
+    the only requirement is that free-ing it will release the memory of the
+    entries in the batch.
+
+    The memory of the :c:struct:`raft_event.start.entries` array and of all its
+    batches belongs to the caller of :c:func:`raft_step()` and the raft library
+    doesn't mantain any reference to them.
+
 Receive
 ^^^^^^^
 
@@ -116,6 +162,43 @@ Receive
        {
            struct raft_message *message; /* Message being received */
        } receive;
+
+    The memory of the :c:struct:`raft_event.receive.message` struct itself
+    always belongs to the caller of :c:func:`raft_step()`.
+
+    If the message is of type :c:enum:`RAFT_APPEND_ENTRIES`, the log entries
+    passed via the :c:struct:`raft_event.receive.message.append_entries.entries`
+    array should have been received over the network.
+
+    **IMPORTANT**: The log entries of a :c:enum:`RAFT_APPEND_ENTRIES` message
+    must all belong to a single batch (see the `Start event`_ documentation a
+    description of what a batch is)
+
+    The memory of the
+    :c:struct:`raft_event.receive.message.append_entries.entries` array belongs
+    to the caller and can be freed after :c:func:`raft_step()` returns.
+
+    When :c:func:`raft_step()` succeeds and returns no error the memory
+    ownership of the log entries batch data is transferred to raft and must not
+    be freed by the caller. However if an error is returned then raft does not
+    maintain any reference to the batch and ownership goes back to the caller.
+
+    If the message is of type :c:enum:`RAFT_INSTALL_SNAPSHPOT`, the snapshot
+    data passed via the
+    :c:struct:`raft_event.receive.message.install_snapshot.data` field should
+    have been received over the network.
+
+    When :c:func:`raft_step()` succeeds and returns no error the memory
+    ownership of the snapshot data is transferred to raft and must not be freed
+    by the caller. However if an error is returned then raft does not maintain
+    any reference to the snapshot data and ownership goes back to the caller.
+
+    The memory of the
+    :c:struct:`raft_event.receive.message.install_snapshot.conf` field always
+    belongs to the caller and raft maintains no reference to it.
+
+
+.. _Start event: ./events.html#start
 
 Persisted entries
 ^^^^^^^^^^^^^^^^^
