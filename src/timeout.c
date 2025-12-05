@@ -122,6 +122,7 @@ static bool checkContactQuorum(struct raft *r)
         if ((server->role == RAFT_VOTER && is_recent) || server->id == r->id) {
             contacts++;
         }
+        r->voter_contacts = (int)contacts;
 
         if (!is_recent) {
             switch (progressState(r, i)) {

@@ -106,6 +106,7 @@ int raft_init(struct raft *r,
     r->install_snapshot_timeout = DEFAULT_INSTALL_SNAPSHOT_TIMEOUT;
     r->commit_index = 0;
     r->last_stored = 0;
+    r->voter_contacts = -1;
     r->state = RAFT_FOLLOWER;
     r->follower_state.current_leader.id = 0;
     r->follower_state.current_leader.address = NULL;
@@ -852,4 +853,8 @@ const char *raft_role_name(int role)
     return name;
 }
 
+int raft_voter_contacts(struct raft *r)
+{
+    return r->voter_contacts;
+}
 #undef infof
